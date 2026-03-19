@@ -1116,8 +1116,8 @@ let activeFilter={d:'', e:''};
 // ══════════════════════════════════════════
 // CLOUD API — SUPABASE (REST direto, sem intermediário)
 // ══════════════════════════════════════════
-let SUPA_URL = localStorage.getItem('sp_supa_url') || '';
-let SUPA_KEY = localStorage.getItem('sp_supa_key') || '';
+let SUPA_URL = localStorage.getItem('sp_supa_url') || 'https://vvkhjadutrmjjprsoooy.supabase.co';
+let SUPA_KEY = localStorage.getItem('sp_supa_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2hqYWR1dHJtampwcnNvb295Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTYzODAsImV4cCI6MjA4OTUzMjM4MH0.Pqd28EuifwCx41IC2XaWWqwC26c_IbbtzfvjyKsNFYw';
 let API_URL  = SUPA_URL; // alias legado
 
 function setSupabase(url, key){
@@ -1271,12 +1271,8 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     applySessionUI();
   }
 
-  // If Supabase configured, load data
-  if(SUPA_URL && SUPA_KEY){
-    await loadAllData();
-  } else {
-    document.getElementById('modal-api-setup').classList.add('open');
-  }
+  // Credenciais fixas — carrega direto
+  await loadAllData();
   refreshHome();
 });
 
