@@ -389,11 +389,11 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
       </div>
 
       <!-- CONFIG API (admin only) -->
-      <div class="module-card" id="card-api-cfg" style="display:none;border-color:rgba(34,197,94,.2);" onclick="document.getElementById('api-url-input').value=API_URL||'';document.getElementById('modal-api-setup').classList.add('open')">
+      <div class="module-card" id="card-api-cfg" style="display:none;border-color:rgba(34,197,94,.2);" onclick="document.getElementById('api-url-input').value=SUPA_URL||'';document.getElementById('api-key-input').value=SUPA_KEY||'';document.getElementById('modal-api-setup').classList.add('open')">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(34,197,94,.08),transparent 70%);pointer-events:none;"></div>
         <div class="module-icon">⚙</div>
         <h2 style="color:var(--success);">CONFIGURAR</h2>
-        <p>Configure a conexão com o Google Sheets para sincronização de dados na nuvem.</p>
+        <p>Configure a conexão com o Supabase para sincronização rápida de dados na nuvem.</p>
         <div class="module-stats">
           <div class="mini-stat" id="api-status-badge" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2);">Status: <span style="color:var(--success);">—</span></div>
         </div>
@@ -901,10 +901,12 @@ let session = loadSession();
 
 function saveUsers(){
   localStorage.setItem('sp_users', JSON.stringify(users));
-  // Sync each user to Sheets (fire and forget)
-  users.forEach(u => {
-    if(API_URL) apiPost({ action:'saveUser', data:u }).catch(()=>{});
-  });
+  if(SUPA_URL && SUPA_KEY){
+    users.forEach(u => {
+      const uc = {...u}; if(typeof uc.perms==='object') uc.perms=JSON.stringify(uc.perms);
+      supaUpsert('users', uc, 'id').catch(()=>{});
+    });
+  }
 }
 
 function doLogin(){
@@ -957,9 +959,7 @@ function applySessionUI(){
   document.getElementById('user-avatar-hdr').className='user-avatar '+(isAdmin?'admin':'operator');
   document.getElementById('user-name-hdr').textContent=session.nome;
   document.getElementById('user-role-hdr').textContent=isAdmin?'ADMINISTRADOR':'OPERADOR';
-  // Sync button
-  document.getElementById('btn-sync').style.display = API_URL ? '' : 'none';
-
+  document.getElementById('btn-sync').style.display = (SUPA_URL && SUPA_KEY) ? '' : 'none';
   // Cards visibility
   const descCard   = document.querySelector('.module-card.desc');
   const expCard    = document.querySelector('.module-card.exp');
@@ -973,7 +973,7 @@ function applySessionUI(){
     if(cfgCard) cfgCard.style.display='';
     // Update API status badge
     const badge = document.getElementById('api-status-badge');
-    if(badge) badge.innerHTML = API_URL
+    if(badge) badge.innerHTML = (SUPA_URL && SUPA_KEY)
       ? 'Status: <span style="color:var(--success);">✓ CONECTADO</span>'
       : 'Status: <span style="color:var(--danger);">✗ NÃO CONFIG.</span>';
   } else {
@@ -1114,161 +1114,145 @@ let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
 let activeFilter={d:'', e:''};
 
 // ══════════════════════════════════════════
-// CLOUD API CONFIG
+// CLOUD API — SUPABASE (REST direto, sem intermediário)
 // ══════════════════════════════════════════
-// ⚠️ Cole aqui a URL do seu Google Apps Script após implantar:
-let API_URL = localStorage.getItem('sp_api_url') || '';
+let SUPA_URL = localStorage.getItem('sp_supa_url') || '';
+let SUPA_KEY = localStorage.getItem('sp_supa_key') || '';
+let API_URL  = SUPA_URL; // alias legado
 
-function setApiUrl(url){
-  API_URL = url.trim();
-  localStorage.setItem('sp_api_url', API_URL);
+function setSupabase(url, key){
+  SUPA_URL = url.trim().replace(/\/$/, '');
+  SUPA_KEY = key.trim();
+  API_URL  = SUPA_URL;
+  localStorage.setItem('sp_supa_url', SUPA_URL);
+  localStorage.setItem('sp_supa_key', SUPA_KEY);
 }
 
-async function api(params){
-  if(!API_URL) throw new Error('API_URL não configurada');
-  const qs = new URLSearchParams(params).toString();
-  return await apiGetRequest(qs ? '?'+qs : '');
+function supaHeaders(extra){
+  return { 'apikey': SUPA_KEY, 'Authorization': 'Bearer '+SUPA_KEY, 'Content-Type': 'application/json', ...extra };
 }
 
-// Tamanho máximo seguro de URL para o Apps Script (~6000 chars)
-const MAX_URL_LEN = 5500;
-
-async function apiPost(body){
-  if(!API_URL) throw new Error('API_URL não configurada');
-  const payload = JSON.stringify(body);
-  const encoded = encodeURIComponent(payload);
-
-  // Se o payload couber numa URL, envia direto
-  if((API_URL + '?payload=' + encoded).length <= MAX_URL_LEN){
-    return await apiGetRequest('?payload=' + encoded);
-  }
-
-  // Payload grande: divide automaticamente em lotes
-  // Funciona para importCoils e deleteCoilsMultiple
-  if(body.action === 'importCoils' && Array.isArray(body.data)){
-    return await apiPostBatch(body);
-  }
-  if(body.action === 'deleteCoilsMultiple' && Array.isArray(body.coils)){
-    return await apiPostBatch(body);
-  }
-
-  // Para outros casos grandes, tenta mesmo assim
-  return await apiGetRequest('?payload=' + encoded);
-}
-
-async function apiGetRequest(qs){
-  const res  = await fetch(API_URL + qs, { method:'GET', redirect:'follow' });
+async function supa(path, opts={}){
+  if(!SUPA_URL||!SUPA_KEY) throw new Error('Supabase não configurado');
+  const res = await fetch(SUPA_URL+'/rest/v1/'+path, {
+    method:  opts.method  || 'GET',
+    headers: supaHeaders(opts.headers||{}),
+    body:    opts.body    || undefined
+  });
+  if(res.status===204) return [];
   const text = await res.text();
+  if(!text) return [];
   let data;
-  try { data = JSON.parse(text); }
-  catch(e){ throw new Error('Resposta inválida do servidor: ' + text.substring(0,120)); }
-  if(!data.ok) throw new Error(data.error || 'Erro na API');
+  try{ data=JSON.parse(text); }catch(e){ throw new Error('Resposta inválida: '+text.substring(0,120)); }
+  if(res.status>=400) throw new Error(data.message||data.error||JSON.stringify(data));
   return data;
 }
 
-// Envia array em lotes pequenos até que todos passem
-async function apiPostBatch(body){
-  const isImport = body.action === 'importCoils';
-  const arr      = isImport ? body.data : body.coils;
-  const BATCH    = 15; // 15 registros por chamada
-  let sent = 0;
+async function supaUpsert(table, rows, onConflict='id'){
+  if(!Array.isArray(rows)) rows=[rows];
+  if(!rows.length) return;
+  return supa(table+'?on_conflict='+onConflict, {
+    method:'POST', headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify(rows)
+  });
+}
 
-  for(let i = 0; i < arr.length; i += BATCH){
-    const chunk = arr.slice(i, i + BATCH);
-    const batchBody = isImport
-      ? { action:'importCoils', data: chunk, mode: i === 0 ? body.mode : 'merge' }
-      : { action:'deleteCoilsMultiple', coils: chunk };
+async function supaDelete(table, filter){
+  return supa(table+'?'+filter, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+}
 
-    const encoded = encodeURIComponent(JSON.stringify(batchBody));
-    await apiGetRequest('?payload=' + encoded);
-    sent += chunk.length;
-
-    // Atualiza loading com progresso
-    const pct = Math.round((sent / arr.length) * 100);
-    const msg = isImport
-      ? `Importando bobinas... ${sent}/${arr.length} (${pct}%)`
-      : `Excluindo bobinas... ${sent}/${arr.length} (${pct}%)`;
-    document.getElementById('loading-msg').textContent = msg;
+// Upsert em lotes paralelos — muito mais rápido que sequencial
+async function supaUpsertBulk(table, rows, onConflict, batchSize, onProgress){
+  onConflict = onConflict||'coil'; batchSize = batchSize||200;
+  const batches=[];
+  for(let i=0;i<rows.length;i+=batchSize) batches.push(rows.slice(i,i+batchSize));
+  const PARALLEL=5; let done=0;
+  for(let i=0;i<batches.length;i+=PARALLEL){
+    const chunk=batches.slice(i,i+PARALLEL);
+    await Promise.all(chunk.map(b=>supaUpsert(table,b,onConflict)));
+    done+=chunk.reduce((a,b)=>a+b.length,0);
+    if(onProgress) onProgress(done,rows.length);
   }
-  return { ok: true, count: arr.length };
 }
 
 // ── Loading overlay ────────────────────────────────────────────
 function showLoading(msg){
-  const el = document.getElementById('loading-overlay');
-  el.style.display='flex';
-  document.getElementById('loading-msg').textContent = msg || 'Carregando...';
+  document.getElementById('loading-overlay').style.display='flex';
+  document.getElementById('loading-msg').textContent=msg||'Carregando...';
 }
-function hideLoading(){
-  document.getElementById('loading-overlay').style.display='none';
-}
+function hideLoading(){ document.getElementById('loading-overlay').style.display='none'; }
 
-// ── Load all data from Sheets ──────────────────────────────────
+// ── Carrega todos os dados em paralelo ─────────────────────────
 async function loadAllData(){
-  showLoading('Sincronizando com Google Sheets...');
-  try {
-    const data = await api({ action:'getAll' });
-    records    = (data.records    || []).map(normalizeRecord);
-    expedicoes = (data.expedicoes || []).map(normalizeRecord);
-    coilsDB    = data.coilsDB    || [];
-    navios     = data.navios     || [];
-    users      = (data.users     || []).map(normalizeUser);
-    if(!users.length) users = [DEFAULT_ADMIN];
-    saveUsers(); // cache locally for auth
-    hideLoading();
-    return true;
-  } catch(err){
-    hideLoading();
-    showApiError(err.message);
-    return false;
-  }
+  showLoading('Carregando dados do Supabase...');
+  try{
+    const [rec,exp,coils,usrs,navs]=await Promise.all([
+      supa('records?select=*&order=id.desc'),
+      supa('expedicoes?select=*&order=id.desc'),
+      supa('coilsdb?select=*&order=coil.asc'),
+      supa('users?select=*'),
+      supa('navios?select=nome')
+    ]);
+    records    = (rec  ||[]).map(normalizeRecord);
+    expedicoes = (exp  ||[]).map(normalizeRecord);
+    coilsDB    = coils ||[];
+    navios     = (navs ||[]).map(r=>r.nome).filter(Boolean);
+    users      = (usrs ||[]).map(normalizeUser);
+    if(!users.length) users=[DEFAULT_ADMIN];
+    saveUsers();
+    hideLoading(); return true;
+  }catch(err){ hideLoading(); showApiError(err.message); return false; }
 }
 
-function normalizeRecord(r){
-  // Ensure id is a comparable value
-  if(r.id && !isNaN(r.id)) r.id = Number(r.id);
-  return r;
-}
-
-function normalizeUser(u){
-  if(typeof u.perms === 'string'){
-    try{ u.perms = JSON.parse(u.perms); }catch(e){ u.perms = {}; }
-  }
-  return u;
-}
+function normalizeRecord(r){ if(r.id&&!isNaN(r.id)) r.id=Number(r.id); return r; }
+function normalizeUser(u){ if(typeof u.perms==='string'){ try{u.perms=JSON.parse(u.perms);}catch(e){u.perms={};} } return u; }
 
 function showApiError(msg){
-  showToast('⚠ Erro de conexão: '+(msg||'verifique a API URL'), '#e05c1a', '#fff');
-  // If API not configured, show setup modal
-  if(!API_URL || msg.includes('API_URL')){
-    document.getElementById('modal-api-setup').classList.add('open');
-  }
+  showToast('⚠ Erro: '+(msg||'verifique configuração Supabase'),'#e05c1a','#fff');
+  if(!SUPA_URL||!SUPA_KEY) document.getElementById('modal-api-setup').classList.add('open');
 }
 
+function saveData(){ /* operações diretas no Supabase */ }
+
 async function saveAndConnect(){
-  const url = document.getElementById('api-url-input').value.trim();
-  if(!url){ showToast('Cole a URL do Apps Script.','#e05c1a','#fff'); return; }
-  setApiUrl(url);
+  const url=document.getElementById('api-url-input').value.trim();
+  const key=document.getElementById('api-key-input').value.trim();
+  if(!url||!key){ showToast('Preencha a URL e a chave Anon.','#e05c1a','#fff'); return; }
+  setSupabase(url,key);
   closeModal('modal-api-setup');
-  const ok = await loadAllData();
-  if(ok){
-    showToast('✓ Conectado ao Google Sheets!','#22c55e','#000');
-    document.getElementById('btn-sync').style.display='';
-    refreshHome();
-  }
+  const ok=await loadAllData();
+  if(ok){ showToast('✓ Conectado ao Supabase!','#22c55e','#000'); document.getElementById('btn-sync').style.display=''; applySessionUI(); refreshHome(); }
 }
 
 async function syncData(){
   showToast('Sincronizando...','#3b82f6','#fff');
-  const ok = await loadAllData();
-  if(ok){
-    showToast('✓ Dados sincronizados!','#22c55e','#000');
-    buildFilterSelects('d'); buildFilterSelects('e');
-    applyFilters('d'); applyFilters('e');
-    buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList();
-    refreshHome();
-  }
+  const ok=await loadAllData();
+  if(ok){ showToast('✓ Sincronizado!','#22c55e','#000'); buildFilterSelects('d'); buildFilterSelects('e'); applyFilters('d'); applyFilters('e'); buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); refreshHome(); }
 }
+
+// ── Compat wrappers usados pelo resto do código ─────────────────
+async function apiPost(body){
+  if(body.action==='addRecord')    return supaUpsert('records',    body.data,'id');
+  if(body.action==='addExpedicao') return supaUpsert('expedicoes', body.data,'id');
+  if(body.action==='saveCoil'){    return supaUpsert('coilsdb',    body.data,'coil'); }
+  if(body.action==='addNavio')     return supaUpsert('navios',     {nome:body.nome},'nome');
+  if(body.action==='saveUser'){    const u={...body.data}; if(typeof u.perms==='object') u.perms=JSON.stringify(u.perms); return supaUpsert('users',u,'id'); }
+  if(body.action==='importCoils')  return; // tratado diretamente em confirmImport
+  if(body.action==='deleteCoilsMultiple'){ const list=body.coils.map(c=>`"${c}"`).join(','); return supaDelete('coilsdb',`coil=in.(${list})`); }
+  throw new Error('Ação desconhecida: '+body.action);
+}
+
+async function api(params){
+  const a=params.action;
+  if(a==='deleteRecord')    return supaDelete('records',   'id=eq.'+params.id);
+  if(a==='deleteExpedicao') return supaDelete('expedicoes','id=eq.'+params.id);
+  if(a==='deleteCoil')      return supaDelete('coilsdb',   'coil=eq.'+encodeURIComponent(params.coil));
+  if(a==='deleteNavioAll')  return supaDelete('coilsdb',   'navio=eq.'+encodeURIComponent(params.navio));
+  if(a==='deleteNavio')     return supaDelete('navios',    'nome=eq.'+encodeURIComponent(params.nome));
+  if(a==='deleteUser')      return supaDelete('users',     'id=eq.'+params.id);
+  throw new Error('Ação GET desconhecida: '+a);
+}
+
+
 
 
 
@@ -1287,11 +1271,10 @@ document.addEventListener('DOMContentLoaded', async ()=>{
     applySessionUI();
   }
 
-  // If API configured, load data
-  if(API_URL){
+  // If Supabase configured, load data
+  if(SUPA_URL && SUPA_KEY){
     await loadAllData();
   } else {
-    // Show setup on first use
     document.getElementById('modal-api-setup').classList.add('open');
   }
   refreshHome();
@@ -1800,28 +1783,31 @@ async function confirmImport(){
   if(!importRows.length) return;
   const mode = document.querySelector('input[name="imp-mode"]:checked').value;
   closeModal('modal-import');
-  showLoading(`Importando ${importRows.length} bobinas... 0%`);
+  showLoading(`Preparando importação de ${importRows.length} bobinas...`);
   try {
-    // Replace mode: clear sheet first then send all in batches
     if(mode === 'replace'){
-      // Send first batch with mode=replace to clear the sheet
-      await apiPost({ action:'importCoils', data: importRows, mode:'replace' });
-      coilsDB = [...importRows];
-    } else {
-      // Merge: send in batches, all with mode=merge
-      await apiPost({ action:'importCoils', data: importRows, mode:'merge' });
-      importRows.forEach(row=>{
-        const idx = coilsDB.findIndex(c => c.coil === row.coil);
-        if(idx >= 0) coilsDB[idx] = row;
-        else coilsDB.unshift(row);
-      });
+      // Apaga tudo e reinsere
+      showLoading('Limpando banco anterior...');
+      await supaDelete('coilsdb', 'coil=neq.___none___');
+      coilsDB = [];
     }
+    // Envia em lotes de 200 em paralelo (5 lotes ao mesmo tempo)
+    await supaUpsertBulk('coilsdb', importRows, 'coil', 200, (done, total)=>{
+      const pct = Math.round((done/total)*100);
+      showLoading(`Importando bobinas: ${done}/${total} (${pct}%)`);
+    });
+    // Atualiza memória local
+    importRows.forEach(row=>{
+      const idx = coilsDB.findIndex(c=>c.coil===row.coil);
+      if(idx>=0) coilsDB[idx]=row; else coilsDB.push(row);
+    });
+    if(mode==='replace') coilsDB=[...importRows];
     hideLoading();
     buildDBNavSelect(); renderCoilsGrouped(); refreshHome();
     showToast(`✓ ${importRows.length} bobinas importadas com sucesso!`, '#22c55e', '#000');
   } catch(err){
     hideLoading();
-    showToast('⚠ Erro na importação: ' + err.message, '#e05c1a', '#fff');
+    showToast('⚠ Erro na importação: '+err.message, '#e05c1a', '#fff');
   }
 }
 function resetImport(){ importRows=[]; const dz=document.getElementById('drop-zone'); dz.style.display=''; dz.style.borderColor='var(--border)'; dz.style.background=''; ['import-preview','import-mode-row','import-warn'].forEach(id=>document.getElementById(id).style.display='none'); document.getElementById('btn-confirm-import').style.display='none'; document.getElementById('xls-input').value=''; }
@@ -2274,32 +2260,62 @@ document.addEventListener('keydown', e => {
 
 <!-- ══════════════════ API SETUP MODAL ══════════════════ -->
 <div class="modal-overlay" id="modal-api-setup">
-  <div class="modal" style="max-width:600px;">
-    <div class="modal-title">⚙ CONFIGURAR GOOGLE SHEETS</div>
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-title">⚙ CONFIGURAR SUPABASE</div>
     <div class="modal-body" style="margin-bottom:0;">
-      <p style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:1.5rem;">Para sincronizar dados na nuvem, configure o Google Apps Script seguindo os passos:</p>
-      <div style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.5rem;">
+      <p style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:1.2rem;">Configure o banco de dados <strong style="color:var(--success)">Supabase</strong> — gratuito, rápido e sem limite de linhas.</p>
+      <div style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.2rem;">
+
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 1</div>
-          <p style="font-size:14px;color:var(--text);">Crie uma planilha no <strong style="color:var(--accent)">sheets.google.com</strong> e abra: <strong>Extensões → Apps Script</strong></p>
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 1 — Criar conta gratuita</div>
+          <p style="font-size:14px;color:var(--text);">Acesse <strong style="color:var(--accent)">supabase.com</strong>, clique em <strong>Start for free</strong> e crie uma conta com Google ou e-mail.</p>
         </div>
+
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 2</div>
-          <p style="font-size:14px;color:var(--text);">Cole o conteúdo do arquivo <strong style="color:var(--accent)">STEELPORT_AppScript.gs</strong> e salve.</p>
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 2 — Criar projeto</div>
+          <p style="font-size:14px;color:var(--text);">Clique em <strong>New Project</strong>, dê um nome (ex: <em>steelport</em>), escolha uma senha forte e selecione a região <strong>South America (São Paulo)</strong>.</p>
         </div>
+
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 3</div>
-          <p style="font-size:14px;color:var(--text);"><strong>Implantar → Nova implantação → Aplicativo da Web.</strong> Acesso: <strong>"Qualquer pessoa"</strong>. Copie a URL.</p>
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 3 — Criar as tabelas via SQL</div>
+          <p style="font-size:14px;color:var(--text);">No menu lateral, clique em <strong>SQL Editor</strong>, cole o SQL abaixo e clique <strong>Run</strong>:</p>
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-size:11px;color:var(--success);overflow-x:auto;margin-top:.5rem;line-height:1.6;">create table if not exists coilsdb (coil text primary key, armazem text, bl text, cliente text, navio text, viagem text, produto text, pesob text, pesol text);
+create table if not exists records (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text);
+create table if not exists expedicoes (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text);
+create table if not exists users (id text primary key, nome text, "user" text, pass text, role text, perms text);
+create table if not exists navios (nome text primary key);
+alter table coilsdb enable row level security;
+alter table records enable row level security;
+alter table expedicoes enable row level security;
+alter table users enable row level security;
+alter table navios enable row level security;
+create policy "allow all" on coilsdb for all using (true) with check (true);
+create policy "allow all" on records for all using (true) with check (true);
+create policy "allow all" on expedicoes for all using (true) with check (true);
+create policy "allow all" on users for all using (true) with check (true);
+create policy "allow all" on navios for all using (true) with check (true);</pre>
         </div>
+
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 4 — Cole a URL aqui</div>
-          <div style="display:flex;gap:.5rem;margin-top:.5rem;">
-            <input type="text" id="api-url-input" placeholder="https://script.google.com/macros/s/..." style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;">
-            <button class="btn btn-primary btn-sm" onclick="saveAndConnect()">CONECTAR</button>
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 4 — Copiar credenciais</div>
+          <p style="font-size:14px;color:var(--text);">Vá em <strong>Project Settings → API</strong>. Copie a <strong>Project URL</strong> e a chave <strong>anon public</strong>.</p>
+        </div>
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 5 — Cole as credenciais abaixo</div>
+          <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem;">
+            <input type="text" id="api-url-input" placeholder="https://xxxxxxxxxxxx.supabase.co"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%;">
+            <input type="text" id="api-key-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (chave anon)"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%;">
+            <button class="btn btn-primary" onclick="saveAndConnect()" style="width:100%;">✓ SALVAR E CONECTAR</button>
           </div>
         </div>
+
       </div>
-      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-align:center;">A URL fica salva no navegador. Cada usuário deve configurar a mesma URL para acessar os mesmos dados.</div>
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-align:center;">
+        Plano gratuito Supabase: 500 MB · 50.000 linhas · sem limite de leitura. Dados compartilhados entre todos os usuários em tempo real.
+      </div>
     </div>
     <div class="modal-actions" style="margin-top:1.5rem;">
       <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-api-setup')">FECHAR</button>
