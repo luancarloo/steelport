@@ -1127,30 +1127,70 @@ function setApiUrl(url){
 async function api(params){
   if(!API_URL) throw new Error('API_URL não configurada');
   const qs = new URLSearchParams(params).toString();
-  const res = await fetch(API_URL + (qs ? '?'+qs : ''), {
-    method: 'GET',
-    redirect: 'follow'
-  });
+  return await apiGetRequest(qs ? '?'+qs : '');
+}
+
+// Tamanho máximo seguro de URL para o Apps Script (~6000 chars)
+const MAX_URL_LEN = 5500;
+
+async function apiPost(body){
+  if(!API_URL) throw new Error('API_URL não configurada');
+  const payload = JSON.stringify(body);
+  const encoded = encodeURIComponent(payload);
+
+  // Se o payload couber numa URL, envia direto
+  if((API_URL + '?payload=' + encoded).length <= MAX_URL_LEN){
+    return await apiGetRequest('?payload=' + encoded);
+  }
+
+  // Payload grande: divide automaticamente em lotes
+  // Funciona para importCoils e deleteCoilsMultiple
+  if(body.action === 'importCoils' && Array.isArray(body.data)){
+    return await apiPostBatch(body);
+  }
+  if(body.action === 'deleteCoilsMultiple' && Array.isArray(body.coils)){
+    return await apiPostBatch(body);
+  }
+
+  // Para outros casos grandes, tenta mesmo assim
+  return await apiGetRequest('?payload=' + encoded);
+}
+
+async function apiGetRequest(qs){
+  const res  = await fetch(API_URL + qs, { method:'GET', redirect:'follow' });
   const text = await res.text();
   let data;
-  try { data = JSON.parse(text); } catch(e){ throw new Error('Resposta inválida do servidor: '+text.substring(0,100)); }
+  try { data = JSON.parse(text); }
+  catch(e){ throw new Error('Resposta inválida do servidor: ' + text.substring(0,120)); }
   if(!data.ok) throw new Error(data.error || 'Erro na API');
   return data;
 }
 
-// Todas as escritas também usam GET, com payload JSON na querystring
-async function apiPost(body){
-  if(!API_URL) throw new Error('API_URL não configurada');
-  const payload = encodeURIComponent(JSON.stringify(body));
-  const res = await fetch(API_URL + '?payload=' + payload, {
-    method: 'GET',
-    redirect: 'follow'
-  });
-  const text = await res.text();
-  let data;
-  try { data = JSON.parse(text); } catch(e){ throw new Error('Resposta inválida: '+text.substring(0,100)); }
-  if(!data.ok) throw new Error(data.error || 'Erro na API');
-  return data;
+// Envia array em lotes pequenos até que todos passem
+async function apiPostBatch(body){
+  const isImport = body.action === 'importCoils';
+  const arr      = isImport ? body.data : body.coils;
+  const BATCH    = 15; // 15 registros por chamada
+  let sent = 0;
+
+  for(let i = 0; i < arr.length; i += BATCH){
+    const chunk = arr.slice(i, i + BATCH);
+    const batchBody = isImport
+      ? { action:'importCoils', data: chunk, mode: i === 0 ? body.mode : 'merge' }
+      : { action:'deleteCoilsMultiple', coils: chunk };
+
+    const encoded = encodeURIComponent(JSON.stringify(batchBody));
+    await apiGetRequest('?payload=' + encoded);
+    sent += chunk.length;
+
+    // Atualiza loading com progresso
+    const pct = Math.round((sent / arr.length) * 100);
+    const msg = isImport
+      ? `Importando bobinas... ${sent}/${arr.length} (${pct}%)`
+      : `Excluindo bobinas... ${sent}/${arr.length} (${pct}%)`;
+    document.getElementById('loading-msg').textContent = msg;
+  }
+  return { ok: true, count: arr.length };
 }
 
 // ── Loading overlay ────────────────────────────────────────────
@@ -1758,19 +1798,30 @@ function handleXLSFile(file){
 }
 async function confirmImport(){
   if(!importRows.length) return;
-  const mode=document.querySelector('input[name="imp-mode"]:checked').value;
-  showLoading('Importando '+importRows.length+' bobinas para o Google Sheets...');
+  const mode = document.querySelector('input[name="imp-mode"]:checked').value;
+  closeModal('modal-import');
+  showLoading(`Importando ${importRows.length} bobinas... 0%`);
   try {
-    await apiPost({ action:'importCoils', data:importRows, mode });
-    if(mode==='replace') coilsDB=[...importRows];
-    else importRows.forEach(row=>{ const idx=coilsDB.findIndex(c=>c.coil===row.coil); if(idx>=0) coilsDB[idx]=row; else coilsDB.unshift(row); });
+    // Replace mode: clear sheet first then send all in batches
+    if(mode === 'replace'){
+      // Send first batch with mode=replace to clear the sheet
+      await apiPost({ action:'importCoils', data: importRows, mode:'replace' });
+      coilsDB = [...importRows];
+    } else {
+      // Merge: send in batches, all with mode=merge
+      await apiPost({ action:'importCoils', data: importRows, mode:'merge' });
+      importRows.forEach(row=>{
+        const idx = coilsDB.findIndex(c => c.coil === row.coil);
+        if(idx >= 0) coilsDB[idx] = row;
+        else coilsDB.unshift(row);
+      });
+    }
     hideLoading();
     buildDBNavSelect(); renderCoilsGrouped(); refreshHome();
-    closeModal('modal-import');
-    showToast(`✓ ${importRows.length} bobinas importadas!`,'#22c55e','#000');
+    showToast(`✓ ${importRows.length} bobinas importadas com sucesso!`, '#22c55e', '#000');
   } catch(err){
     hideLoading();
-    showToast('⚠ Erro na importação: '+err.message,'#e05c1a','#fff');
+    showToast('⚠ Erro na importação: ' + err.message, '#e05c1a', '#fff');
   }
 }
 function resetImport(){ importRows=[]; const dz=document.getElementById('drop-zone'); dz.style.display=''; dz.style.borderColor='var(--border)'; dz.style.background=''; ['import-preview','import-mode-row','import-warn'].forEach(id=>document.getElementById(id).style.display='none'); document.getElementById('btn-confirm-import').style.display='none'; document.getElementById('xls-input').value=''; }
