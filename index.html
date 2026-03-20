@@ -11,6 +11,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
 :root{--bg:#0a0c0f;--surface:#111318;--surface2:#181c23;--border:#252a35;--accent:#f0a500;--text:#e8eaf0;--muted:#6b7280;--danger:#e05c1a;--success:#22c55e;--info:#3b82f6;--warning:#f59e0b;--exp:#a855f7;}
+body.light-theme{--bg:#f0f2f5;--surface:#ffffff;--surface2:#e8eaed;--border:#d1d5db;--accent:#d48800;--text:#111827;--muted:#6b7280;--danger:#dc2626;--success:#16a34a;--info:#2563eb;--warning:#d97706;--exp:#9333ea;}
+body.light-theme .login-screen{background:var(--bg);}
+body.light-theme header{background:var(--surface);border-bottom-color:var(--accent);}
+body.light-theme .logo-text{color:var(--accent);}
+body.light-theme .module-card{background:var(--surface);border-color:var(--border);}
+body.light-theme table thead tr{background:#e8eaed;}
+body.light-theme tr:hover td{background:#f5f7fa;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:'Barlow Condensed',sans-serif;min-height:100vh;font-size:15px;}
 
@@ -60,6 +67,8 @@ header{background:var(--surface);border-bottom:2px solid var(--accent);padding:0
 .user-avatar.operator{background:var(--info);}
 .user-name{font-size:13px;font-weight:700;color:var(--text);}
 .user-role{font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.btn-purple{background:rgba(168,85,247,.15);color:var(--exp);border:1px solid rgba(168,85,247,.4);}
+.btn-purple:hover{background:rgba(168,85,247,.25);}
 .btn-logout{background:transparent;border:1px solid var(--border);color:var(--muted);padding:.3rem .7rem;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:11px;letter-spacing:1px;cursor:pointer;transition:all .2s;}
 .btn-logout:hover{border-color:var(--danger);color:var(--danger);}
 
@@ -291,14 +300,20 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
     <div class="login-form">
       <div class="login-field">
         <label>Usuário</label>
-        <input type="text" id="login-user" placeholder="Digite seu usuário" onkeydown="if(event.key==='Enter') doLogin()">
+        <input type="text" id="login-user" placeholder="Digite seu usuário" autocomplete="username" onkeydown="if(event.key==='Enter') doLogin()">
       </div>
       <div class="login-field">
         <label>Senha</label>
-        <input type="password" id="login-pass" placeholder="Digite sua senha" onkeydown="if(event.key==='Enter') doLogin()">
+        <div style="position:relative;">
+          <input type="password" id="login-pass" placeholder="Digite sua senha" autocomplete="current-password" onkeydown="if(event.key==='Enter') doLogin()" style="width:100%;padding-right:2.8rem;">
+          <button type="button" onclick="togglePassVis('login-pass','eye-login')" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:.2rem;" title="Mostrar/ocultar senha">
+            <span id="eye-login">👁</span>
+          </button>
+        </div>
       </div>
       <div class="login-error" id="login-error">Usuário ou senha incorretos.</div>
       <button class="btn-login" onclick="doLogin()">ENTRAR</button>
+      <button type="button" onclick="openForgotPass()" style="background:transparent;border:none;color:var(--muted);font-size:13px;font-family:'JetBrains Mono',monospace;cursor:pointer;margin-top:.5rem;text-decoration:underline;letter-spacing:.5px;">Esqueci minha senha</button>
     </div>
     <div class="login-footer">4SIDES · STEELPORT v2.0 · Acesso restrito</div>
   </div>
@@ -319,6 +334,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
     </div>
     <button class="btn-logout" id="btn-logout" style="display:none;" onclick="doLogout()">SAIR</button>
     <button class="btn-home" id="btn-sync" style="display:none;" onclick="syncData()" title="Sincronizar dados">⟳ SYNC</button>
+    <button class="btn-home" id="btn-theme" onclick="toggleTheme()" title="Alternar tema" style="font-size:16px;padding:.4rem .75rem;">🌙</button>
   </div>
 </header>
 
@@ -340,7 +356,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         <p>Registre a entrada de bobinas no armazém, consulte histórico e acompanhe saldos de descarga.</p>
         <div class="module-stats">
           <div class="mini-stat">Registros: <span id="home-desc-count">0</span></div>
-          <div class="mini-stat">P.Bruto: <span id="home-desc-peso">0</span> t</div>
+          <div class="mini-stat">P.Bruto: <span id="home-desc-peso">0</span> kg</div>
         </div>
       </div>
 
@@ -351,7 +367,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         <p>Registre as saídas de bobinas do armazém, controle expedições e acompanhe o estoque.</p>
         <div class="module-stats">
           <div class="mini-stat exp-s">Registros: <span id="home-exp-count">0</span></div>
-          <div class="mini-stat exp-s">P.Bruto: <span id="home-exp-peso">0</span> t</div>
+          <div class="mini-stat exp-s">P.Bruto: <span id="home-exp-peso">0</span> kg</div>
         </div>
       </div>
 
@@ -411,8 +427,8 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 
     <!-- STATS -->
     <div class="stats-bar">
-      <div class="stat-card"><div class="stat-label">PESO BRUTO DESCARREGADO</div><div class="stat-value blue" id="d-s-pesob">0</div><div class="stat-unit">toneladas · filtro ativo</div></div>
-      <div class="stat-card"><div class="stat-label">SALDO PESO BRUTO</div><div class="stat-value green" id="d-s-saldo-peso">0</div><div class="stat-unit">toneladas a descarregar</div></div>
+      <div class="stat-card"><div class="stat-label">PESO BRUTO DESCARREGADO</div><div class="stat-value blue" id="d-s-pesob">0</div><div class="stat-unit">kg · filtro ativo</div></div>
+      <div class="stat-card"><div class="stat-label">SALDO PESO BRUTO</div><div class="stat-value green" id="d-s-saldo-peso">0</div><div class="stat-unit">kg a descarregar</div></div>
       <div class="stat-card"><div class="stat-label">SALDO BOBINAS</div><div class="stat-value green" id="d-s-saldo-bob">0</div><div class="stat-unit">unidades a descarregar</div></div>
     </div>
 
@@ -445,7 +461,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         </div>
         <div class="form-group">
           <label>Veículo / Placa *</label>
-          <input type="text" id="d-veiculo" placeholder="ex: ABC-1234">
+          <input type="text" id="d-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+            oninput="formatPlacaInput(this)"
+            style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
         </div>
         <div class="form-group">
           <label>Motorista</label>
@@ -490,6 +508,8 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         <div class="filter-chip" onclick="setChip('d',this,'01x07')">01x07</div>
         <button class="btn btn-secondary btn-sm" onclick="clearFilters('d')">LIMPAR</button>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('d')">↓ CSV</button>
+        <button class="btn btn-info btn-sm" onclick="openImportMov('descarga')">↑ IMPORTAR EXCEL</button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadTemplateMov('descarga')">↓ MODELO EXCEL</button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
@@ -499,9 +519,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
           <table>
             <thead><tr>
               <th>COIL NUMBER</th><th>DATA</th><th>PERÍODO</th><th>BL</th><th>NAVIO</th>
-              <th>VEÍCULO</th><th>MOTORISTA</th><th>CLIENTE</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>AÇÕES</th>
+              <th>VEÍCULO</th><th>MOTORISTA</th><th>CLIENTE</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>REGISTRADO POR</th><th>AÇÕES</th>
             </tr></thead>
-            <tbody id="d-table-body"><tr><td colspan="11"><div class="empty-state"><span class="empty-icon">📦</span>Nenhum registro.</div></td></tr></tbody>
+            <tbody id="d-table-body"><tr><td colspan="12"><div class="empty-state"><span class="empty-icon">📦</span>Nenhum registro.</div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -518,7 +538,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 
     <!-- STATS expedição -->
     <div class="stats-bar">
-      <div class="stat-card"><div class="stat-label">PESO BRUTO EXPEDIDO</div><div class="stat-value purple" id="e-s-pesob">0</div><div class="stat-unit">toneladas · filtro ativo</div></div>
+      <div class="stat-card"><div class="stat-label">PESO BRUTO EXPEDIDO</div><div class="stat-value purple" id="e-s-pesob">0</div><div class="stat-unit">kg · filtro ativo</div></div>
       <div class="stat-card"><div class="stat-label">BOBINAS EXPEDIDAS</div><div class="stat-value purple" id="e-s-count">0</div><div class="stat-unit">registros · filtro ativo</div></div>
       <div class="stat-card"><div class="stat-label">SALDO EM ESTOQUE</div><div class="stat-value green" id="e-s-saldo">0</div><div class="stat-unit">bobinas descarregadas - expedidas</div></div>
     </div>
@@ -552,7 +572,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         </div>
         <div class="form-group">
           <label>Veículo / Placa *</label>
-          <input type="text" id="e-veiculo" placeholder="ex: ABC-1234">
+          <input type="text" id="e-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+            oninput="formatPlacaInput(this)"
+            style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
         </div>
         <div class="form-group">
           <label>Motorista</label>
@@ -597,6 +619,8 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         <div class="filter-chip" onclick="setChip('e',this,'01x07')">01x07</div>
         <button class="btn btn-secondary btn-sm" onclick="clearFilters('e')">LIMPAR</button>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('e')">↓ CSV</button>
+        <button class="btn btn-purple btn-sm" onclick="openImportMov('expedicao')">↑ IMPORTAR EXCEL</button>
+        <button class="btn btn-secondary btn-sm" onclick="downloadTemplateMov('expedicao')">↓ MODELO EXCEL</button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
@@ -606,9 +630,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
           <table>
             <thead><tr>
               <th>COIL NUMBER</th><th>DATA</th><th>PERÍODO</th><th>BL</th><th>NAVIO</th>
-              <th>VEÍCULO</th><th>MOTORISTA</th><th>CLIENTE</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>AÇÕES</th>
+              <th>VEÍCULO</th><th>MOTORISTA</th><th>CLIENTE</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>REGISTRADO POR</th><th>AÇÕES</th>
             </tr></thead>
-            <tbody id="e-table-body"><tr><td colspan="11"><div class="empty-state"><span class="empty-icon">📤</span>Nenhum registro.</div></td></tr></tbody>
+            <tbody id="e-table-body"><tr><td colspan="12"><div class="empty-state"><span class="empty-icon">📤</span>Nenhum registro.</div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -778,17 +802,27 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
           <input type="text" id="uf-user" placeholder="ex: joao.silva" autocomplete="off">
         </div>
         <div class="form-group">
+          <label>E-mail (recuperação)</label>
+          <input type="email" id="uf-email" placeholder="ex: joao@empresa.com">
+        </div>
+        <div class="form-group">
           <label>Senha *</label>
-          <input type="password" id="uf-pass" placeholder="Mínimo 4 caracteres" autocomplete="new-password">
+          <div style="position:relative;">
+            <input type="password" id="uf-pass" placeholder="Mínimo 4 caracteres" autocomplete="new-password" style="width:100%;padding-right:2.8rem;">
+            <button type="button" onclick="togglePassVis('uf-pass','eye-user')" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:transparent;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:.2rem;">
+              <span id="eye-user">👁</span>
+            </button>
+          </div>
         </div>
         <div class="form-group">
           <label>Perfil *</label>
           <select id="uf-role" onchange="togglePermFields()">
             <option value="operator">Operador</option>
+            <option value="viewer">Visualizador (só relatórios)</option>
             <option value="admin">Administrador</option>
           </select>
         </div>
-        <!-- PERMISSIONS (only for operator) -->
+        <!-- PERMISSIONS (operator only) -->
         <div id="perm-block" style="grid-column:span 2;display:flex;flex-direction:column;gap:.5rem;">
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;">Permissões do Operador</label>
           <div style="display:flex;gap:1rem;flex-wrap:wrap;">
@@ -800,6 +834,9 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-consulta" checked style="accent-color:var(--info);width:16px;height:16px;"> 🔍 Consultar
+            </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-relatorios" style="accent-color:var(--success);width:16px;height:16px;"> 📊 Relatórios
             </label>
           </div>
         </div>
@@ -869,6 +906,75 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
   </div>
 </div>
 
+<!-- MODAL EDITAR REGISTRO -->
+<div class="modal-overlay" id="modal-edit-mov">
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-title" id="edit-mov-title">✏ EDITAR REGISTRO</div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-mov-id">
+      <input type="hidden" id="edit-mov-px">
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+        <div class="form-group">
+          <label>Nº Bobina (Coil)</label>
+          <input type="text" id="edit-coil" readonly style="opacity:.6;cursor:default;">
+        </div>
+        <div class="form-group">
+          <label>Data *</label>
+          <input type="date" id="edit-data">
+        </div>
+        <div class="form-group">
+          <label>Período *</label>
+          <select id="edit-periodo">
+            <option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Veículo / Placa *</label>
+          <input type="text" id="edit-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+            oninput="formatPlacaInput(this)" style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
+        </div>
+        <div class="form-group">
+          <label>Motorista</label>
+          <input type="text" id="edit-motorista" placeholder="Nome do motorista">
+        </div>
+        <div class="form-group">
+          <label>Cliente</label>
+          <input type="text" id="edit-cliente">
+        </div>
+        <div class="form-group">
+          <label>BL</label>
+          <input type="text" id="edit-bl" style="font-family:'JetBrains Mono',monospace;">
+        </div>
+        <div class="form-group">
+          <label>Navio</label>
+          <input type="text" id="edit-navio">
+        </div>
+        <div class="form-group">
+          <label>Viagem</label>
+          <input type="text" id="edit-viagem">
+        </div>
+        <div class="form-group">
+          <label>Produto</label>
+          <input type="text" id="edit-produto">
+        </div>
+        <div class="form-group">
+          <label>Armazém</label>
+          <input type="text" id="edit-armazem">
+        </div>
+        <div class="form-group">
+          <label>Observações</label>
+          <input type="text" id="edit-obs" placeholder="Observações...">
+        </div>
+      </div>
+      <div id="edit-mov-warn" style="display:none;margin-top:.75rem;padding:.6rem 1rem;background:rgba(224,92,26,.1);border:1px solid rgba(224,92,26,.3);border-radius:6px;font-size:13px;color:var(--danger);"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-edit-mov')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="saveMovimento()">✓ SALVAR ALTERAÇÕES</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL EXCLUSÃO -->
 <div class="modal-overlay" id="modal-delete">
   <div class="modal">
@@ -910,11 +1016,11 @@ function saveUsers(){
 }
 
 function doLogin(){
-  const u  = document.getElementById('login-user').value.trim();
+  const u  = document.getElementById('login-user').value.trim().toLowerCase();
   const p  = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
-  users = loadUsers(); // always fresh
-  const found = users.find(x => x.user===u && x.pass===p);
+  users = loadUsers();
+  const found = users.find(x => x.user.toLowerCase()===u && x.pass===p);
   if(!found){
     errEl.classList.add('show');
     document.getElementById('login-user').classList.add('err');
@@ -950,37 +1056,47 @@ function doLogout(){
 
 function applySessionUI(){
   if(!session) return;
-  const isAdmin = (session.role==='admin');
-  const perms   = session.perms || {};
+  const isAdmin  = (session.role==='admin');
+  const isViewer = (session.role==='viewer');
+  const perms    = session.perms || {};
+
   // Header
   document.getElementById('user-badge').style.display='flex';
   document.getElementById('btn-logout').style.display='';
   document.getElementById('user-avatar-hdr').textContent=session.nome.charAt(0).toUpperCase();
-  document.getElementById('user-avatar-hdr').className='user-avatar '+(isAdmin?'admin':'operator');
+  document.getElementById('user-avatar-hdr').className='user-avatar '+(isAdmin?'admin':isViewer?'operator':'operator');
   document.getElementById('user-name-hdr').textContent=session.nome;
-  document.getElementById('user-role-hdr').textContent=isAdmin?'ADMINISTRADOR':'OPERADOR';
+  document.getElementById('user-role-hdr').textContent=isAdmin?'ADMINISTRADOR':isViewer?'VISUALIZADOR':'OPERADOR';
   document.getElementById('btn-sync').style.display = (SUPA_URL && SUPA_KEY) ? '' : 'none';
-  // Cards visibility
-  const descCard   = document.querySelector('.module-card.desc');
-  const expCard    = document.querySelector('.module-card.exp');
-  const dbCard     = document.querySelector('.module-card.db');
-  const repCard    = document.querySelector('.module-card.rep');
-  const usrCard    = document.getElementById('card-usuarios');
-  const cfgCard    = document.getElementById('card-api-cfg');
+
+  const descCard = document.querySelector('.module-card.desc');
+  const expCard  = document.querySelector('.module-card.exp');
+  const dbCard   = document.querySelector('.module-card.db');
+  const repCard  = document.querySelector('.module-card.rep');
+  const usrCard  = document.getElementById('card-usuarios');
+  const cfgCard  = document.getElementById('card-api-cfg');
+
   if(isAdmin){
     [descCard,expCard,dbCard,repCard].forEach(c=>{ if(c) c.style.display=''; });
     if(usrCard) usrCard.style.display='';
     if(cfgCard) cfgCard.style.display='';
-    // Update API status badge
     const badge = document.getElementById('api-status-badge');
     if(badge) badge.innerHTML = (SUPA_URL && SUPA_KEY)
       ? 'Status: <span style="color:var(--success);">✓ CONECTADO</span>'
       : 'Status: <span style="color:var(--danger);">✗ NÃO CONFIG.</span>';
+  } else if(isViewer){
+    if(descCard) descCard.style.display='none';
+    if(expCard)  expCard.style.display='none';
+    if(dbCard)   dbCard.style.display='none';
+    if(repCard)  repCard.style.display='';
+    if(usrCard)  usrCard.style.display='none';
+    if(cfgCard)  cfgCard.style.display='none';
   } else {
+    // operator
     if(descCard) descCard.style.display=(perms.descarga===false)?'none':'';
     if(expCard)  expCard.style.display =(perms.expedicao===false)?'none':'';
     if(dbCard)   dbCard.style.display  ='none';
-    if(repCard)  repCard.style.display ='none';
+    if(repCard)  repCard.style.display =(perms.relatorios===true)?'':'none';
     if(usrCard)  usrCard.style.display ='none';
     if(cfgCard)  cfgCard.style.display ='none';
   }
@@ -989,10 +1105,12 @@ function applySessionUI(){
 function canAccess(mod){
   if(!session) return false;
   if(session.role==='admin') return true;
+  if(session.role==='viewer') return mod==='relatorios';
+  // operator
   const perms = session.perms || {};
-  if(mod==='descarga')  return (perms.descarga  !== false);
-  if(mod==='expedicao') return (perms.expedicao !== false);
-  // operators cannot access these
+  if(mod==='descarga')   return (perms.descarga   !== false);
+  if(mod==='expedicao')  return (perms.expedicao  !== false);
+  if(mod==='relatorios') return (perms.relatorios === true);
   return false;
 }
 
@@ -1007,22 +1125,32 @@ function renderUsersList(){
   document.getElementById('home-users-count').textContent=users.length;
   if(!users.length){ list.innerHTML=`<div class="empty-state"><span class="empty-icon">👥</span>Nenhum usuário.</div>`; return; }
   list.innerHTML=users.map(u=>{
-    const isAdmin=u.role==='admin';
-    const perms=u.perms||{};
-    const permList=isAdmin
+    const isAdmin  = u.role==='admin';
+    const isViewer = u.role==='viewer';
+    const perms    = u.perms||{};
+    const permList = isAdmin
       ? ['descarga','expedicao','database','relatorios','usuarios']
-      : ['descarga','expedicao','consulta'];
-    const permIcons={descarga:'📥 Descarga',expedicao:'📤 Expedição',consulta:'🔍 Consultar',database:'🗄 Banco',relatorios:'📊 Relatórios',usuarios:'👥 Usuários'};
-    const isSelf=session&&session.id===u.id;
+      : isViewer
+      ? ['relatorios']
+      : ['descarga','expedicao','consulta','relatorios'];
+    const permIcons = {descarga:'📥 Desc.',expedicao:'📤 Exped.',consulta:'🔍 Consulta',database:'🗄 Banco',relatorios:'📊 Relatórios',usuarios:'👥 Usuários'};
+    const isSelf = session&&session.id===u.id;
+    const roleBadge = isAdmin
+      ? `<span class="user-card-role-badge admin">⚙ ADMINISTRADOR</span>`
+      : isViewer
+      ? `<span class="user-card-role-badge" style="background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);">📊 VISUALIZADOR</span>`
+      : `<span class="user-card-role-badge operator">👤 OPERADOR</span>`;
+    const avatarBg = isAdmin?'var(--accent)':isViewer?'var(--success)':'var(--info)';
     return `<div class="user-card">
-      <div class="user-card-avatar ${isAdmin?'admin':'operator'}" style="background:${isAdmin?'var(--accent)':'var(--info)'};">${u.nome.charAt(0).toUpperCase()}</div>
+      <div class="user-card-avatar" style="background:${avatarBg};">${u.nome.charAt(0).toUpperCase()}</div>
       <div class="user-card-info">
         <div class="user-card-name">${u.nome} ${isSelf?'<span style="font-size:11px;color:var(--muted);font-family:\'JetBrains Mono\',monospace;">(você)</span>':''}</div>
-        <span class="user-card-role-badge ${isAdmin?'admin':'operator'}">${isAdmin?'⚙ ADMINISTRADOR':'👤 OPERADOR'}</span>
-        <div style="margin-top:5px;">${permList.map(p=>
-          `<span class="perm-chip ${isAdmin||perms[p]!==false?'on':''}">${permIcons[p]||p}</span>`
-        ).join('')}</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px;">login: ${u.user}</div>
+        ${roleBadge}
+        <div style="margin-top:5px;">${permList.map(p=>{
+          const active = isAdmin || isViewer || perms[p]===true || (p!=='relatorios'&&perms[p]!==false);
+          return `<span class="perm-chip ${active?'on':''}">${permIcons[p]||p}</span>`;
+        }).join('')}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px;">login: ${u.user}${u.email?' · '+u.email:''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:.4rem;">
         <button class="btn btn-info btn-sm" onclick="editUser('${u.id}')">EDITAR</button>
@@ -1034,12 +1162,14 @@ function renderUsersList(){
 
 function togglePermFields(){
   const role=document.getElementById('uf-role').value;
-  document.getElementById('perm-block').style.display=role==='operator'?'':'none';
+  // Show permission checkboxes only for operators
+  document.getElementById('perm-block').style.display = role==='operator' ? '' : 'none';
 }
 
 async function saveUser(){
   const nome=document.getElementById('uf-nome').value.trim();
   const user=document.getElementById('uf-user').value.trim().toLowerCase();
+  const email=document.getElementById('uf-email').value.trim();
   const pass=document.getElementById('uf-pass').value;
   const role=document.getElementById('uf-role').value;
   if(!nome||!user){ showToast('Preencha nome e usuário.','#e05c1a','#fff'); return; }
@@ -1047,18 +1177,25 @@ async function saveUser(){
   if(pass&&pass.length<4){ showToast('Senha mínima de 4 caracteres.','#e05c1a','#fff'); return; }
   const dup=users.find(u=>u.user===user&&u.id!==editUserId);
   if(dup){ showToast('Nome de usuário já existe.','#e05c1a','#fff'); return; }
-  const perms=role==='admin'
+  const perms = role==='admin'
     ? {descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true}
-    : {descarga:document.getElementById('perm-descarga').checked, expedicao:document.getElementById('perm-expedicao').checked, consulta:document.getElementById('perm-consulta').checked};
+    : role==='viewer'
+    ? {relatorios:true}
+    : {
+        descarga:    document.getElementById('perm-descarga').checked,
+        expedicao:   document.getElementById('perm-expedicao').checked,
+        consulta:    document.getElementById('perm-consulta').checked,
+        relatorios:  document.getElementById('perm-relatorios').checked
+      };
   let userData;
   if(editUserId){
     const idx=users.findIndex(u=>u.id===editUserId);
-    if(idx>=0){ users[idx]={...users[idx],nome,user,role,perms}; if(pass) users[idx].pass=pass; userData=users[idx]; }
+    if(idx>=0){ users[idx]={...users[idx],nome,user,email,role,perms}; if(pass) users[idx].pass=pass; userData=users[idx]; }
     editUserId=null;
     document.getElementById('user-form-title').textContent='➕ NOVO USUÁRIO';
     showToast('✓ Usuário atualizado!','#22c55e','#000');
   } else {
-    userData={id:'u'+Date.now(),nome,user,pass,role,perms};
+    userData={id:'u'+Date.now(),nome,user,email,pass,role,perms};
     users.push(userData);
     showToast('✓ Usuário '+nome+' criado!','#22c55e','#000');
   }
@@ -1072,12 +1209,14 @@ function editUser(id){
   editUserId=id;
   document.getElementById('uf-nome').value=u.nome;
   document.getElementById('uf-user').value=u.user;
+  document.getElementById('uf-email').value=u.email||'';
   document.getElementById('uf-pass').value='';
   document.getElementById('uf-role').value=u.role;
   if(u.role==='operator'){
-    document.getElementById('perm-descarga').checked=u.perms?.descarga!==false;
-    document.getElementById('perm-expedicao').checked=u.perms?.expedicao!==false;
-    document.getElementById('perm-consulta').checked=u.perms?.consulta!==false;
+    document.getElementById('perm-descarga').checked  = u.perms?.descarga   !== false;
+    document.getElementById('perm-expedicao').checked = u.perms?.expedicao  !== false;
+    document.getElementById('perm-consulta').checked  = u.perms?.consulta   !== false;
+    document.getElementById('perm-relatorios').checked= u.perms?.relatorios === true;
   }
   togglePermFields();
   document.getElementById('user-form-title').textContent='✏ EDITAR USUÁRIO — '+u.nome;
@@ -1095,11 +1234,12 @@ async function deleteUser(id){
 }
 
 function clearUserForm(){
-  ['uf-nome','uf-user','uf-pass'].forEach(id=>document.getElementById(id).value='');
+  ['uf-nome','uf-user','uf-email','uf-pass'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('uf-role').value='operator';
   document.getElementById('perm-descarga').checked=true;
   document.getElementById('perm-expedicao').checked=true;
   document.getElementById('perm-consulta').checked=true;
+  document.getElementById('perm-relatorios').checked=false;
   togglePermFields();
   editUserId=null;
   document.getElementById('user-form-title').textContent='➕ NOVO USUÁRIO';
@@ -1260,6 +1400,7 @@ async function api(params){
 // INIT
 // ══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', async ()=>{
+  applyTheme();
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('d-data').value = today;
   document.getElementById('e-data').value = today;
@@ -1318,9 +1459,9 @@ function refreshHome(){
   const totalDescPB = records.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   const totalExpPB  = expedicoes.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   document.getElementById('home-desc-count').textContent = records.length;
-  document.getElementById('home-desc-peso').textContent  = fmtTon(totalDescPB);
+  document.getElementById('home-desc-peso').textContent  = fmtKg(totalDescPB);
   document.getElementById('home-exp-count').textContent  = expedicoes.length;
-  document.getElementById('home-exp-peso').textContent   = fmtTon(totalExpPB);
+  document.getElementById('home-exp-peso').textContent   = fmtKg(totalExpPB);
   document.getElementById('home-db-count').textContent   = coilsDB.length;
   document.getElementById('home-db-navios').textContent  = new Set(coilsDB.map(c=>c.navio).filter(Boolean)).size;
   document.getElementById('home-rep-navios').textContent = new Set(coilsDB.map(c=>c.navio).filter(Boolean)).size;
@@ -1384,8 +1525,137 @@ function clearAutofill(px){
 }
 
 // ══════════════════════════════════════════
-// REGISTER
+// PLACA BRASILEIRA — máscara e validação
 // ══════════════════════════════════════════
+function formatPlacaInput(el){
+  let v = el.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  // Padrão antigo: 3 letras + 4 números  → ABC-1234
+  // Mercosul:      3 letras + 1 num + 1 letra + 2 nums → ABC1D23
+  let out = '';
+  if(v.length <= 3){
+    out = v.replace(/[^A-Z]/g,'');
+  } else if(v.length === 4){
+    out = v.slice(0,3).replace(/[^A-Z]/g,'') + v[3].replace(/[^0-9]/g,'');
+  } else {
+    const letters = v.slice(0,3).replace(/[^A-Z]/g,'');
+    const rest    = v.slice(3,7);
+    // Decide formato pelo 5º char (index 4 do raw, index 1 do rest)
+    if(rest.length >= 2 && /[A-Z]/.test(rest[1])){
+      // Mercosul: LLL N L NN
+      const p4 = rest[0].replace(/[^0-9]/g,'');
+      const p5 = (rest[1]||'').replace(/[^A-Z]/g,'');
+      const p67= (rest.slice(2)||'').replace(/[^0-9]/g,'').slice(0,2);
+      out = letters + p4 + p5 + p67;
+    } else {
+      // Padrão antigo: LLL NNNN
+      const nums = rest.replace(/[^0-9]/g,'').slice(0,4);
+      out = letters + nums;
+    }
+  }
+  // Aplica hífen após as 3 letras
+  if(out.length > 3) out = out.slice(0,3) + '-' + out.slice(3);
+  el.value = out;
+}
+
+function validaPlaca(v){
+  v = v.trim().toUpperCase();
+  // Padrão antigo: ABC-1234
+  if(/^[A-Z]{3}-[0-9]{4}$/.test(v)) return true;
+  // Mercosul: ABC1D23
+  if(/^[A-Z]{3}-[0-9][A-Z][0-9]{2}$/.test(v)) return true;
+  return false;
+}
+
+// ══════════════════════════════════════════
+// EDITAR REGISTRO (descarga/expedição)
+// ══════════════════════════════════════════
+function editMovimento(id, px){
+  const src = px==='e' ? expedicoes : records;
+  const r   = src.find(x => x.id === id);
+  if(!r) return;
+
+  document.getElementById('edit-mov-title').textContent =
+    px==='e' ? '✏ EDITAR EXPEDIÇÃO' : '✏ EDITAR DESCARGA';
+  document.getElementById('edit-mov-id').value  = id;
+  document.getElementById('edit-mov-px').value  = px;
+  document.getElementById('edit-coil').value     = r.coil;
+  document.getElementById('edit-data').value     = r.data;
+  document.getElementById('edit-periodo').value  = r.periodo;
+  document.getElementById('edit-veiculo').value  = r.veiculo  || '';
+  document.getElementById('edit-motorista').value= r.motorista|| '';
+  document.getElementById('edit-cliente').value  = r.cliente  || '';
+  document.getElementById('edit-bl').value       = r.bl       || '';
+  document.getElementById('edit-navio').value    = r.navio    || '';
+  document.getElementById('edit-viagem').value   = r.viagem   || '';
+  document.getElementById('edit-produto').value  = r.produto  || '';
+  document.getElementById('edit-armazem').value  = r.armazem  || '';
+  document.getElementById('edit-obs').value      = r.obs      || '';
+  document.getElementById('edit-mov-warn').style.display = 'none';
+  document.getElementById('modal-edit-mov').classList.add('open');
+}
+
+async function saveMovimento(){
+  const id  = Number(document.getElementById('edit-mov-id').value);
+  const px  = document.getElementById('edit-mov-px').value;
+  const src = px==='e' ? expedicoes : records;
+  const idx = src.findIndex(x => x.id === id);
+  if(idx < 0){ showToast('Registro não encontrado.','#e05c1a','#fff'); return; }
+
+  const veiculo = document.getElementById('edit-veiculo').value.trim().toUpperCase();
+  const data    = document.getElementById('edit-data').value;
+  const periodo = document.getElementById('edit-periodo').value;
+  const warnEl  = document.getElementById('edit-mov-warn');
+
+  if(!data || !periodo){
+    warnEl.textContent='Preencha Data e Período.';
+    warnEl.style.display='block'; return;
+  }
+  if(veiculo && !validaPlaca(veiculo)){
+    warnEl.textContent='Placa inválida. Use ABC-1234 (padrão) ou ABC1D23 (Mercosul).';
+    warnEl.style.display='block'; return;
+  }
+  warnEl.style.display='none';
+
+  // Apply edits
+  const updated = {
+    ...src[idx],
+    data,
+    periodo,
+    veiculo,
+    motorista: document.getElementById('edit-motorista').value.trim(),
+    cliente:   document.getElementById('edit-cliente').value.trim(),
+    bl:        document.getElementById('edit-bl').value.trim(),
+    navio:     document.getElementById('edit-navio').value.trim(),
+    viagem:    document.getElementById('edit-viagem').value.trim(),
+    produto:   document.getElementById('edit-produto').value.trim(),
+    armazem:   document.getElementById('edit-armazem').value.trim(),
+    obs:       document.getElementById('edit-obs').value.trim(),
+    editadoEm: new Date().toISOString(),
+    editadoPor: session ? session.nome : 'Sistema'
+  };
+  src[idx] = updated;
+
+  closeModal('modal-edit-mov');
+  buildFilterSelects(px); applyFilters(px); refreshHome();
+  showToast('✓ Registro atualizado!', '#22c55e', '#000');
+
+  // Sync to Supabase
+  try {
+    const {registradoUser, editadoEm, editadoPor, ...supaEntry} = updated;
+    await supaUpsert(px==='e'?'expedicoes':'records', supaEntry, 'id');
+  } catch(err){
+    if(err.message && err.message.toLowerCase().includes('registrado')){
+      try{
+        const {registradoPor, registradoUser, editadoEm, editadoPor, ...safeEntry} = updated;
+        await supaUpsert(px==='e'?'expedicoes':'records', safeEntry, 'id');
+      }catch(e2){ showToast('⚠ Sync falhou: '+e2.message,'#f59e0b','#000'); }
+    } else {
+      showToast('⚠ Salvo localmente, sync falhou: '+err.message, '#f59e0b', '#000');
+    }
+  }
+}
+
+
 async function registrar(tipo){
   const px = tipo==='expedicao'?'e':'d';
   const coil    = document.getElementById(px+'-coil').value.trim().toUpperCase();
@@ -1397,6 +1667,7 @@ async function registrar(tipo){
   const errEl   = document.getElementById(px+'-error');
 
   if(!coil||!data||!periodo||!veiculo){ showToast('Preencha: Coil Number, Data, Período e Veículo (*)','#e05c1a','#fff'); return; }
+  if(!validaPlaca(veiculo)){ showToast('Placa inválida. Use ABC-1234 (padrão) ou ABC1D23 (Mercosul).','#e05c1a','#fff'); return; }
   if(!bl||!navio){ showToast('Coil Number não encontrado no banco — cadastre a bobina primeiro.','#e05c1a','#fff'); return; }
   if(errEl.classList.contains('show') && errEl.textContent.includes('já foi')){ showToast('Registro bloqueado — bobina já registrada.','#e05c1a','#fff'); return; }
 
@@ -1420,7 +1691,9 @@ async function registrar(tipo){
     obs: tipo==='expedicao'
       ? (document.getElementById('e-destino').value.trim()+' '+document.getElementById('e-obs').value.trim()).trim()
       : (document.getElementById('d-posicao').value.trim()+' '+document.getElementById('d-obs').value.trim()).trim(),
-    registradoEm: new Date().toISOString()
+    registradoEm: new Date().toISOString(),
+    registradoPor: session ? session.nome : 'Sistema',
+    registradoUser: session ? session.user : ''
   };
 
   // Optimistic update
@@ -1433,11 +1706,21 @@ async function registrar(tipo){
   refreshHome();
   showToast('✓ '+coil+(tipo==='descarga'?' descarregada!':' expedida!'), tipo==='descarga'?'#22c55e':'#a855f7', tipo==='descarga'?'#000':'#fff');
 
-  // Persist to Sheets
+  // Persist to Supabase — send registradoPor as obs suffix if column not yet added
   try {
-    await apiPost({ action: tipo==='descarga'?'addRecord':'addExpedicao', data: entry });
+    const {registradoUser, editadoEm, editadoPor, ...supaEntry} = entry;
+    // registradoPor included — add column via SQL if not exists (runs silently)
+    await apiPost({ action: tipo==='descarga'?'addRecord':'addExpedicao', data: supaEntry });
   } catch(err){
-    showToast('⚠ Salvo localmente mas falhou ao sincronizar: '+err.message,'#f59e0b','#000');
+    // If column doesn't exist yet, retry without registradoPor
+    if(err.message && err.message.toLowerCase().includes('registrado')){
+      try{
+        const {registradoPor, registradoUser, editadoEm, editadoPor, ...safeEntry} = entry;
+        await apiPost({ action: tipo==='descarga'?'addRecord':'addExpedicao', data: safeEntry });
+      }catch(e2){ showToast('⚠ Sincronização falhou: '+e2.message,'#f59e0b','#000'); }
+    } else {
+      showToast('⚠ Salvo localmente mas falhou ao sincronizar: '+err.message,'#f59e0b','#000');
+    }
   }
 
   showModuleTab(tipo,'consultar');
@@ -1510,7 +1793,7 @@ function renderTable(px){
   const tbody = document.getElementById(px+'-table-body');
   const data  = getFiltered(px);
   document.getElementById(px+'-count').textContent=data.length;
-  if(!data.length){ tbody.innerHTML=`<tr><td colspan="11"><div class="empty-state"><span class="empty-icon">${isExp?'📤':'📦'}</span>Nenhum registro encontrado.</div></td></tr>`; return; }
+  if(!data.length){ tbody.innerHTML=`<tr><td colspan="13"><div class="empty-state"><span class="empty-icon">${isExp?'📤':'📦'}</span>Nenhum registro encontrado.</div></td></tr>`; return; }
   tbody.innerHTML=data.map(r=>`<tr>
     <td><span class="coil-badge${isExp?' exp':''}">${r.coil}</span></td>
     <td>${formatDate(r.data)}</td>
@@ -1520,10 +1803,12 @@ function renderTable(px){
     <td style="color:var(--info);font-weight:600">${r.veiculo||'—'}</td>
     <td>${r.motorista||'—'}</td>
     <td style="color:#60a5fa;font-size:13px">${r.cliente||'—'}</td>
-    <td class="weight-cell">${r.pesob?Number(r.pesob).toLocaleString('pt-BR'):'—'}</td>
-    <td class="weight-cell">${r.pesol?Number(r.pesol).toLocaleString('pt-BR'):'—'}</td>
+    <td class="weight-cell">${r.pesob?fmtKg(r.pesob):'—'}</td>
+    <td class="weight-cell">${r.pesol?fmtKg(r.pesol):'—'}</td>
+    <td style="font-size:12px;color:var(--success);font-weight:600">${r.registradoPor||'—'}</td>
     <td><div class="actions">
       <button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'${px}')">VER</button>
+      <button class="btn btn-info btn-sm" onclick="editMovimento(${r.id},'${px}')">✏</button>
       <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
     </div></td></tr>`).join('');
 }
@@ -1541,15 +1826,14 @@ function renderStats(px){
     const descCoils=new Set(filt.map(r=>r.coil));
     const saldoPeso=pesoBDB-pesoBFilt;
     const saldoBob=dbF.filter(c=>!descCoils.has(c.coil)).length;
-    document.getElementById('d-s-pesob').textContent=fmtTon(pesoBFilt);
+    document.getElementById('d-s-pesob').textContent=fmtKg(pesoBFilt);
     const sp=document.getElementById('d-s-saldo-peso');
-    sp.textContent=fmtTon(saldoPeso); sp.className='stat-value '+(saldoPeso>=0?'green':'red');
+    sp.textContent=fmtKg(saldoPeso); sp.className='stat-value '+(saldoPeso>=0?'green':'red');
     const sb=document.getElementById('d-s-saldo-bob');
     sb.textContent=saldoBob; sb.className='stat-value '+(saldoBob>=0?'green':'red');
   } else {
-    const expCoils=new Set(filt.map(r=>r.coil));
     const saldoEstoque=records.length-expedicoes.length;
-    document.getElementById('e-s-pesob').textContent=fmtTon(pesoBFilt);
+    document.getElementById('e-s-pesob').textContent=fmtKg(pesoBFilt);
     document.getElementById('e-s-count').textContent=filt.length;
     const se=document.getElementById('e-s-saldo');
     se.textContent=saldoEstoque; se.className='stat-value '+(saldoEstoque>=0?'green':'red');
@@ -1573,12 +1857,13 @@ function viewDetail(id, px){
       <div class="detail-row"><div class="detail-label">VIAGEM</div><div class="detail-value">${r.viagem||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">CLIENTE</div><div class="detail-value" style="color:#60a5fa">${r.cliente||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">PRODUTO</div><div class="detail-value">${r.produto||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">PESO BRUTO</div><div class="detail-value">${r.pesob?Number(r.pesob).toLocaleString('pt-BR')+' kg':'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">PESO LÍQUIDO</div><div class="detail-value">${r.pesol?Number(r.pesol).toLocaleString('pt-BR')+' kg':'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">PESO BRUTO</div><div class="detail-value">${r.pesob?fmtKg(r.pesob)+' kg':'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">PESO LÍQUIDO</div><div class="detail-value">${r.pesol?fmtKg(r.pesol)+' kg':'—'}</div></div>
       <div class="detail-row"><div class="detail-label">ARMAZÉM</div><div class="detail-value">${r.armazem||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">VEÍCULO</div><div class="detail-value">${r.veiculo||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">MOTORISTA</div><div class="detail-value">${r.motorista||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">REGISTRADO EM</div><div class="detail-value" style="font-size:12px">${new Date(r.registradoEm).toLocaleString('pt-BR')}</div></div>
+      <div class="detail-row"><div class="detail-label">REGISTRADO POR</div><div class="detail-value" style="color:var(--success);font-weight:700">${r.registradoPor||'—'}</div></div>
     </div>
     ${r.obs&&r.obs.trim()?`<div style="margin-top:1rem;padding:.75rem;background:var(--bg);border-radius:6px;color:var(--muted);font-size:13px"><b style="color:var(--text)">OBS:</b> ${r.obs}</div>`:''}`;
   document.getElementById('modal-detail').classList.add('open');
@@ -1591,6 +1876,7 @@ function renderCoilsGrouped(){
   const q=(document.getElementById('db-search')?.value||'').toLowerCase();
   const fn=document.getElementById('db-filter-navio')?.value||'';
   const discharged=new Set(records.map(r=>r.coil));
+  const expedited =new Set(expedicoes.map(r=>r.coil));
   const list=coilsDB.filter(c=>{
     const mQ=!q||[c.coil,c.bl,c.cliente,c.navio,c.produto,c.armazem,c.viagem].some(f=>f&&f.toLowerCase().includes(q));
     return mQ&&(!fn||c.navio===fn);
@@ -1601,21 +1887,28 @@ function renderCoilsGrouped(){
   if(!Object.keys(groups).length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">🔩</span>Nenhuma bobina cadastrada.</div>`; return; }
   container.innerHTML=Object.entries(groups).map(([navio,coils])=>{
     const done=coils.filter(c=>discharged.has(c.coil));
+    const expd=coils.filter(c=>expedited.has(c.coil));
     const totalPL=coils.reduce((a,c)=>a+(parseFloat(c.pesol)||0),0);
     const navKey=navio.replace(/[^a-zA-Z0-9]/g,'_');
     const rows=coils.map(c=>{
       const idx=coilsDB.indexOf(c);
-      const isDone=discharged.has(c.coil);
-      return `<tr style="${isDone?'opacity:.45':''}">
+      const isDesc=discharged.has(c.coil);
+      const isExp =expedited.has(c.coil);
+      const rowOp=(isDesc||isExp)?'opacity:.5':'';
+      const badges=[
+        isDesc?`<span style="margin-left:5px;font-size:10px;background:rgba(34,197,94,.15);color:var(--success);padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(34,197,94,.3);">✓ DESC.</span>`:'',
+        isExp ?`<span style="margin-left:3px;font-size:10px;background:rgba(168,85,247,.15);color:var(--exp);padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(168,85,247,.3);">✓ EXP.</span>`:''
+      ].join('');
+      return `<tr style="${rowOp}">
         <td><input type="checkbox" class="coil-cb" data-idx="${idx}" onchange="updateSel('${navKey}')"></td>
-        <td><span class="coil-badge">${c.coil}</span>${isDone?`<span style="margin-left:6px;font-size:10px;background:rgba(34,197,94,.12);color:var(--success);padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;">✓ DESC.</span>`:''}</td>
+        <td><span class="coil-badge">${c.coil}</span>${badges}</td>
         <td style="font-size:13px">${c.armazem||'—'}</td>
         <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
         <td style="color:#60a5fa;font-size:13px">${c.cliente||'—'}</td>
         <td style="font-size:12px;color:var(--muted)">${c.viagem||'—'}</td>
         <td style="font-size:13px">${c.produto||'—'}</td>
-        <td class="weight-cell">${c.pesob?Number(c.pesob).toLocaleString('pt-BR'):'—'}</td>
-        <td class="weight-cell">${c.pesol?Number(c.pesol).toLocaleString('pt-BR'):'—'}</td>
+        <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
+        <td class="weight-cell">${c.pesol?fmtKg(c.pesol):'—'}</td>
         <td><div class="actions">
           <button class="btn btn-info btn-sm" onclick="editCoil(${idx})">EDITAR</button>
           <button class="btn btn-danger btn-sm" onclick="deleteCoilDB(${idx},'${c.coil}')">✕</button>
@@ -1626,8 +1919,9 @@ function renderCoilsGrouped(){
         <div class="navio-group-title">🚢 ${navio}
           <span class="navio-badge">${coils.length} total</span>
           <span style="font-size:12px;background:rgba(34,197,94,.12);color:var(--success);padding:2px 8px;border-radius:4px;border:1px solid rgba(34,197,94,.2);font-family:'JetBrains Mono',monospace;">${done.length} desc.</span>
-          <span style="font-size:12px;background:rgba(240,165,0,.1);color:var(--accent);padding:2px 8px;border-radius:4px;border:1px solid rgba(240,165,0,.2);font-family:'JetBrains Mono',monospace;">${coils.length-done.length} pendentes</span>
-          <span style="font-size:12px;color:var(--muted);font-weight:400">${fmtTon(totalPL*1000)} t liq.</span>
+          <span style="font-size:12px;background:rgba(168,85,247,.12);color:var(--exp);padding:2px 8px;border-radius:4px;border:1px solid rgba(168,85,247,.2);font-family:'JetBrains Mono',monospace;">${expd.length} exp.</span>
+          <span style="font-size:12px;background:rgba(240,165,0,.1);color:var(--accent);padding:2px 8px;border-radius:4px;border:1px solid rgba(240,165,0,.2);font-family:'JetBrains Mono',monospace;">${coils.filter(c=>!discharged.has(c.coil)).length} pendentes</span>
+          <span style="font-size:12px;color:var(--muted);font-weight:400">${fmtKg(totalPL)} kg liq.</span>
         </div>
         <div class="navio-group-actions">
           <button class="btn btn-secondary btn-sm" id="bsa-${navKey}" onclick="toggleSel('${navKey}')">☐ SELECIONAR TODOS</button>
@@ -1728,7 +2022,124 @@ function clearRegForm(px){
   if(coilEl) coilEl.classList.remove('field-error');
 }
 
-function fmtTon(kg){ return (kg/1000).toFixed(2).replace('.',','); }
+function fmtTon(kg){ return (kg/1000).toFixed(2); }
+function fmtKg(kg){
+  const n = Math.round(Number(kg)||0);
+  return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+function openForgotPass(){
+  document.getElementById('forgot-input').value='';
+  document.getElementById('forgot-result').style.display='none';
+  document.getElementById('modal-forgot').classList.add('open');
+}
+
+async function doForgotPass(){
+  const input = document.getElementById('forgot-input').value.trim().toLowerCase();
+  const resultEl = document.getElementById('forgot-result');
+  if(!input){ showToast('Digite seu usuário ou e-mail.','#e05c1a','#fff'); return; }
+
+  // Find user by username or email
+  const found = users.find(u =>
+    u.user.toLowerCase()===input || (u.email && u.email.toLowerCase()===input)
+  );
+
+  if(!found){
+    resultEl.style.display='block';
+    resultEl.style.background='rgba(224,92,26,.1)';
+    resultEl.style.border='1px solid rgba(224,92,26,.3)';
+    resultEl.innerHTML='<span style="color:var(--danger);font-weight:700;">⚠ Usuário não encontrado.</span>';
+    return;
+  }
+
+  // Generate new temp password
+  const chars='ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let newPass='';
+  for(let i=0;i<8;i++) newPass+=chars[Math.floor(Math.random()*chars.length)];
+
+  // Update password in memory and Supabase
+  const idx=users.findIndex(u=>u.id===found.id);
+  users[idx].pass=newPass;
+  localStorage.setItem('sp_users',JSON.stringify(users));
+  try{ await apiPost({action:'saveUser',data:users[idx]}); }catch(e){}
+
+  // Show result
+  resultEl.style.display='block';
+
+  if(found.email){
+    // Try send via EmailJS if configured, else show on screen
+    const sent = await trySendEmail(found.email, found.nome, newPass);
+    if(sent){
+      resultEl.style.background='rgba(34,197,94,.1)';
+      resultEl.style.border='1px solid rgba(34,197,94,.3)';
+      resultEl.innerHTML=`<span style="color:var(--success);font-weight:700;">✓ Nova senha enviada para <strong>${found.email}</strong></span><br>
+        <span style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;">Use-a para fazer login e troque depois.</span>`;
+    } else {
+      // E-mail não configurado — mostra na tela
+      resultEl.style.background='rgba(240,165,0,.1)';
+      resultEl.style.border='1px solid rgba(240,165,0,.3)';
+      resultEl.innerHTML=`<span style="color:var(--accent);font-weight:700;">Nova senha temporária gerada:</span><br>
+        <span style="font-size:24px;font-family:'JetBrains Mono',monospace;color:var(--text);letter-spacing:4px;font-weight:900;">${newPass}</span><br>
+        <span style="font-size:12px;color:var(--muted);">Anote e use para fazer login. E-mail de envio não configurado.</span>`;
+    }
+  } else {
+    // Sem e-mail cadastrado — mostra na tela
+    resultEl.style.background='rgba(240,165,0,.1)';
+    resultEl.style.border='1px solid rgba(240,165,0,.3)';
+    resultEl.innerHTML=`<span style="color:var(--accent);font-weight:700;">Nova senha temporária (usuário sem e-mail):</span><br>
+      <span style="font-size:24px;font-family:'JetBrains Mono',monospace;color:var(--text);letter-spacing:4px;font-weight:900;">${newPass}</span><br>
+      <span style="font-size:12px;color:var(--muted);">Anote e use para fazer login. Cadastre um e-mail no perfil do usuário.</span>`;
+  }
+}
+
+// Tenta enviar e-mail via EmailJS (gratuito — configure em emailjs.com)
+// Se não configurado, retorna false e a senha é mostrada na tela
+async function trySendEmail(toEmail, nome, newPass){
+  // EmailJS: cadastre em emailjs.com, crie um template com variáveis {{nome}} e {{senha}}
+  // Cole suas credenciais abaixo para ativar o envio por e-mail:
+  const EMAILJS_SERVICE  = '';  // ex: 'service_xxxxxxx'
+  const EMAILJS_TEMPLATE = '';  // ex: 'template_xxxxxxx'
+  const EMAILJS_KEY      = '';  // ex: 'xxxxxxxxxxxxxxxx'
+
+  if(!EMAILJS_SERVICE || !EMAILJS_TEMPLATE || !EMAILJS_KEY) return false;
+
+  try{
+    const res = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        service_id:  EMAILJS_SERVICE,
+        template_id: EMAILJS_TEMPLATE,
+        user_id:     EMAILJS_KEY,
+        template_params: {
+          to_email: toEmail,
+          nome:     nome,
+          senha:    newPass,
+          sistema:  '4SIDES · STEELPORT'
+        }
+      })
+    });
+    return res.ok;
+  }catch(e){ return false; }
+}
+
+function togglePassVis(inputId, eyeId){
+  const el = document.getElementById(inputId);
+  const eye = document.getElementById(eyeId);
+  if(el.type==='password'){ el.type='text'; eye.textContent='🙈'; }
+  else { el.type='password'; eye.textContent='👁'; }
+}
+
+let isLight = localStorage.getItem('sp_theme')==='light';
+function toggleTheme(){
+  isLight = !isLight;
+  localStorage.setItem('sp_theme', isLight?'light':'dark');
+  applyTheme();
+}
+function applyTheme(){
+  document.body.classList.toggle('light-theme', isLight);
+  document.getElementById('btn-theme').textContent = isLight ? '☀️' : '🌙';
+}
+
 function formatDate(d){ if(!d) return '—'; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; }
 function showToast(msg,bg,color){ const t=document.getElementById('toast'); t.textContent=msg; t.style.background=bg||'#22c55e'; t.style.color=color||'#000'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
@@ -1809,8 +2220,313 @@ async function confirmImport(){
 function resetImport(){ importRows=[]; const dz=document.getElementById('drop-zone'); dz.style.display=''; dz.style.borderColor='var(--border)'; dz.style.background=''; ['import-preview','import-mode-row','import-warn'].forEach(id=>document.getElementById(id).style.display='none'); document.getElementById('btn-confirm-import').style.display='none'; document.getElementById('xls-input').value=''; }
 
 // ══════════════════════════════════════════
-// REPORTS MODULE
+// IMPORTAR MOVIMENTAÇÕES (descarga/expedição)
 // ══════════════════════════════════════════
+let importMovRows = [];
+let importMovTipo = 'descarga';
+
+// Colunas do template (ordem exacta)
+const MOV_COLS = [
+  'Nº Bobina (Coil Number)',
+  'Data (AAAA-MM-DD)',
+  'Período',
+  'Veículo / Placa',
+  'Motorista',
+  'BL',
+  'Navio',
+  'Cliente',
+  'Viagem',
+  'Produto',
+  'Peso Bruto (kg)',
+  'Peso Líquido (kg)',
+  'Armazém',
+  'Observações'
+];
+
+const MOV_PERIODOS = ['07x13','13x19','19x01','01x07'];
+
+function openImportMov(tipo){
+  importMovTipo = tipo;
+  resetImportMov();
+  const isExp = tipo==='expedicao';
+  document.getElementById('import-mov-title').textContent =
+    isExp ? '↑ IMPORTAR EXPEDIÇÕES VIA EXCEL' : '↑ IMPORTAR DESCARGAS VIA EXCEL';
+  document.getElementById('import-mov-cols').textContent = MOV_COLS.join(' · ');
+  document.getElementById('modal-import-mov').classList.add('open');
+}
+
+function resetImportMov(){
+  importMovRows=[];
+  const dz=document.getElementById('drop-zone-mov');
+  dz.style.borderColor='var(--border)'; dz.style.background='';
+  ['import-mov-preview','import-mov-mode-row','import-mov-warn'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  const btn=document.getElementById('btn-confirm-import-mov');
+  if(btn) btn.style.display='none';
+  const inp=document.getElementById('xls-input-mov');
+  if(inp) inp.value='';
+}
+
+function dzOverMov(e){ e.preventDefault(); const dz=document.getElementById('drop-zone-mov'); dz.style.borderColor='var(--accent)'; dz.style.background='rgba(240,165,0,.05)'; }
+function dzLeaveMov(){ const dz=document.getElementById('drop-zone-mov'); dz.style.borderColor='var(--border)'; dz.style.background=''; }
+function dzDropMov(e){ e.preventDefault(); dzLeaveMov(); const f=e.dataTransfer.files[0]; if(f) handleXLSMovFile(f); }
+
+function handleXLSMovFile(file){
+  if(!file) return;
+  if(!file.name.match(/\.(xlsx|xls)$/i)){ showToast('Use .xlsx ou .xls','#e05c1a','#fff'); return; }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      if(raw.length<2){ showToast('Planilha vazia ou sem dados.','#e05c1a','#fff'); return; }
+
+      // Detect if first row is header and skip it
+      const firstRow = raw[0].map(c=>String(c).trim());
+      const hasHeader = firstRow.some(c=>/bobina|coil|data|período|navio|bl/i.test(c));
+      const dataRows  = hasHeader ? raw.slice(1) : raw;
+
+      // Parse each row
+      importMovRows = dataRows
+        .filter(r=>r.some(c=>c!==''))
+        .map((r,i)=>{
+          // Normalise date: accepts DD/MM/AAAA or AAAA-MM-DD or Excel serial
+          let data = String(r[1]||'').trim();
+          if(/^\d{5}$/.test(data)){
+            // Excel date serial
+            const d=new Date(Date.UTC(1899,11,30)+(Number(data))*86400000);
+            data=d.toISOString().split('T')[0];
+          } else if(/^\d{2}\/\d{2}\/\d{4}$/.test(data)){
+            const [dd,mm,yyyy]=data.split('/');
+            data=`${yyyy}-${mm}-${dd}`;
+          }
+
+          // Período: accepts 07x13, 13x19, etc — fallback first valid
+          let periodo=String(r[2]||'').trim();
+          if(!MOV_PERIODOS.includes(periodo)) periodo='';
+
+          return {
+            id:       Date.now()+i,
+            coil:     String(r[0]||'').trim().toUpperCase(),
+            data,
+            periodo,
+            veiculo:  String(r[3]||'').trim().toUpperCase(),
+            motorista:String(r[4]||'').trim(),
+            bl:       String(r[5]||'').trim(),
+            navio:    String(r[6]||'').trim(),
+            cliente:  String(r[7]||'').trim(),
+            viagem:   String(r[8]||'').trim(),
+            produto:  String(r[9]||'').trim(),
+            pesob:    r[10]!==''?String(r[10]).replace(',','.'):'',
+            pesol:    r[11]!==''?String(r[11]).replace(',','.'):'',
+            armazem:  String(r[12]||'').trim(),
+            obs:      String(r[13]||'').trim(),
+            registradoEm:  new Date().toISOString(),
+            registradoPor: session?session.nome:'Importação'
+          };
+        })
+        .filter(r=>r.coil);
+
+      if(!importMovRows.length){ showToast('Nenhum registro válido encontrado.','#e05c1a','#fff'); return; }
+
+      // Validate: detect issues
+      const src = importMovTipo==='expedicao' ? expedicoes : records;
+      const existentes = importMovRows.filter(r=>src.find(x=>x.coil===r.coil)).length;
+      const semData    = importMovRows.filter(r=>!r.data).length;
+      const semPeriodo = importMovRows.filter(r=>!r.periodo).length;
+
+      // Show preview
+      document.getElementById('import-mov-preview').style.display='';
+      document.getElementById('import-mov-preview-title').textContent=
+        `✓ ${importMovRows.length} registros encontrados — ${file.name}`;
+
+      // Header
+      const thCols=['COIL NUMBER','DATA','PERÍODO','VEÍCULO','MOTORISTA','BL','NAVIO','CLIENTE','P.BRUTO','P.LÍQUIDO'];
+      document.getElementById('import-mov-thead').innerHTML=
+        `<tr>${thCols.map(h=>`<th style="padding:.4rem .6rem;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);background:var(--surface);text-align:left;">${h}</th>`).join('')}</tr>`;
+
+      // Body (max 10 rows)
+      document.getElementById('import-mov-tbody').innerHTML=
+        importMovRows.slice(0,10).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+          <td style="padding:.35rem .6rem;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent)">${r.coil}</td>
+          <td style="padding:.35rem .6rem;font-size:12px">${r.data||'<span style="color:var(--danger)">⚠ sem data</span>'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px">${r.periodo||'<span style="color:var(--warning)">—</span>'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px;font-family:'JetBrains Mono',monospace">${r.veiculo||'—'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px">${r.motorista||'—'}</td>
+          <td style="padding:.35rem .6rem;font-size:11px;color:var(--muted)">${r.bl||'—'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px;font-weight:600">${r.navio||'—'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px">${r.cliente||'—'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px;font-weight:700">${r.pesob||'—'}</td>
+          <td style="padding:.35rem .6rem;font-size:12px;font-weight:700">${r.pesol||'—'}</td>
+        </tr>`).join('')+
+        (importMovRows.length>10?`<tr><td colspan="10" style="padding:.5rem;text-align:center;color:var(--muted);font-size:12px">... e mais ${importMovRows.length-10} registros</td></tr>`:'');
+
+      // Warnings
+      const warns=[];
+      if(existentes>0) warns.push(`⚠ ${existentes} coil(s) já possuem registro — serão ignorados no modo MESCLAR ou substituídos no modo SUBSTITUIR.`);
+      if(semData>0)    warns.push(`⚠ ${semData} linha(s) sem data — verifique o formato (AAAA-MM-DD ou DD/MM/AAAA).`);
+      if(semPeriodo>0) warns.push(`⚠ ${semPeriodo} linha(s) sem período válido — será necessário editar após importar.`);
+      const warnEl=document.getElementById('import-mov-warn');
+      if(warns.length){ warnEl.style.display=''; warnEl.innerHTML=warns.join('<br>'); }
+      else warnEl.style.display='none';
+
+      document.getElementById('import-mov-mode-row').style.display='';
+      document.getElementById('btn-confirm-import-mov').style.display='';
+
+    }catch(err){ showToast('Erro ao ler arquivo: '+err.message,'#e05c1a','#fff'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function confirmImportMov(){
+  if(!importMovRows.length) return;
+  const mode=document.querySelector('input[name="imp-mov-mode"]:checked').value;
+  const src  = importMovTipo==='expedicao' ? expedicoes : records;
+  const table= importMovTipo==='expedicao' ? 'expedicoes' : 'records';
+
+  closeModal('modal-import-mov');
+  showLoading(`Importando ${importMovRows.length} registros...`);
+
+  try{
+    let toInsert=[];
+
+    if(mode==='replace'){
+      // Clear local array
+      if(importMovTipo==='expedicao') expedicoes.length=0;
+      else records.length=0;
+      toInsert=importMovRows;
+      // Delete all from Supabase then reinsert
+      await supaDelete(table,'id=gt.0');
+    } else {
+      // Merge: skip coils that already exist
+      const existingCoils=new Set(src.map(r=>r.coil));
+      const dupes=importMovRows.filter(r=>existingCoils.has(r.coil));
+      toInsert=importMovRows.filter(r=>!existingCoils.has(r.coil));
+      if(dupes.length) showToast(`ℹ ${dupes.length} registros já existentes foram ignorados.`,'#f59e0b','#000');
+    }
+
+    // Add to local memory
+    toInsert.forEach(r=>{
+      if(importMovTipo==='expedicao') expedicoes.unshift(r);
+      else records.unshift(r);
+    });
+
+    // Sync to Supabase in bulk
+    if(toInsert.length){
+      const supaRows=toInsert.map(r=>{
+        const {registradoPor, registradoUser, editadoEm, editadoPor, ...safe}=r;
+        return safe;
+      });
+      await supaUpsertBulk(table, supaRows, 'id', 100, (done,total)=>{
+        showLoading(`Sincronizando ${done}/${total} registros...`);
+      });
+    }
+
+    hideLoading();
+    buildFilterSelects(importMovTipo==='expedicao'?'e':'d');
+    applyFilters(importMovTipo==='expedicao'?'e':'d');
+    refreshHome();
+    showToast(`✓ ${toInsert.length} registros importados com sucesso!`,'#22c55e','#000');
+
+  }catch(err){
+    hideLoading();
+    showToast('⚠ Erro na importação: '+err.message,'#e05c1a','#fff');
+  }
+}
+
+// ── Download template Excel ──────────────────────────────────────
+function downloadTemplateMov(tipo){
+  const isExp = tipo==='expedicao';
+  const wb    = XLSX.utils.book_new();
+
+  // Header row
+  const header = MOV_COLS;
+
+  // Example rows
+  const ex1=[
+    'BRZ-2024-00123',
+    '2024-03-15',
+    '07x13',
+    'ABC-1234',
+    'João Silva',
+    'MAEU2024001234',
+    'MSC GÜLSÜN',
+    'Usiminas',
+    '2024001W',
+    'Bobina HRC',
+    25300,
+    25000,
+    'ARM-01',
+    'Importação histórica'
+  ];
+  const ex2=[
+    'BRZ-2024-00124',
+    '2024-03-15',
+    '13x19',
+    'DEF-5678',
+    'Maria Santos',
+    'MAEU2024001235',
+    'MSC GÜLSÜN',
+    'Gerdau',
+    '2024001W',
+    'Bobina CRC',
+    18500,
+    18200,
+    'ARM-02',
+    ''
+  ];
+
+  const wsData=[header,ex1,ex2];
+  const ws=XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols']=[
+    {wch:22},{wch:16},{wch:10},{wch:14},{wch:18},
+    {wch:18},{wch:18},{wch:16},{wch:12},{wch:16},
+    {wch:14},{wch:14},{wch:12},{wch:22}
+  ];
+
+  const sheetName=isExp?'Modelo Expedição':'Modelo Descarga';
+  XLSX.utils.book_append_sheet(wb,ws,sheetName);
+
+  // Instructions sheet
+  const instrData=[
+    ['INSTRUÇÕES DE PREENCHIMENTO'],
+    [''],
+    ['Coluna','Formato','Obrigatório','Exemplo'],
+    ['Nº Bobina (Coil Number)','Texto','Sim','BRZ-2024-00123'],
+    ['Data (AAAA-MM-DD)','AAAA-MM-DD ou DD/MM/AAAA','Sim','2024-03-15'],
+    ['Período','07x13 / 13x19 / 19x01 / 01x07','Sim','07x13'],
+    ['Veículo / Placa','ABC-1234 (padrão) ou ABC1D23 (Mercosul)','Não','ABC-1234'],
+    ['Motorista','Texto livre','Não','João Silva'],
+    ['BL','Código do conhecimento de embarque','Não','MAEU2024001234'],
+    ['Navio','Nome do navio','Não','MSC GÜLSÜN'],
+    ['Cliente','Nome do cliente','Não','Usiminas'],
+    ['Viagem','Código da viagem','Não','2024001W'],
+    ['Produto','Descrição do produto','Não','Bobina HRC'],
+    ['Peso Bruto (kg)','Número inteiro em kg','Não','25300'],
+    ['Peso Líquido (kg)','Número inteiro em kg','Não','25000'],
+    ['Armazém','Código do armazém','Não','ARM-01'],
+    ['Observações','Texto livre','Não','Qualquer observação'],
+    [''],
+    ['DICAS:'],
+    ['- A primeira linha com cabeçalho é detectada automaticamente e ignorada'],
+    ['- Datas no formato Excel (número serial) também são aceitas'],
+    ['- Registros com Coil Number já existente são ignorados no modo MESCLAR'],
+    ['- Use o modo SUBSTITUIR TUDO apenas para repopular do zero'],
+  ];
+  const wsInstr=XLSX.utils.aoa_to_sheet(instrData);
+  wsInstr['!cols']=[{wch:28},{wch:35},{wch:14},{wch:22}];
+  XLSX.utils.book_append_sheet(wb,wsInstr,'Instruções');
+
+  const fname=isExp?'modelo_expedicoes.xlsx':'modelo_descargas.xlsx';
+  XLSX.writeFile(wb,fname);
+  showToast('✓ Modelo baixado: '+fname,'#22c55e','#000');
+}
+
+
 function buildRptSelects(){
   const navSet=[...new Set([...records.map(r=>r.navio),...expedicoes.map(r=>r.navio),...coilsDB.map(c=>c.navio)].filter(Boolean))].sort();
   const cliSet=[...new Set([...records.map(r=>r.cliente),...expedicoes.map(r=>r.cliente),...coilsDB.map(c=>c.cliente)].filter(Boolean))].sort();
@@ -1862,7 +2578,7 @@ function renderReport(){
   let groupRows=[], groupHeaders=[];
   if(tipo==='navio'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR NAVIO';
-    groupHeaders=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (t)','P.BRUTO EXP. (t)'];
+    groupHeaders=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
     const navSet=[...new Set([...coilsDB.map(c=>c.navio),...all.map(r=>r.navio)].filter(Boolean))].sort();
     const fn=document.getElementById('rpt-navio').value;
     const fc=document.getElementById('rpt-cliente').value;
@@ -1871,13 +2587,13 @@ function renderReport(){
       const dbN=coilsDB.filter(c=>c.navio===nav&&(!fc||c.cliente===fc));
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
-      const pbd=(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',');
-      const pbe=(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',');
+      const pbd=fmtKg(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
+      const pbe=fmtKg(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
       return [nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),pbd,pbe];
     });
   } else if(tipo==='cliente'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR CLIENTE';
-    groupHeaders=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (t)','P.BRUTO EXP. (t)'];
+    groupHeaders=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
     const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...all.map(r=>r.cliente)].filter(Boolean))].sort();
     const fc=document.getElementById('rpt-cliente').value;
     const fn=document.getElementById('rpt-navio').value;
@@ -1886,17 +2602,17 @@ function renderReport(){
       const dbC=coilsDB.filter(c=>c.cliente===cli&&(!fn||c.navio===fn));
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
-      const pbd=(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',');
-      const pbe=(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',');
+      const pbd=fmtKg(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
+      const pbe=fmtKg(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
       return [cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),pbd,pbe];
     });
   } else {
     document.getElementById('rpt-group-title').textContent='📋 RESUMO GERAL';
-    groupHeaders=['TIPO','QUANTIDADE','P.BRUTO TOTAL (t)','P.LÍQUIDO TOTAL (t)'];
-    const pbD=(desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',');
-    const plD=(desc.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0)/1000).toFixed(2).replace('.',',');
-    const pbE=(exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',');
-    const plE=(exps.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0)/1000).toFixed(2).replace('.',',');
+    groupHeaders=['TIPO','QUANTIDADE','P.BRUTO TOTAL (kg)','P.LÍQUIDO TOTAL (kg)'];
+    const pbD=fmtKg(desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
+    const plD=fmtKg(desc.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0));
+    const pbE=fmtKg(exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
+    const plE=fmtKg(exps.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0));
     groupRows=[['DESCARGA',desc.length,pbD,plD],['EXPEDIÇÃO',exps.length,pbE,plE]];
   }
 
@@ -1927,8 +2643,8 @@ function renderReport(){
         <td style="font-size:13px">${r.produto||'—'}</td>
         <td style="color:var(--info)">${r.veiculo||'—'}</td>
         <td>${r.motorista||'—'}</td>
-        <td class="weight-cell">${r.pesob?Number(r.pesob).toLocaleString('pt-BR'):'—'}</td>
-        <td class="weight-cell">${r.pesol?Number(r.pesol).toLocaleString('pt-BR'):'—'}</td>
+        <td class="weight-cell">${r.pesob?fmtKg(r.pesob):'—'}</td>
+        <td class="weight-cell">${r.pesol?fmtKg(r.pesol):'—'}</td>
       </tr>`;
     }).join('')}</tbody>
   </table>`;
@@ -1943,7 +2659,7 @@ function exportReportXLSX(){
   // Sheet 1: Resumo
   let summaryData=[];
   if(tipo==='navio'||tipo==='geral'){
-    summaryData=[['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (t)','P.BRUTO EXP. (t)']];
+    summaryData=[['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)']];
     const navSet=[...new Set([...coilsDB.map(c=>c.navio),...desc.map(r=>r.navio),...exps.map(r=>r.navio)].filter(Boolean))].sort();
     navSet.forEach(nav=>{
       const fn=document.getElementById('rpt-navio').value;
@@ -1952,11 +2668,11 @@ function exportReportXLSX(){
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
       summaryData.push([nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),
-        parseFloat((dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2)),
-        parseFloat((eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2))]);
+        Math.round(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))]);
     });
   } else {
-    summaryData=[['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (t)','P.BRUTO EXP. (t)']];
+    summaryData=[['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)']];
     const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...desc.map(r=>r.cliente),...exps.map(r=>r.cliente)].filter(Boolean))].sort();
     cliSet.forEach(cli=>{
       const fc=document.getElementById('rpt-cliente').value;
@@ -1965,8 +2681,8 @@ function exportReportXLSX(){
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
       summaryData.push([cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),
-        parseFloat((dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2)),
-        parseFloat((eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2))]);
+        Math.round(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))]);
     });
   }
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Resumo');
@@ -2033,8 +2749,8 @@ function exportReportPDF(){
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
       summaryRows.push([nav,String(dbN.length),String(dN.length),String(eN.length),String(Math.max(0,dbN.length-dN.length)),
-        (dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',')+' t',
-        (eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',')+' t']);
+        fmtKg(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' t',
+        fmtKg(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg']);
     });
     doc.autoTable({startY:30,head:[['NAVIO','BANCO','DESC.','EXP.','PENDENTES','P.BRUTO DESC.','P.BRUTO EXP.']],body:summaryRows,theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:8},bodyStyles:{fontSize:8,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2.5,lineColor:[37,42,53]}});
   } else {
@@ -2044,8 +2760,8 @@ function exportReportPDF(){
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
       summaryRows.push([cli,String(dbC.length),String(dC.length),String(eC.length),String(Math.max(0,dbC.length-dC.length)),
-        (dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',')+' t',
-        (eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)/1000).toFixed(2).replace('.',',')+' t']);
+        fmtKg(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' t',
+        fmtKg(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg']);
     });
     doc.autoTable({startY:30,head:[['CLIENTE','BANCO','DESC.','EXP.','PENDENTES','P.BRUTO DESC.','P.BRUTO EXP.']],body:summaryRows,theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:8},bodyStyles:{fontSize:8,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2.5,lineColor:[37,42,53]}});
   }
@@ -2058,7 +2774,7 @@ function exportReportPDF(){
     doc.text('REGISTROS DE DESCARGA',14,26);
     doc.autoTable({startY:30,
       head:[['COIL NUMBER','DATA','PERÍODO','NAVIO','BL','CLIENTE','PRODUTO','VEÍCULO','P.BRUTO (kg)','P.LÍQ. (kg)']],
-      body:desc.map(r=>[r.coil,formatDate(r.data),r.periodo,r.navio||'—',r.bl||'—',r.cliente||'—',r.produto||'—',r.veiculo||'—',r.pesob?Number(r.pesob).toLocaleString('pt-BR'):'—',r.pesol?Number(r.pesol).toLocaleString('pt-BR'):'—']),
+      body:desc.map(r=>[r.coil,formatDate(r.data),r.periodo,r.navio||'—',r.bl||'—',r.cliente||'—',r.produto||'—',r.veiculo||'—',r.pesob?fmtKg(r.pesob):'—',r.pesol?fmtKg(r.pesol):'—']),
       theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[59,130,246],fontStyle:'bold',fontSize:7},bodyStyles:{fontSize:7,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2,lineColor:[37,42,53]}});
   }
 
@@ -2070,7 +2786,7 @@ function exportReportPDF(){
     doc.text('REGISTROS DE EXPEDIÇÃO',14,26);
     doc.autoTable({startY:30,
       head:[['COIL NUMBER','DATA','PERÍODO','NAVIO','BL','CLIENTE','PRODUTO','VEÍCULO','P.BRUTO (kg)','P.LÍQ. (kg)']],
-      body:exps.map(r=>[r.coil,formatDate(r.data),r.periodo,r.navio||'—',r.bl||'—',r.cliente||'—',r.produto||'—',r.veiculo||'—',r.pesob?Number(r.pesob).toLocaleString('pt-BR'):'—',r.pesol?Number(r.pesol).toLocaleString('pt-BR'):'—']),
+      body:exps.map(r=>[r.coil,formatDate(r.data),r.periodo,r.navio||'—',r.bl||'—',r.cliente||'—',r.produto||'—',r.veiculo||'—',r.pesob?fmtKg(r.pesob):'—',r.pesol?fmtKg(r.pesol):'—']),
       theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[168,85,247],fontStyle:'bold',fontSize:7},bodyStyles:{fontSize:7,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2,lineColor:[37,42,53]}});
   }
 
@@ -2089,14 +2805,16 @@ function exportReportPDF(){
 document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }); });
 
 // ══════════════════════════════════════════
-// CAMERA SCANNER
+// CAMERA SCANNER — API nativa + ZXing fallback
 // ══════════════════════════════════════════
-let scannerTarget = null;   // 'd' or 'e'
-let codeReader     = null;
-let scannerStream  = null;
+let scannerTarget    = null;
+let scannerStream    = null;
 let selectedDeviceId = null;
-let torchOn        = false;
-let scannerActive  = false;
+let torchOn          = false;
+let scannerActive    = false;
+let zxingReader      = null;
+let barcodeDetector  = null;
+let scanInterval     = null;
 
 async function openScanner(px){
   scannerTarget = px;
@@ -2106,90 +2824,161 @@ async function openScanner(px){
   document.getElementById('scanner-manual').value = '';
   document.getElementById('scanner-status').textContent = 'Solicitando acesso à câmera...';
   torchOn = false;
+  scannerActive = true;
   await initScanner();
 }
 
 async function initScanner(){
   try {
-    // Stop any existing stream
     stopScannerStream();
 
-    // Check ZXing availability
-    if(typeof ZXing === 'undefined'){
-      document.getElementById('scanner-status').textContent = 'Biblioteca de leitura não disponível. Use a entrada manual.';
-      return;
+    // 1. Enumera câmeras via mediaDevices (API nativa — sempre disponível)
+    const allDevices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
+
+    const sel = document.getElementById('scanner-cam-select');
+    if(videoDevices.length){
+      sel.innerHTML = videoDevices.map((d,i) =>
+        `<option value="${d.deviceId}">${d.label || 'Câmera '+(i+1)}</option>`
+      ).join('');
+      // Prefere câmera traseira no mobile
+      const backCam = videoDevices.find(d => /back|rear|environment/i.test(d.label));
+      selectedDeviceId = backCam ? backCam.deviceId : videoDevices[0].deviceId;
+      sel.value = selectedDeviceId;
+    } else {
+      sel.innerHTML = '<option value="">Câmera padrão</option>';
+      selectedDeviceId = null;
     }
 
-    codeReader = new ZXing.BrowserMultiFormatReader();
+    document.getElementById('btn-torch').style.display =
+      /Mobi|Android/i.test(navigator.userAgent) ? '' : 'none';
 
-    // Enumerate cameras
-    const devices = await ZXing.BrowserCodeReader.listVideoInputDevices();
-    const sel = document.getElementById('scanner-cam-select');
-    sel.innerHTML = devices.length
-      ? devices.map((d,i) => `<option value="${d.deviceId}">${d.label || 'Câmera '+(i+1)}</option>`).join('')
-      : '<option value="">Câmera padrão</option>';
-
-    // Prefer back camera on mobile
-    const backCam = devices.find(d => /back|rear|environment/i.test(d.label));
-    selectedDeviceId = backCam ? backCam.deviceId : (devices[0]?.deviceId || undefined);
-    if(selectedDeviceId) sel.value = selectedDeviceId;
-
-    // Show torch button if supported (mobile)
-    document.getElementById('btn-torch').style.display = /Mobi|Android/i.test(navigator.userAgent) ? '' : 'none';
-
-    await startDecoding();
+    await startStream();
 
   } catch(err){
-    console.error('Scanner error:', err);
-    document.getElementById('scanner-status').textContent =
-      err.name === 'NotAllowedError'
-        ? '⚠ Permissão de câmera negada. Use a entrada manual abaixo.'
-        : '⚠ Câmera indisponível: ' + err.message;
+    const status = document.getElementById('scanner-status');
+    if(err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'){
+      status.textContent = '⚠ Permissão de câmera negada. Use a entrada manual abaixo.';
+    } else {
+      status.textContent = '⚠ ' + err.message + ' — use a entrada manual.';
+    }
   }
 }
 
-async function startDecoding(){
-  const videoEl = document.getElementById('scanner-video');
+async function startStream(){
+  const videoEl  = document.getElementById('scanner-video');
   const statusEl = document.getElementById('scanner-status');
+
+  // Monta constraints preferindo câmera traseira
+  const constraints = {
+    video: selectedDeviceId
+      ? { deviceId: { exact: selectedDeviceId } }
+      : { facingMode: { ideal: 'environment' } }
+  };
+
+  scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+  videoEl.srcObject = scannerStream;
+  await videoEl.play();
+
+  // Re-enumera após obter stream (labels aparecem apenas após getUserMedia)
+  const allDevices = await navigator.mediaDevices.enumerateDevices();
+  const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
+  if(videoDevices.length){
+    const sel = document.getElementById('scanner-cam-select');
+    sel.innerHTML = videoDevices.map((d,i) =>
+      `<option value="${d.deviceId}">${d.label || 'Câmera '+(i+1)}</option>`
+    ).join('');
+    if(selectedDeviceId) sel.value = selectedDeviceId;
+  }
+
   statusEl.textContent = 'Câmera ativa — aponte para o código...';
   scannerActive = true;
 
-  try {
-    await codeReader.decodeFromVideoDevice(selectedDeviceId || undefined, videoEl, (result, err) => {
-      if(!scannerActive) return;
-      if(result){
-        const code = result.getText().trim().toUpperCase();
-        onScanSuccess(code);
-      }
-      // Suppress NotFound errors (normal during scanning)
+  // Tenta BarcodeDetector nativo (Chrome Android, Samsung Internet)
+  if('BarcodeDetector' in window){
+    barcodeDetector = new BarcodeDetector({
+      formats: ['code_128','code_39','ean_13','ean_8','qr_code','data_matrix','itf','pdf417','aztec','upc_a','upc_e']
     });
-  } catch(err){
-    statusEl.textContent = '⚠ Erro ao iniciar câmera. ' + err.message;
+    startNativeDetection(videoEl);
+    return;
   }
+
+  // Fallback: ZXing
+  if(typeof ZXing !== 'undefined'){
+    try{
+      // API nova (0.19+): BrowserMultiFormatReader com hints
+      zxingReader = new ZXing.BrowserMultiFormatReader();
+      // decodeFromStream usa a stream que já temos
+      decodeZXingLoop(videoEl);
+      return;
+    } catch(e){ console.warn('ZXing fallback falhou:', e); }
+  }
+
+  // Último recurso: análise por canvas com intervalo
+  statusEl.textContent = 'Câmera ativa — aponte e aguarde a leitura...';
+  startCanvasFallback(videoEl);
+}
+
+// ── BarcodeDetector nativo ──────────────────────────────────────
+function startNativeDetection(videoEl){
+  if(scanInterval) clearInterval(scanInterval);
+  scanInterval = setInterval(async ()=>{
+    if(!scannerActive || videoEl.readyState < 2) return;
+    try{
+      const barcodes = await barcodeDetector.detect(videoEl);
+      if(barcodes.length > 0){
+        onScanSuccess(barcodes[0].rawValue.trim().toUpperCase());
+      }
+    } catch(e){}
+  }, 250);
+}
+
+// ── ZXing decode loop ───────────────────────────────────────────
+function decodeZXingLoop(videoEl){
+  const canvas = document.createElement('canvas');
+  const ctx    = canvas.getContext('2d');
+  if(scanInterval) clearInterval(scanInterval);
+  scanInterval = setInterval(async ()=>{
+    if(!scannerActive || videoEl.readyState < 2) return;
+    try{
+      canvas.width  = videoEl.videoWidth;
+      canvas.height = videoEl.videoHeight;
+      ctx.drawImage(videoEl, 0, 0);
+      const img = canvas.toDataURL('image/png');
+      // Usa a API de imagem do ZXing que é estável em todas as versões
+      const result = await zxingReader.decodeFromImageUrl(img);
+      if(result) onScanSuccess(result.getText().trim().toUpperCase());
+    } catch(e){
+      // NotFoundException é normal — ignora silenciosamente
+    }
+  }, 400);
+}
+
+// ── Canvas fallback (sem biblioteca) ───────────────────────────
+function startCanvasFallback(videoEl){
+  // Sem decodificador disponível — avisa usuário para usar manual
+  document.getElementById('scanner-status').textContent =
+    'Câmera ativa. Decodificador não disponível — use a entrada manual abaixo.';
 }
 
 function onScanSuccess(code){
   if(!scannerActive) return;
   scannerActive = false;
+  if(scanInterval){ clearInterval(scanInterval); scanInterval = null; }
 
   const resultEl = document.getElementById('scanner-result');
   resultEl.textContent = '✓ Lido: ' + code;
   resultEl.classList.add('show');
-  document.getElementById('scanner-status').textContent = 'Código detectado! Fechando...';
+  document.getElementById('scanner-status').textContent = 'Código detectado!';
 
-  // Vibrate on mobile if supported
   if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
 
-  // Apply to target field and trigger autofill
   setTimeout(()=>{
     const inputEl = document.getElementById(scannerTarget + '-coil');
-    if(inputEl){
-      inputEl.value = code;
-      checkCoilInput(scannerTarget);
-    }
+    if(inputEl){ inputEl.value = code; checkCoilInput(scannerTarget); }
     closeScanner();
     showToast('✓ Coil lido: ' + code, '#22c55e', '#000');
-  }, 800);
+  }, 700);
 }
 
 function confirmScanManual(){
@@ -2201,20 +2990,21 @@ function confirmScanManual(){
 async function switchCamera(){
   selectedDeviceId = document.getElementById('scanner-cam-select').value;
   stopScannerStream();
-  if(codeReader) codeReader.reset();
-  scannerActive = true;
   document.getElementById('scanner-result').classList.remove('show');
-  await startDecoding();
+  scannerActive = true;
+  await startStream();
 }
 
 function stopScannerStream(){
   scannerActive = false;
-  if(codeReader){ try{ codeReader.reset(); }catch(e){} }
+  if(scanInterval){ clearInterval(scanInterval); scanInterval = null; }
+  if(zxingReader){ try{ zxingReader.reset(); }catch(e){} zxingReader = null; }
   const videoEl = document.getElementById('scanner-video');
   if(videoEl && videoEl.srcObject){
     videoEl.srcObject.getTracks().forEach(t => t.stop());
     videoEl.srcObject = null;
   }
+  scannerStream = null;
 }
 
 function closeScanner(){
@@ -2225,23 +3015,21 @@ function closeScanner(){
 }
 
 async function toggleTorch(){
-  const videoEl = document.getElementById('scanner-video');
-  if(!videoEl || !videoEl.srcObject) return;
-  const track = videoEl.srcObject.getVideoTracks()[0];
+  if(!scannerStream) return;
+  const track = scannerStream.getVideoTracks()[0];
   if(!track) return;
-  try {
+  try{
     torchOn = !torchOn;
-    await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-    document.getElementById('btn-torch').textContent = torchOn ? '🔦 LANTERNA ON' : '🔦 LANTERNA';
-    document.getElementById('btn-torch').style.color = torchOn ? 'var(--accent)' : '';
+    await track.applyConstraints({ advanced:[{ torch: torchOn }] });
+    document.getElementById('btn-torch').textContent = torchOn ? '🔦 ON' : '🔦 LANTERNA';
   } catch(e){
-    showToast('Lanterna não suportada neste dispositivo.', '#f59e0b', '#000');
+    showToast('Lanterna não suportada.', '#f59e0b', '#000');
   }
 }
 
-// Close scanner on Escape key
-document.addEventListener('keydown', e => {
-  if(e.key === 'Escape' && document.getElementById('scanner-modal').classList.contains('open')){
+// Fecha scanner com ESC
+document.addEventListener('keydown', e=>{
+  if(e.key==='Escape' && document.getElementById('scanner-modal').classList.contains('open')){
     closeScanner();
   }
 });
@@ -2276,9 +3064,9 @@ document.addEventListener('keydown', e => {
           <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 3 — Criar as tabelas via SQL</div>
           <p style="font-size:14px;color:var(--text);">No menu lateral, clique em <strong>SQL Editor</strong>, cole o SQL abaixo e clique <strong>Run</strong>:</p>
           <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-size:11px;color:var(--success);overflow-x:auto;margin-top:.5rem;line-height:1.6;">create table if not exists coilsdb (coil text primary key, armazem text, bl text, cliente text, navio text, viagem text, produto text, pesob text, pesol text);
-create table if not exists records (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text);
-create table if not exists expedicoes (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text);
-create table if not exists users (id text primary key, nome text, "user" text, pass text, role text, perms text);
+create table if not exists records (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
+create table if not exists expedicoes (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
+create table if not exists users (id text primary key, nome text, "user" text, pass text, role text, perms text, email text);
 create table if not exists navios (nome text primary key);
 alter table coilsdb enable row level security;
 alter table records enable row level security;
@@ -2289,7 +3077,11 @@ create policy "allow all" on coilsdb for all using (true) with check (true);
 create policy "allow all" on records for all using (true) with check (true);
 create policy "allow all" on expedicoes for all using (true) with check (true);
 create policy "allow all" on users for all using (true) with check (true);
-create policy "allow all" on navios for all using (true) with check (true);</pre>
+create policy "allow all" on navios for all using (true) with check (true);
+-- Se as tabelas já existem, rode estas linhas para adicionar as novas colunas:
+alter table records add column if not exists "registradoPor" text;
+alter table expedicoes add column if not exists "registradoPor" text;
+alter table users add column if not exists email text;</pre>
         </div>
 
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
@@ -2315,6 +3107,89 @@ create policy "allow all" on navios for all using (true) with check (true);</pre
     </div>
     <div class="modal-actions" style="margin-top:1.5rem;">
       <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-api-setup')">FECHAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ IMPORTAR MOVIMENTAÇÕES ════════════════ -->
+<div class="modal-overlay" id="modal-import-mov">
+  <div class="modal" style="max-width:780px;">
+    <div class="modal-title" id="import-mov-title">↑ IMPORTAR REGISTROS VIA EXCEL</div>
+    <div class="modal-body" style="margin-bottom:1.2rem;">
+
+      <!-- Colunas esperadas -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);line-height:1.8;">
+        📌 Colunas esperadas na planilha:<br>
+        <span id="import-mov-cols" style="color:var(--accent);"></span>
+      </div>
+
+      <!-- Drop zone -->
+      <div id="drop-zone-mov"
+        style="border:2px dashed var(--border);border-radius:10px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border .2s,background .2s;margin-bottom:1rem;"
+        ondragover="dzOverMov(event)" ondragleave="dzLeaveMov()" ondrop="dzDropMov(event)"
+        onclick="document.getElementById('xls-input-mov').click()">
+        <div style="font-size:36px;margin-bottom:.5rem;">📊</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);">Arraste o arquivo Excel aqui</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:.3rem;">ou clique para selecionar — .xlsx / .xls</div>
+        <input type="file" id="xls-input-mov" accept=".xlsx,.xls" style="display:none;" onchange="handleXLSMovFile(this.files[0])">
+      </div>
+
+      <!-- Preview -->
+      <div id="import-mov-preview" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
+          <span id="import-mov-preview-title" style="font-size:13px;font-weight:700;color:var(--success);"></span>
+          <button class="btn btn-secondary btn-sm" onclick="resetImportMov()">✕ LIMPAR</button>
+        </div>
+        <div style="overflow-x:auto;max-height:260px;border:1px solid var(--border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead id="import-mov-thead" style="position:sticky;top:0;background:var(--surface);"></thead>
+            <tbody id="import-mov-tbody"></tbody>
+          </table>
+        </div>
+        <div id="import-mov-warn" style="display:none;margin-top:.75rem;padding:.6rem 1rem;background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.3);border-radius:6px;font-size:12px;color:var(--accent);"></div>
+      </div>
+
+      <!-- Mode -->
+      <div id="import-mov-mode-row" style="display:none;margin-top:1rem;">
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;">MODO DE IMPORTAÇÃO</div>
+        <div style="display:flex;gap:1.5rem;">
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+            <input type="radio" name="imp-mov-mode" value="merge" checked style="accent-color:var(--accent);width:16px;height:16px;"> MESCLAR (mantém existentes)
+          </label>
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+            <input type="radio" name="imp-mov-mode" value="replace" style="accent-color:var(--danger);width:16px;height:16px;"> SUBSTITUIR TUDO
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:1.2rem;display:flex;justify-content:space-between;gap:1rem;">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-import-mov');resetImportMov();">CANCELAR</button>
+      <button class="btn btn-primary" id="btn-confirm-import-mov" style="display:none;" onclick="confirmImportMov()">✓ IMPORTAR REGISTROS</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ESQUECI MINHA SENHA ════════════════ -->
+<div class="modal-overlay" id="modal-forgot">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">🔑 REDEFINIR SENHA</div>
+    <div class="modal-body" style="margin-bottom:1.2rem;">
+      <p style="color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:1.2rem;">
+        Informe seu <strong>usuário</strong> ou <strong>e-mail</strong> cadastrado. A nova senha temporária será exibida aqui e enviada por e-mail (se configurado).
+      </p>
+      <div class="login-field" style="margin-bottom:1rem;">
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Usuário ou E-mail</label>
+        <input type="text" id="forgot-input" placeholder="Digite seu usuário ou e-mail"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;"
+          onkeydown="if(event.key==='Enter') doForgotPass()">
+      </div>
+      <!-- Resultado -->
+      <div id="forgot-result" style="display:none;padding:1rem;border-radius:8px;margin-top:.5rem;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-forgot');document.getElementById('forgot-input').value='';document.getElementById('forgot-result').style.display='none';">CANCELAR</button>
+      <button class="btn btn-primary" onclick="doForgotPass()">ENVIAR NOVA SENHA</button>
     </div>
   </div>
 </div>
