@@ -6,7 +6,6 @@
 <title>4SIDES · STEELPORT — Gestão de Bobinas</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src='https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -286,28 +285,6 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 .cb-row{width:16px;height:16px;accent-color:var(--danger);cursor:pointer;}
 th.cb-th{width:36px;padding-left:1rem !important;}
 tr.row-selected td{background:rgba(224,92,26,.07) !important;}
-.btn-scan{background:transparent;border:1px solid var(--border);color:var(--muted);padding:0 .75rem;border-radius:6px;cursor:pointer;transition:all .2s;font-size:18px;line-height:1;flex-shrink:0;height:100%;display:flex;align-items:center;}
-.btn-scan:hover{border-color:var(--accent);color:var(--accent);background:rgba(240,165,0,.08);}
-.coil-input-wrap{display:flex;gap:.5rem;align-items:stretch;width:100%;}
-.coil-input-wrap input{flex:1;min-width:0;}
-.scanner-modal{position:fixed;inset:0;background:rgba(0,0,0,.93);z-index:10000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:1.2rem;padding:1.5rem;}
-.scanner-modal.open{display:flex;animation:fadeIn .2s ease;}
-.scanner-box{position:relative;width:100%;max-width:500px;border-radius:14px;overflow:hidden;background:#000;border:2px solid var(--accent);box-shadow:0 0 40px rgba(240,165,0,.2);}
-.scanner-box video{width:100%;display:block;max-height:360px;object-fit:cover;}
-.scanner-line{position:absolute;left:8%;right:8%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);top:50%;animation:scanline 2s ease-in-out infinite;box-shadow:0 0 10px var(--accent);}
-@keyframes scanline{0%,100%{top:20%}50%{top:80%}}
-.scanner-corner{position:absolute;width:28px;height:28px;border-color:var(--accent);border-style:solid;opacity:.9;}
-.sc-tl{top:10%;left:6%;border-width:3px 0 0 3px;}
-.sc-tr{top:10%;right:6%;border-width:3px 3px 0 0;}
-.sc-bl{bottom:10%;left:6%;border-width:0 0 3px 3px;}
-.sc-br{bottom:10%;right:6%;border-width:0 3px 3px 0;}
-.scanner-label{position:absolute;bottom:12px;left:0;right:0;text-align:center;font-size:12px;font-family:'JetBrains Mono',monospace;color:rgba(255,255,255,.6);letter-spacing:1px;}
-.scanner-title{font-size:18px;font-weight:700;color:var(--accent);letter-spacing:2px;font-family:'Barlow Condensed',sans-serif;text-align:center;}
-.scanner-status{font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-align:center;min-height:18px;}
-.scanner-result{font-size:16px;font-weight:700;color:var(--success);font-family:'JetBrains Mono',monospace;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);padding:.6rem 1.5rem;border-radius:8px;text-align:center;display:none;}
-.scanner-result.show{display:block;}
-.scanner-cam-select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .75rem;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:340px;width:100%;}
-.scanner-actions{display:flex;gap:.75rem;flex-wrap:wrap;justify-content:center;}
 @media(max-width:900px){.form-grid,.autofill-inner{grid-template-columns:1fr 1fr;}.stats-bar{grid-template-columns:1fr 1fr;}.module-cards{grid-template-columns:1fr;}}
 @media(max-width:600px){.form-grid,.autofill-inner{grid-template-columns:1fr;}header{padding:0 1rem;}.container{padding:1rem;}.module-cards{grid-template-columns:1fr;}}
 </style>
@@ -466,10 +443,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div class="error-banner" id="d-error"></div>
         <div class="form-group">
           <label>Nº Bobina (Coil Number) *</label>
-          <div class="coil-input-wrap">
-            <input type="text" id="d-coil" placeholder="ex: BRZ-2024-00123" oninput="checkCoilInput('d')">
-            <button type="button" class="btn-scan" onclick="openScanner('d')" title="Ler via câmera">📷</button>
-          </div>
+          <input type="text" id="d-coil" placeholder="ex: BRZ-2024-00123" oninput="checkCoilInput('d')">
         </div>
         <div class="form-group">
           <label>Data de Descarga *</label>
@@ -586,10 +560,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div class="error-banner" id="e-error"></div>
         <div class="form-group">
           <label>Nº Bobina (Coil Number) *</label>
-          <div class="coil-input-wrap">
-            <input type="text" id="e-coil" placeholder="ex: BRZ-2024-00123" oninput="checkCoilInput('e')">
-            <button type="button" class="btn-scan" onclick="openScanner('e')" title="Ler via câmera">📷</button>
-          </div>
+          <input type="text" id="e-coil" placeholder="ex: BRZ-2024-00123" oninput="checkCoilInput('e')">
         </div>
         <div class="form-group">
           <label>Data de Expedição *</label>
@@ -1077,6 +1048,11 @@ function doLogin(){
   document.getElementById('login-screen').classList.add('hidden');
   applySessionUI();
   refreshHome();
+  // Load data from Supabase after login (non-blocking)
+  loadAllData().then(()=>{
+    refreshHome();
+    buildFilterSelects('d'); buildFilterSelects('e');
+  }).catch(err=>{ showToast('⚠ Erro ao carregar dados: '+err.message,'#f59e0b','#000'); });
 }
 
 function doLogout(){
@@ -1315,18 +1291,26 @@ function supaHeaders(extra){
 
 async function supa(path, opts={}){
   if(!SUPA_URL||!SUPA_KEY) throw new Error('Supabase não configurado');
-  const res = await fetch(SUPA_URL+'/rest/v1/'+path, {
-    method:  opts.method  || 'GET',
-    headers: supaHeaders(opts.headers||{}),
-    body:    opts.body    || undefined
-  });
-  if(res.status===204) return [];
-  const text = await res.text();
-  if(!text) return [];
-  let data;
-  try{ data=JSON.parse(text); }catch(e){ throw new Error('Resposta inválida: '+text.substring(0,120)); }
-  if(res.status>=400) throw new Error(data.message||data.error||JSON.stringify(data));
-  return data;
+  try {
+    const res = await fetch(SUPA_URL+'/rest/v1/'+path, {
+      method:  opts.method  || 'GET',
+      headers: supaHeaders(opts.headers||{}),
+      body:    opts.body    || undefined
+    });
+    if(res.status===204) return [];
+    const text = await res.text();
+    if(!text) return [];
+    let data;
+    try{ data=JSON.parse(text); }catch(e){ throw new Error('Resposta inválida: '+text.substring(0,120)); }
+    if(res.status>=400) throw new Error(data.message||data.error||JSON.stringify(data));
+    return data;
+  } catch(err) {
+    // Melhora a mensagem de erro "failed to fetch"
+    if(err.message==='Failed to fetch' || err.name==='TypeError'){
+      throw new Error('Não foi possível conectar ao Supabase. Verifique: 1) Se o projeto está ativo em supabase.com (plano gratuito pausa após 1 semana sem uso) 2) Se as tabelas foram criadas via SQL Editor 3) Sua conexão com a internet.');
+    }
+    throw err;
+  }
 }
 
 async function supaUpsert(table, rows, onConflict='id'){
@@ -1381,7 +1365,26 @@ async function loadAllData(){
     if(!users.length) users=[DEFAULT_ADMIN];
     saveUsers();
     hideLoading(); return true;
-  }catch(err){ hideLoading(); showApiError(err.message); return false; }
+  }catch(err){
+    hideLoading();
+    // Show detailed error in a modal instead of just a toast
+    const msg = err.message || 'Erro desconhecido';
+    document.getElementById('modal-delete-body').innerHTML =
+      `<div style="font-size:14px;line-height:1.8;color:var(--text);">
+        <div style="color:var(--danger);font-weight:700;margin-bottom:.75rem;">⚠ Falha ao conectar ao Supabase</div>
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-bottom:1rem;">${msg}</div>
+        <b>Verifique:</b><br>
+        1. O projeto Supabase está <b>ativo</b> em <a href="https://supabase.com" target="_blank" style="color:var(--accent)">supabase.com</a><br>
+        &nbsp;&nbsp;&nbsp;<i style="color:var(--muted);font-size:12px">(plano gratuito pausa após 7 dias sem uso — clique em "Restore project")</i><br>
+        2. As <b>tabelas foram criadas</b> via SQL Editor<br>
+        3. Sua <b>conexão com a internet</b> está funcionando
+      </div>`;
+    document.getElementById('modal-delete').classList.add('open');
+    // Override confirm button to just close
+    const btn = document.getElementById('modal-delete').querySelector('.btn-danger');
+    if(btn){ btn.textContent='FECHAR'; btn.onclick=()=>{ document.getElementById('modal-delete').classList.remove('open'); }; }
+    return false;
+  }
 }
 
 function normalizeRecord(r){ if(r.id&&!isNaN(r.id)) r.id=Number(r.id); return r; }
@@ -1447,14 +1450,14 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   document.getElementById('e-data').value = today;
   setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleString('pt-BR'); }, 1000);
 
-  // Check session
+  // Restore existing session
   if(session){
     document.getElementById('login-screen').classList.add('hidden');
     applySessionUI();
+    // Load data in background after restoring session
+    loadAllData().then(()=>{ refreshHome(); }).catch(()=>{});
   }
-
-  // Credenciais fixas — carrega direto
-  await loadAllData();
+  // If no session → stay on login screen, do NOT load data yet
   refreshHome();
 });
 
@@ -2956,270 +2959,168 @@ function exportReportPDF(){
 
 document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }); });
 
-// ══════════════════════════════════════════
-// ══════════════════════════════════════════
-// CÂMERA OCR — Leitura de texto (Nº Bobina)
-// ══════════════════════════════════════════
-let scannerTarget    = null;
-let scannerStream    = null;
-let selectedDeviceId = null;
-let torchOn          = false;
-let tesseractWorker  = null;
-let ocrReady         = false;
-
-// Pré-carrega o Tesseract em background assim que a página carrega
-async function initTesseract(){
-  try{
-    tesseractWorker = await Tesseract.createWorker('eng', 1, {
-      logger: ()=>{} // silencia logs
-    });
-    // Configura para alfanumérico — padrão de Nº de bobina
-    await tesseractWorker.setParameters({
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.',
-      preserve_interword_spaces: '0',
-    });
-    ocrReady = true;
-  }catch(e){
-    console.warn('Tesseract não carregou:', e);
-  }
-}
-
-// Inicia carregamento em background
-setTimeout(initTesseract, 1000);
-
-async function openScanner(px){
-  scannerTarget = px;
-  document.getElementById('scanner-modal').classList.add('open');
-
-  // Reset UI
-  document.getElementById('scanner-result').classList.remove('show');
-  document.getElementById('scanner-result').textContent = '';
-  document.getElementById('scanner-manual').value = '';
-  document.getElementById('scanner-ocr-result').style.display = 'none';
-  document.getElementById('scanner-ocr-text').value = '';
-  document.getElementById('scanner-canvas').style.display = 'none';
-  document.getElementById('scanner-box-live').style.display = '';
-  document.getElementById('btn-capture').style.display = '';
-  document.getElementById('btn-retry').style.display = 'none';
-  document.getElementById('scanner-status').textContent = 'Iniciando câmera...';
-  torchOn = false;
-
-  await startScanner();
-
-  // Se Tesseract ainda não carregou, inicia agora
-  if(!ocrReady) initTesseract();
-}
-
-async function startScanner(){
-  stopScannerStream();
-  const statusEl = document.getElementById('scanner-status');
-  try{
-    const constraints = {
-      video: selectedDeviceId
-        ? { deviceId:{exact:selectedDeviceId}, width:{ideal:1920}, height:{ideal:1080} }
-        : { facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080} }
-    };
-    scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
-    const videoEl = document.getElementById('scanner-video');
-    videoEl.srcObject = scannerStream;
-    videoEl.setAttribute('playsinline','true');
-    await videoEl.play();
-
-    // Lista câmeras após obter permissão
-    await populateCamSelect();
-
-    document.getElementById('btn-torch').style.display =
-      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? '' : 'none';
-
-    statusEl.textContent = ocrReady
-      ? '✓ Pronto — enquadre o número e pressione CAPTURAR'
-      : 'Carregando leitor... aguarde um momento';
-
-    // Atualiza status quando Tesseract terminar de carregar
-    if(!ocrReady){
-      const poll = setInterval(()=>{
-        if(ocrReady){
-          clearInterval(poll);
-          document.getElementById('scanner-status').textContent =
-            '✓ Pronto — enquadre o número e pressione CAPTURAR';
-        }
-      }, 500);
-    }
-
-  }catch(err){
-    if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError'){
-      statusEl.textContent='⚠ Permissão negada. Use a entrada manual abaixo.';
-    } else if(err.name==='NotFoundError'){
-      statusEl.textContent='⚠ Nenhuma câmera encontrada. Use a entrada manual.';
-    } else {
-      statusEl.textContent='⚠ '+err.message+' — use a entrada manual.';
-    }
-  }
-}
-
-async function populateCamSelect(){
-  try{
-    const devs = await navigator.mediaDevices.enumerateDevices();
-    const cams  = devs.filter(d=>d.kind==='videoinput');
-    const sel   = document.getElementById('scanner-cam-select');
-    if(cams.length>1){
-      sel.innerHTML=cams.map((d,i)=>`<option value="${d.deviceId}">${d.label||'Câmera '+(i+1)}</option>`).join('');
-      sel.style.display='';
-      if(selectedDeviceId) sel.value=selectedDeviceId;
-    } else { sel.style.display='none'; }
-  }catch(e){}
-}
-
-// ── CAPTURA E OCR ──────────────────────────────────────────────
-async function captureOCR(){
-  const videoEl  = document.getElementById('scanner-video');
-  const canvas   = document.getElementById('scanner-canvas');
-  const statusEl = document.getElementById('scanner-status');
-
-  if(!videoEl.videoWidth){
-    statusEl.textContent = '⚠ Câmera ainda não pronta. Aguarde.';
-    return;
-  }
-
-  // Congela o vídeo e mostra o frame capturado
-  const W = videoEl.videoWidth;
-  const H = videoEl.videoHeight;
-  canvas.width  = W;
-  canvas.height = H;
-  const ctx = canvas.getContext('2d');
-  ctx.drawImage(videoEl, 0, 0, W, H);
-
-  // Processamento para melhorar OCR:
-  // 1. Aumenta contraste
-  // 2. Converte para escala de cinza
-  const imgData = ctx.getImageData(0, 0, W, H);
-  const data    = imgData.data;
-  for(let i=0; i<data.length; i+=4){
-    // Luminância
-    const lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
-    // Threshold binarização: claro = branco, escuro = preto
-    const bin = lum > 128 ? 255 : 0;
-    data[i] = data[i+1] = data[i+2] = bin;
-  }
-  ctx.putImageData(imgData, 0, 0);
-
-  // Mostra canvas, esconde vídeo
-  document.getElementById('scanner-box-live').style.display = 'none';
-  canvas.style.display = 'block';
-  document.getElementById('btn-capture').style.display = 'none';
-  document.getElementById('btn-retry').style.display = '';
-  document.getElementById('scanner-ocr-result').style.display = 'none';
-
-  if(!ocrReady || !tesseractWorker){
-    statusEl.textContent = '⚠ Leitor OCR não carregado. Digite manualmente.';
-    return;
-  }
-
-  statusEl.textContent = '🔍 Lendo texto... aguarde';
-  document.getElementById('btn-capture').disabled = true;
-
-  try{
-    const { data: { text } } = await tesseractWorker.recognize(canvas);
-
-    // Limpa o texto: remove espaços, quebras, caracteres inválidos
-    let cleaned = text
-      .toUpperCase()
-      .replace(/[^A-Z0-9\-\.]/g, ' ')
-      .split(/\s+/)
-      .filter(t => t.length >= 3)  // descarta tokens muito curtos
-      .join(' ')
-      .trim();
-
-    // Tenta extrair o token mais parecido com Nº de bobina
-    // (palavra com letras + números, mín 4 chars)
-    const tokens = cleaned.split(' ');
-    const best = tokens
-      .filter(t => /[A-Z]/.test(t) && /[0-9]/.test(t) && t.length >= 4)
-      .sort((a,b) => b.length - a.length)[0]
-      || tokens.sort((a,b) => b.length - a.length)[0]
-      || cleaned;
-
-    document.getElementById('scanner-ocr-text').value = best;
-    document.getElementById('scanner-ocr-result').style.display = '';
-    statusEl.textContent = `✓ Texto reconhecido — confirme ou edite se necessário`;
-
-  }catch(err){
-    statusEl.textContent = '⚠ Falha na leitura. Tente novamente ou use a entrada manual.';
-  }
-
-  document.getElementById('btn-capture').disabled = false;
-}
-
-function retryCapture(){
-  // Volta para o vídeo ao vivo
-  document.getElementById('scanner-canvas').style.display = 'none';
-  document.getElementById('scanner-box-live').style.display = '';
-  document.getElementById('btn-capture').style.display = '';
-  document.getElementById('btn-retry').style.display = 'none';
-  document.getElementById('scanner-ocr-result').style.display = 'none';
-  document.getElementById('scanner-status').textContent =
-    '✓ Enquadre o número e pressione CAPTURAR';
-}
-
-function confirmOCR(){
-  const val = document.getElementById('scanner-ocr-text').value.trim().toUpperCase();
-  if(!val){ showToast('Edite o campo com o Nº da bobina.','#e05c1a','#fff'); return; }
-  onScanSuccess(val);
-}
-
-function confirmScanManual(){
-  const val = document.getElementById('scanner-manual').value.trim().toUpperCase();
-  if(!val){ showToast('Digite um código.','#e05c1a','#fff'); return; }
-  onScanSuccess(val);
-}
-
-function onScanSuccess(code){
-  document.getElementById('scanner-result').textContent='✓ '+code;
-  document.getElementById('scanner-result').classList.add('show');
-  if(navigator.vibrate) navigator.vibrate([80,40,80]);
-  setTimeout(()=>{
-    const el=document.getElementById(scannerTarget+'-coil');
-    if(el){ el.value=code; checkCoilInput(scannerTarget); }
-    closeScanner();
-    showToast('✓ Nº lido: '+code,'#22c55e','#000');
-  },600);
-}
-
-async function switchCamera(){
-  selectedDeviceId=document.getElementById('scanner-cam-select').value;
-  retryCapture();
-  await startScanner();
-}
-
-function stopScannerStream(){
-  const videoEl=document.getElementById('scanner-video');
-  if(videoEl){
-    if(videoEl.srcObject){ videoEl.srcObject.getTracks().forEach(t=>t.stop()); videoEl.srcObject=null; }
-    try{ videoEl.pause(); }catch(e){}
-  }
-  scannerStream=null;
-}
-
-function closeScanner(){
-  stopScannerStream();
-  document.getElementById('scanner-modal').classList.remove('open');
-  document.getElementById('scanner-result').classList.remove('show');
-  scannerTarget=null;
-}
-
-async function toggleTorch(){
-  if(!scannerStream) return;
-  const track=scannerStream.getVideoTracks()[0]; if(!track) return;
-  try{
-    torchOn=!torchOn;
-    await track.applyConstraints({advanced:[{torch:torchOn}]});
-    document.getElementById('btn-torch').textContent=torchOn?'🔦 ON':'🔦 LANTERNA';
-  }catch(e){ showToast('Lanterna não suportada.','#f59e0b','#000'); torchOn=false; }
-}
-
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&document.getElementById('scanner-modal').classList.contains('open')) closeScanner();
-});
 </script>
+
+
+<!-- ══════════════════ LOADING OVERLAY ══════════════════ -->
+<div id="loading-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9998;display:none;align-items:center;justify-content:center;flex-direction:column;gap:1.2rem;">
+  <div style="width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;"></div>
+  <div id="loading-msg" style="color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:1px;text-align:center;max-width:300px;padding:0 1rem;"></div>
+</div>
+<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+<!-- ══════════════════ API SETUP MODAL ══════════════════ -->
+<div class="modal-overlay" id="modal-api-setup">
+  <div class="modal" style="max-width:620px;">
+    <div class="modal-title">⚙ CONFIGURAR SUPABASE</div>
+    <div class="modal-body" style="margin-bottom:0;">
+      <p style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:1.2rem;">Configure o banco de dados <strong style="color:var(--success)">Supabase</strong> — gratuito, rápido e sem limite de linhas.</p>
+      <div style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.2rem;">
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 1 — Criar conta gratuita</div>
+          <p style="font-size:14px;color:var(--text);">Acesse <strong style="color:var(--accent)">supabase.com</strong>, clique em <strong>Start for free</strong> e crie uma conta com Google ou e-mail.</p>
+        </div>
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 2 — Criar projeto</div>
+          <p style="font-size:14px;color:var(--text);">Clique em <strong>New Project</strong>, dê um nome (ex: <em>steelport</em>), escolha uma senha forte e selecione a região <strong>South America (São Paulo)</strong>.</p>
+        </div>
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 3 — Criar as tabelas via SQL</div>
+          <p style="font-size:14px;color:var(--text);">No menu lateral, clique em <strong>SQL Editor</strong>, cole o SQL abaixo e clique <strong>Run</strong>:</p>
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-size:11px;color:var(--success);overflow-x:auto;margin-top:.5rem;line-height:1.6;">create table if not exists coilsdb (coil text primary key, armazem text, bl text, cliente text, navio text, viagem text, produto text, pesob text, pesol text);
+create table if not exists records (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
+create table if not exists expedicoes (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
+create table if not exists users (id text primary key, nome text, "user" text, pass text, role text, perms text, email text);
+create table if not exists navios (nome text primary key);
+alter table coilsdb enable row level security;
+alter table records enable row level security;
+alter table expedicoes enable row level security;
+alter table users enable row level security;
+alter table navios enable row level security;
+create policy "allow all" on coilsdb for all using (true) with check (true);
+create policy "allow all" on records for all using (true) with check (true);
+create policy "allow all" on expedicoes for all using (true) with check (true);
+create policy "allow all" on users for all using (true) with check (true);
+create policy "allow all" on navios for all using (true) with check (true);
+-- Se as tabelas já existem, rode estas linhas para adicionar as novas colunas:
+alter table records add column if not exists "registradoPor" text;
+alter table expedicoes add column if not exists "registradoPor" text;
+alter table users add column if not exists email text;</pre>
+        </div>
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 4 — Copiar credenciais</div>
+          <p style="font-size:14px;color:var(--text);">Vá em <strong>Project Settings → API</strong>. Copie a <strong>Project URL</strong> e a chave <strong>anon public</strong>.</p>
+        </div>
+
+        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 5 — Cole as credenciais abaixo</div>
+          <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem;">
+            <input type="text" id="api-url-input" placeholder="https://xxxxxxxxxxxx.supabase.co"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%;">
+            <input type="text" id="api-key-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (chave anon)"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%;">
+            <button class="btn btn-primary" onclick="saveAndConnect()" style="width:100%;">✓ SALVAR E CONECTAR</button>
+          </div>
+        </div>
+
+      </div>
+      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-align:center;">
+        Plano gratuito Supabase: 500 MB · 50.000 linhas · sem limite de leitura. Dados compartilhados entre todos os usuários em tempo real.
+      </div>
+    </div>
+    <div class="modal-actions" style="margin-top:1.5rem;">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-api-setup')">FECHAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ IMPORTAR MOVIMENTAÇÕES ════════════════ -->
+<div class="modal-overlay" id="modal-import-mov">
+  <div class="modal" style="max-width:780px;">
+    <div class="modal-title" id="import-mov-title">↑ IMPORTAR REGISTROS VIA EXCEL</div>
+    <div class="modal-body" style="margin-bottom:1.2rem;">
+
+      <!-- Colunas esperadas -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);line-height:1.8;">
+        📌 Colunas esperadas na planilha:<br>
+        <span id="import-mov-cols" style="color:var(--accent);"></span>
+      </div>
+
+      <!-- Drop zone -->
+      <div id="drop-zone-mov"
+        style="border:2px dashed var(--border);border-radius:10px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border .2s,background .2s;margin-bottom:1rem;"
+        ondragover="dzOverMov(event)" ondragleave="dzLeaveMov()" ondrop="dzDropMov(event)"
+        onclick="document.getElementById('xls-input-mov').click()">
+        <div style="font-size:36px;margin-bottom:.5rem;">📊</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);">Arraste o arquivo Excel aqui</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:.3rem;">ou clique para selecionar — .xlsx / .xls</div>
+        <input type="file" id="xls-input-mov" accept=".xlsx,.xls" style="display:none;" onchange="handleXLSMovFile(this.files[0])">
+      </div>
+
+      <!-- Preview -->
+      <div id="import-mov-preview" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
+          <span id="import-mov-preview-title" style="font-size:13px;font-weight:700;color:var(--success);"></span>
+          <button class="btn btn-secondary btn-sm" onclick="resetImportMov()">✕ LIMPAR</button>
+        </div>
+        <div style="overflow-x:auto;max-height:260px;border:1px solid var(--border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;">
+            <thead id="import-mov-thead" style="position:sticky;top:0;background:var(--surface);"></thead>
+            <tbody id="import-mov-tbody"></tbody>
+          </table>
+        </div>
+        <div id="import-mov-warn" style="display:none;margin-top:.75rem;padding:.6rem 1rem;background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.3);border-radius:6px;font-size:12px;color:var(--accent);"></div>
+      </div>
+
+      <!-- Mode -->
+      <div id="import-mov-mode-row" style="display:none;margin-top:1rem;">
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;">MODO DE IMPORTAÇÃO</div>
+        <div style="display:flex;gap:1.5rem;">
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+            <input type="radio" name="imp-mov-mode" value="merge" checked style="accent-color:var(--accent);width:16px;height:16px;"> MESCLAR (mantém existentes)
+          </label>
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+            <input type="radio" name="imp-mov-mode" value="replace" style="accent-color:var(--danger);width:16px;height:16px;"> SUBSTITUIR TUDO
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div style="border-top:1px solid var(--border);padding-top:1.2rem;display:flex;justify-content:space-between;gap:1rem;">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-import-mov');resetImportMov();">CANCELAR</button>
+      <button class="btn btn-primary" id="btn-confirm-import-mov" style="display:none;" onclick="confirmImportMov()">✓ IMPORTAR REGISTROS</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ ESQUECI MINHA SENHA ════════════════ -->
+<div class="modal-overlay" id="modal-forgot">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-title">🔑 REDEFINIR SENHA</div>
+    <div class="modal-body" style="margin-bottom:1.2rem;">
+      <p style="color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:1.2rem;">
+        Informe seu <strong>usuário</strong> ou <strong>e-mail</strong> cadastrado. A nova senha temporária será exibida aqui e enviada por e-mail (se configurado).
+      </p>
+      <div class="login-field" style="margin-bottom:1rem;">
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Usuário ou E-mail</label>
+        <input type="text" id="forgot-input" placeholder="Digite seu usuário ou e-mail"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;"
+          onkeydown="if(event.key==='Enter') doForgotPass()">
+      </div>
+      <!-- Resultado -->
+      <div id="forgot-result" style="display:none;padding:1rem;border-radius:8px;margin-top:.5rem;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-forgot');document.getElementById('forgot-input').value='';document.getElementById('forgot-result').style.display='none';">CANCELAR</button>
+      <button class="btn btn-primary" onclick="doForgotPass()">ENVIAR NOVA SENHA</button>
+    </div>
+  </div>
+</div>
+
+
 </body>
 </html>
