@@ -6,7 +6,7 @@
 <title>4SIDES · STEELPORT — Gestão de Bobinas</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://unpkg.com/@zxing/library@0.19.1/umd/index.min.js"></script>
+<script src='https://unpkg.com/tesseract.js@5/dist/tesseract.min.js'></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
@@ -278,7 +278,14 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 @media(max-width:900px){.rpt-filters{grid-template-columns:1fr 1fr;}.rpt-summary-grid{grid-template-columns:1fr 1fr;}}
 .empty-icon{font-size:40px;display:block;margin-bottom:.75rem;opacity:.3;}
 
-/* ── CAMERA SCANNER ── */
+/* ── SELECTION BAR ── */
+.sel-bar{display:none;align-items:center;gap:1rem;padding:.75rem 1.5rem;background:rgba(224,92,26,.08);border:1px solid rgba(224,92,26,.25);border-radius:8px;margin-bottom:1rem;flex-wrap:wrap;}
+.sel-bar.show{display:flex;}
+.sel-bar-count{font-weight:700;color:var(--danger);font-family:'JetBrains Mono',monospace;font-size:13px;}
+.sel-bar-info{color:var(--muted);font-size:13px;flex:1;}
+.cb-row{width:16px;height:16px;accent-color:var(--danger);cursor:pointer;}
+th.cb-th{width:36px;padding-left:1rem !important;}
+tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 .btn-scan{background:transparent;border:1px solid var(--border);color:var(--muted);padding:0 .75rem;border-radius:6px;cursor:pointer;transition:all .2s;font-size:18px;line-height:1;flex-shrink:0;height:100%;display:flex;align-items:center;}
 .btn-scan:hover{border-color:var(--accent);color:var(--accent);background:rgba(240,165,0,.08);}
 .coil-input-wrap{display:flex;gap:.5rem;align-items:stretch;width:100%;}
@@ -531,13 +538,22 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         <div class="table-header">
           <span class="table-title">REGISTROS DE DESCARGA &nbsp;<span id="d-count" style="color:var(--accent);font-size:18px;font-weight:900;">0</span></span>
         </div>
+        <!-- BARRA DE SELEÇÃO -->
+        <div class="sel-bar" id="d-sel-bar">
+          <span class="sel-bar-count" id="d-sel-count">0 selecionados</span>
+          <span class="sel-bar-info">dos registros visíveis com os filtros aplicados</span>
+          <button class="btn btn-secondary btn-sm" onclick="selectAllMov('d')">☐ TODOS VISÍVEIS</button>
+          <button class="btn btn-danger btn-sm" id="d-btn-del-sel" style="display:none;" onclick="deleteSelectedMov('d')">🗑 EXCLUIR SELECIONADOS</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearSelMov('d')">✕ CANCELAR</button>
+        </div>
         <div style="overflow-x:auto;">
           <table>
             <thead><tr>
+              <th class="cb-th"><input type="checkbox" class="cb-row" id="d-cb-all" onchange="toggleAllMov('d',this.checked)" title="Selecionar todos"></th>
               <th>COIL NUMBER</th><th>DATA</th><th>PERÍODO</th><th>BL</th><th>NAVIO</th>
               <th>VEÍCULO</th><th>MOTORISTA</th><th>CLIENTE</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>REGISTRADO POR</th><th>AÇÕES</th>
             </tr></thead>
-            <tbody id="d-table-body"><tr><td colspan="12"><div class="empty-state"><span class="empty-icon">📦</span>Nenhum registro.</div></td></tr></tbody>
+            <tbody id="d-table-body"><tr><td colspan="13"><div class="empty-state"><span class="empty-icon">📦</span>Nenhum registro.</div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -642,13 +658,22 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
         <div class="table-header">
           <span class="table-title">REGISTROS DE EXPEDIÇÃO &nbsp;<span id="e-count" style="color:var(--exp);font-size:18px;font-weight:900;">0</span></span>
         </div>
+        <!-- BARRA DE SELEÇÃO -->
+        <div class="sel-bar" id="e-sel-bar">
+          <span class="sel-bar-count" id="e-sel-count">0 selecionados</span>
+          <span class="sel-bar-info">dos registros visíveis com os filtros aplicados</span>
+          <button class="btn btn-secondary btn-sm" onclick="selectAllMov('e')">☐ TODOS VISÍVEIS</button>
+          <button class="btn btn-danger btn-sm" id="e-btn-del-sel" style="display:none;" onclick="deleteSelectedMov('e')">🗑 EXCLUIR SELECIONADOS</button>
+          <button class="btn btn-secondary btn-sm" onclick="clearSelMov('e')">✕ CANCELAR</button>
+        </div>
         <div style="overflow-x:auto;">
           <table>
             <thead><tr>
+              <th class="cb-th"><input type="checkbox" class="cb-row" id="e-cb-all" onchange="toggleAllMov('e',this.checked)" title="Selecionar todos"></th>
               <th>COIL NUMBER</th><th>DATA</th><th>PERÍODO</th><th>BL</th><th>NAVIO</th>
               <th>VEÍCULO</th><th>MOTORISTA</th><th>CLIENTE</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>REGISTRADO POR</th><th>AÇÕES</th>
             </tr></thead>
-            <tbody id="e-table-body"><tr><td colspan="12"><div class="empty-state"><span class="empty-icon">📤</span>Nenhum registro.</div></td></tr></tbody>
+            <tbody id="e-table-body"><tr><td colspan="13"><div class="empty-state"><span class="empty-icon">📤</span>Nenhum registro.</div></td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1809,8 +1834,13 @@ function renderTable(px){
   const tbody = document.getElementById(px+'-table-body');
   const data  = getFiltered(px);
   document.getElementById(px+'-count').textContent=data.length;
-  if(!data.length){ tbody.innerHTML=`<tr><td colspan="13"><div class="empty-state"><span class="empty-icon">${isExp?'📤':'📦'}</span>Nenhum registro encontrado.</div></td></tr>`; return; }
-  tbody.innerHTML=data.map(r=>`<tr>
+  if(!data.length){
+    tbody.innerHTML=`<tr><td colspan="14"><div class="empty-state"><span class="empty-icon">${isExp?'📤':'📦'}</span>Nenhum registro encontrado.</div></td></tr>`;
+    updateSelBar(px);
+    return;
+  }
+  tbody.innerHTML=data.map(r=>`<tr data-id="${r.id}" data-px="${px}">
+    <td style="padding:.5rem 1rem;"><input type="checkbox" class="cb-row mov-cb" data-id="${r.id}" data-px="${px}" onchange="onMovCbChange('${px}')"></td>
     <td><span class="coil-badge${isExp?' exp':''}">${r.coil}</span></td>
     <td>${formatDate(r.data)}</td>
     <td>${r.periodo}</td>
@@ -1827,6 +1857,9 @@ function renderTable(px){
       <button class="btn btn-info btn-sm" onclick="editMovimento(${r.id},'${px}')">✏</button>
       <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
     </div></td></tr>`).join('');
+
+  // Restore checked state if any
+  updateSelBar(px);
 }
 
 function renderStats(px){
@@ -1979,17 +2012,109 @@ function clearCoilForm(){ ['db-coil','db-armazem','db-bl','db-cliente','db-navio
 // ══════════════════════════════════════════
 // DELETE
 // ══════════════════════════════════════════
+// ══════════════════════════════════════════
+// SELEÇÃO EM LOTE — DESCARGA / EXPEDIÇÃO
+// ══════════════════════════════════════════
+function getCheckedMov(px){
+  return [...document.querySelectorAll(`.mov-cb[data-px="${px}"]:checked`)]
+    .map(cb => Number(cb.dataset.id));
+}
+
+function onMovCbChange(px){
+  updateSelBar(px);
+  // Sync header checkbox state
+  const all  = document.querySelectorAll(`.mov-cb[data-px="${px}"]`);
+  const chk  = document.querySelectorAll(`.mov-cb[data-px="${px}"]:checked`);
+  const cbAll = document.getElementById(px+'-cb-all');
+  if(cbAll){
+    cbAll.indeterminate = chk.length > 0 && chk.length < all.length;
+    cbAll.checked = chk.length === all.length && all.length > 0;
+  }
+  // Highlight selected rows
+  all.forEach(cb=>{
+    const row = cb.closest('tr');
+    if(row) row.classList.toggle('row-selected', cb.checked);
+  });
+}
+
+function updateSelBar(px){
+  const ids  = getCheckedMov(px);
+  const bar  = document.getElementById(px+'-sel-bar');
+  const cnt  = document.getElementById(px+'-sel-count');
+  const btn  = document.getElementById(px+'-btn-del-sel');
+  if(!bar) return;
+  if(ids.length > 0){
+    bar.classList.add('show');
+    cnt.textContent = `${ids.length} selecionado${ids.length>1?'s':''}`;
+    btn.style.display = '';
+    btn.textContent = `🗑 EXCLUIR ${ids.length} REGISTRO${ids.length>1?'S':''}`;
+  } else {
+    bar.classList.remove('show');
+    if(btn) btn.style.display = 'none';
+  }
+}
+
+function toggleAllMov(px, checked){
+  document.querySelectorAll(`.mov-cb[data-px="${px}"]`).forEach(cb=>{
+    cb.checked = checked;
+    const row = cb.closest('tr');
+    if(row) row.classList.toggle('row-selected', checked);
+  });
+  updateSelBar(px);
+}
+
+function selectAllMov(px){
+  // Select ALL currently visible (filtered) rows
+  const cbs = document.querySelectorAll(`.mov-cb[data-px="${px}"]`);
+  const allChecked = [...cbs].every(cb=>cb.checked);
+  cbs.forEach(cb=>{ cb.checked=!allChecked; cb.closest('tr')?.classList.toggle('row-selected',!allChecked); });
+  const cbAll=document.getElementById(px+'-cb-all');
+  if(cbAll) cbAll.checked=!allChecked;
+  updateSelBar(px);
+}
+
+function clearSelMov(px){
+  toggleAllMov(px, false);
+  const cbAll=document.getElementById(px+'-cb-all');
+  if(cbAll){ cbAll.checked=false; cbAll.indeterminate=false; }
+}
+
+function deleteSelectedMov(px){
+  const ids = getCheckedMov(px);
+  if(!ids.length) return;
+  const src  = px==='e' ? expedicoes : records;
+  const coils= ids.map(id=>src.find(r=>r.id===id)?.coil).filter(Boolean).join(', ').substring(0,80);
+  deleteTarget = { ids, px };
+  deleteType   = 'movs-sel';
+  document.getElementById('modal-delete-body').innerHTML =
+    `Deseja excluir <strong>${ids.length} registro(s)</strong> selecionados?<br>
+     <span style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace">${coils}${ids.length>3?'...':''}</span>`;
+  document.getElementById('modal-delete').classList.add('open');
+}
+
 function deleteMovimento(id,px,coil){ deleteTarget={id,px}; deleteType='mov'; document.getElementById('modal-delete-body').innerHTML=`Deseja excluir o registro da bobina <strong>${coil}</strong>?`; document.getElementById('modal-delete').classList.add('open'); }
 function deleteCoilDB(idx,coil){ deleteTarget={idx,coil}; deleteType='coil'; document.getElementById('modal-delete-body').innerHTML=`Deseja excluir a bobina <strong>${coil}</strong> do banco?`; document.getElementById('modal-delete').classList.add('open'); }
 
 async function confirmDelete(){
-  closeModal('modal-delete');
   try {
     if(deleteType==='mov'){
       const src=deleteTarget.px==='e'?expedicoes:records;
       const i=src.findIndex(r=>r.id===deleteTarget.id);
       if(i>=0) src.splice(i,1);
       await api({ action: deleteTarget.px==='e'?'deleteExpedicao':'deleteRecord', id: deleteTarget.id });
+    }
+    else if(deleteType==='movs-sel'){
+      // Bulk delete selected movimentos
+      const { ids, px } = deleteTarget;
+      const src   = px==='e' ? expedicoes : records;
+      const table = px==='e' ? 'expedicoes' : 'records';
+      // Remove from local array
+      ids.forEach(id=>{ const i=src.findIndex(r=>r.id===id); if(i>=0) src.splice(i,1); });
+      // Delete from Supabase: send ids as filter
+      // Supabase supports ?id=in.(1,2,3)
+      const idList = ids.join(',');
+      await supa(`${table}?id=in.(${idList})`, { method:'DELETE', headers:{'Prefer':'return=minimal'} });
+      clearSelMov(px);
     }
     else if(deleteType==='coil'){
       coilsDB.splice(deleteTarget.idx,1);
@@ -2243,19 +2368,19 @@ let importMovTipo = 'descarga';
 
 // Colunas do template (ordem exacta)
 const MOV_COLS = [
-  'Nº Bobina (Coil Number)',
-  'Data (AAAA-MM-DD)',
-  'Período',
+  'Nº Bobina (Coil Number) *',
+  'Data (AAAA-MM-DD) *',
+  'Período *',
   'Veículo / Placa',
   'Motorista',
-  'BL',
-  'Navio',
-  'Cliente',
-  'Viagem',
-  'Produto',
-  'Peso Bruto (kg)',
-  'Peso Líquido (kg)',
-  'Armazém',
+  'BL (auto)',
+  'Navio (auto)',
+  'Cliente (auto)',
+  'Viagem (auto)',
+  'Produto (auto)',
+  'Peso Bruto kg (auto)',
+  'Peso Líquido kg (auto)',
+  'Armazém (auto)',
   'Observações'
 ];
 
@@ -2299,19 +2424,22 @@ function handleXLSMovFile(file){
       const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
       if(raw.length<2){ showToast('Planilha vazia ou sem dados.','#e05c1a','#fff'); return; }
 
-      // Detect if first row is header and skip it
+      // Detect header row
       const firstRow = raw[0].map(c=>String(c).trim());
       const hasHeader = firstRow.some(c=>/bobina|coil|data|período|navio|bl/i.test(c));
       const dataRows  = hasHeader ? raw.slice(1) : raw;
 
-      // Parse each row
+      // Build coilsDB lookup map for fast access
+      const dbMap = {};
+      coilsDB.forEach(c=>{ if(c.coil) dbMap[c.coil.toUpperCase()] = c; });
+
+      // Parse each row + autofill from coilsDB
       importMovRows = dataRows
         .filter(r=>r.some(c=>c!==''))
         .map((r,i)=>{
-          // Normalise date: accepts DD/MM/AAAA or AAAA-MM-DD or Excel serial
+          // Normalise date
           let data = String(r[1]||'').trim();
           if(/^\d{5}$/.test(data)){
-            // Excel date serial
             const d=new Date(Date.UTC(1899,11,30)+(Number(data))*86400000);
             data=d.toISOString().split('T')[0];
           } else if(/^\d{2}\/\d{2}\/\d{4}$/.test(data)){
@@ -2319,74 +2447,104 @@ function handleXLSMovFile(file){
             data=`${yyyy}-${mm}-${dd}`;
           }
 
-          // Período: accepts 07x13, 13x19, etc — fallback first valid
           let periodo=String(r[2]||'').trim();
           if(!MOV_PERIODOS.includes(periodo)) periodo='';
 
+          const coil = String(r[0]||'').trim().toUpperCase();
+
+          // Values from spreadsheet (may be empty)
+          let bl       = String(r[5]||'').trim();
+          let navio    = String(r[6]||'').trim();
+          let cliente  = String(r[7]||'').trim();
+          let viagem   = String(r[8]||'').trim();
+          let produto  = String(r[9]||'').trim();
+          let pesob    = r[10]!==''?String(r[10]).replace(',','.'):'';
+          let pesol    = r[11]!==''?String(r[11]).replace(',','.'):'';
+          let armazem  = String(r[12]||'').trim();
+
+          // ── AUTOFILL FROM coilsDB ──────────────────────────────
+          const db = dbMap[coil];
+          const autoFilled = {}; // tracks which fields were auto-filled
+          if(db){
+            if(!bl      && db.bl)      { bl      = db.bl;      autoFilled.bl      = true; }
+            if(!navio   && db.navio)   { navio   = db.navio;   autoFilled.navio   = true; }
+            if(!cliente && db.cliente) { cliente = db.cliente; autoFilled.cliente = true; }
+            if(!viagem  && db.viagem)  { viagem  = db.viagem;  autoFilled.viagem  = true; }
+            if(!produto && db.produto) { produto = db.produto; autoFilled.produto = true; }
+            if(!pesob   && db.pesob)   { pesob   = db.pesob;   autoFilled.pesob   = true; }
+            if(!pesol   && db.pesol)   { pesol   = db.pesol;   autoFilled.pesol   = true; }
+            if(!armazem && db.armazem) { armazem = db.armazem; autoFilled.armazem = true; }
+          }
+
           return {
             id:       Date.now()+i,
-            coil:     String(r[0]||'').trim().toUpperCase(),
-            data,
-            periodo,
+            coil, data, periodo,
             veiculo:  String(r[3]||'').trim().toUpperCase(),
             motorista:String(r[4]||'').trim(),
-            bl:       String(r[5]||'').trim(),
-            navio:    String(r[6]||'').trim(),
-            cliente:  String(r[7]||'').trim(),
-            viagem:   String(r[8]||'').trim(),
-            produto:  String(r[9]||'').trim(),
-            pesob:    r[10]!==''?String(r[10]).replace(',','.'):'',
-            pesol:    r[11]!==''?String(r[11]).replace(',','.'):'',
-            armazem:  String(r[12]||'').trim(),
+            bl, navio, cliente, viagem, produto, pesob, pesol, armazem,
             obs:      String(r[13]||'').trim(),
             registradoEm:  new Date().toISOString(),
-            registradoPor: session?session.nome:'Importação'
+            registradoPor: session?session.nome:'Importação',
+            _dbFound:   !!db,
+            _autoFilled: autoFilled
           };
         })
         .filter(r=>r.coil);
 
       if(!importMovRows.length){ showToast('Nenhum registro válido encontrado.','#e05c1a','#fff'); return; }
 
-      // Validate: detect issues
+      // Stats
       const src = importMovTipo==='expedicao' ? expedicoes : records;
+      const comDB      = importMovRows.filter(r=>r._dbFound).length;
+      const semDB      = importMovRows.filter(r=>!r._dbFound).length;
       const existentes = importMovRows.filter(r=>src.find(x=>x.coil===r.coil)).length;
       const semData    = importMovRows.filter(r=>!r.data).length;
       const semPeriodo = importMovRows.filter(r=>!r.periodo).length;
 
-      // Show preview
+      // Preview
       document.getElementById('import-mov-preview').style.display='';
       document.getElementById('import-mov-preview-title').textContent=
-        `✓ ${importMovRows.length} registros encontrados — ${file.name}`;
+        `✓ ${importMovRows.length} registros — ${file.name} · ${comDB} com dados do banco`;
 
-      // Header
-      const thCols=['COIL NUMBER','DATA','PERÍODO','VEÍCULO','MOTORISTA','BL','NAVIO','CLIENTE','P.BRUTO','P.LÍQUIDO'];
+      const thCols=['COIL','DATA','PER.','VEÍCULO','BL','NAVIO','CLIENTE','P.BRUTO','P.LÍQ.','BANCO'];
       document.getElementById('import-mov-thead').innerHTML=
-        `<tr>${thCols.map(h=>`<th style="padding:.4rem .6rem;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);background:var(--surface);text-align:left;">${h}</th>`).join('')}</tr>`;
+        `<tr>${thCols.map(h=>`<th style="padding:.4rem .6rem;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);background:var(--surface);text-align:left;white-space:nowrap">${h}</th>`).join('')}</tr>`;
 
-      // Body (max 10 rows)
+      // Helper: highlight auto-filled cells
+      const cell = (val, filled, emptyWarn=false) => {
+        const hasVal = val && val!=='—';
+        if(filled && hasVal)
+          return `<td style="padding:.35rem .5rem;font-size:11px;background:rgba(34,197,94,.08);color:var(--success);font-weight:600" title="Preenchido automaticamente pelo banco de dados">⚡ ${val}</td>`;
+        if(!hasVal && emptyWarn)
+          return `<td style="padding:.35rem .5rem;font-size:11px;color:var(--danger)">⚠ —</td>`;
+        return `<td style="padding:.35rem .5rem;font-size:11px">${val||'—'}</td>`;
+      };
+
       document.getElementById('import-mov-tbody').innerHTML=
-        importMovRows.slice(0,10).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-          <td style="padding:.35rem .6rem;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent)">${r.coil}</td>
-          <td style="padding:.35rem .6rem;font-size:12px">${r.data||'<span style="color:var(--danger)">⚠ sem data</span>'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px">${r.periodo||'<span style="color:var(--warning)">—</span>'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px;font-family:'JetBrains Mono',monospace">${r.veiculo||'—'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px">${r.motorista||'—'}</td>
-          <td style="padding:.35rem .6rem;font-size:11px;color:var(--muted)">${r.bl||'—'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px;font-weight:600">${r.navio||'—'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px">${r.cliente||'—'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px;font-weight:700">${r.pesob||'—'}</td>
-          <td style="padding:.35rem .6rem;font-size:12px;font-weight:700">${r.pesol||'—'}</td>
+        importMovRows.slice(0,12).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+          <td style="padding:.35rem .5rem;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);white-space:nowrap">${r.coil}</td>
+          <td style="padding:.35rem .5rem;font-size:11px">${r.data||'<span style="color:var(--danger)">⚠</span>'}</td>
+          <td style="padding:.35rem .5rem;font-size:11px">${r.periodo||'<span style="color:var(--warning)">—</span>'}</td>
+          <td style="padding:.35rem .5rem;font-size:11px;font-family:'JetBrains Mono',monospace">${r.veiculo||'—'}</td>
+          ${cell(r.bl,      r._autoFilled.bl)}
+          ${cell(r.navio,   r._autoFilled.navio)}
+          ${cell(r.cliente, r._autoFilled.cliente)}
+          ${cell(r.pesob,   r._autoFilled.pesob)}
+          ${cell(r.pesol,   r._autoFilled.pesol)}
+          <td style="padding:.35rem .5rem;font-size:11px;text-align:center">${r._dbFound?'<span style="color:var(--success)">✓</span>':'<span style="color:var(--warning)">—</span>'}</td>
         </tr>`).join('')+
-        (importMovRows.length>10?`<tr><td colspan="10" style="padding:.5rem;text-align:center;color:var(--muted);font-size:12px">... e mais ${importMovRows.length-10} registros</td></tr>`:'');
+        (importMovRows.length>12?`<tr><td colspan="10" style="padding:.5rem;text-align:center;color:var(--muted);font-size:12px">... e mais ${importMovRows.length-12} registros</td></tr>`:'');
 
-      // Warnings
+      // Warnings + autofill info
       const warns=[];
-      if(existentes>0) warns.push(`⚠ ${existentes} coil(s) já possuem registro — serão ignorados no modo MESCLAR ou substituídos no modo SUBSTITUIR.`);
+      if(comDB>0)      warns.push(`⚡ ${comDB} bobina(s) com dados preenchidos automaticamente pelo banco (destacadas em verde).`);
+      if(semDB>0)      warns.push(`ℹ ${semDB} coil(s) não encontrados no banco — campos BL, Navio, etc. não foram preenchidos.`);
+      if(existentes>0) warns.push(`⚠ ${existentes} coil(s) já possuem registro — ignorados no MESCLAR ou substituídos no SUBSTITUIR.`);
       if(semData>0)    warns.push(`⚠ ${semData} linha(s) sem data — verifique o formato (AAAA-MM-DD ou DD/MM/AAAA).`);
-      if(semPeriodo>0) warns.push(`⚠ ${semPeriodo} linha(s) sem período válido — será necessário editar após importar.`);
+      if(semPeriodo>0) warns.push(`⚠ ${semPeriodo} linha(s) sem período — edite após importar.`);
       const warnEl=document.getElementById('import-mov-warn');
-      if(warns.length){ warnEl.style.display=''; warnEl.innerHTML=warns.join('<br>'); }
-      else warnEl.style.display='none';
+      warnEl.style.display='';
+      warnEl.innerHTML=warns.join('<br>');
 
       document.getElementById('import-mov-mode-row').style.display='';
       document.getElementById('btn-confirm-import-mov').style.display='';
@@ -2432,7 +2590,7 @@ async function confirmImportMov(){
     // Sync to Supabase in bulk
     if(toInsert.length){
       const supaRows=toInsert.map(r=>{
-        const {registradoPor, registradoUser, editadoEm, editadoPor, ...safe}=r;
+        const {registradoPor, registradoUser, editadoEm, editadoPor, _dbFound, _autoFilled, ...safe}=r;
         return safe;
       });
       await supaUpsertBulk(table, supaRows, 'id', 100, (done,total)=>{
@@ -2460,41 +2618,12 @@ function downloadTemplateMov(tipo){
   // Header row
   const header = MOV_COLS;
 
-  // Example rows
-  const ex1=[
-    'BRZ-2024-00123',
-    '2024-03-15',
-    '07x13',
-    'ABC-1234',
-    'João Silva',
-    'MAEU2024001234',
-    'MSC GÜLSÜN',
-    'Usiminas',
-    '2024001W',
-    'Bobina HRC',
-    25300,
-    25000,
-    'ARM-01',
-    'Importação histórica'
-  ];
-  const ex2=[
-    'BRZ-2024-00124',
-    '2024-03-15',
-    '13x19',
-    'DEF-5678',
-    'Maria Santos',
-    'MAEU2024001235',
-    'MSC GÜLSÜN',
-    'Gerdau',
-    '2024001W',
-    'Bobina CRC',
-    18500,
-    18200,
-    'ARM-02',
-    ''
-  ];
+  // Example rows — only required + vehicle/driver filled; auto fields left blank
+  const ex1=['BRZ-2024-00123','2024-03-15','07x13','ABC-1234','João Silva','','','','','','','','','Importação histórica'];
+  const ex2=['BRZ-2024-00124','2024-03-15','13x19','DEF-5678','Maria Santos','','','','','','','','',''];
+  const ex3=['BRZ-2024-00125','15/03/2024','19x01','GHI-9012','Carlos Souza','','','','','','','','',''];
 
-  const wsData=[header,ex1,ex2];
+  const wsData=[header,ex1,ex2,ex3];
   const ws=XLSX.utils.aoa_to_sheet(wsData);
 
   // Column widths
@@ -2511,27 +2640,34 @@ function downloadTemplateMov(tipo){
   const instrData=[
     ['INSTRUÇÕES DE PREENCHIMENTO'],
     [''],
+    ['⚡ AUTOFILL AUTOMÁTICO: Campos marcados com (auto) são preenchidos automaticamente'],
+    ['   pelo sistema a partir do banco de dados, usando o Nº da Bobina como chave.'],
+    ['   Deixe-os em branco — o sistema preencherá: BL, Navio, Cliente, Viagem,'],
+    ['   Produto, Peso Bruto, Peso Líquido e Armazém.'],
+    [''],
     ['Coluna','Formato','Obrigatório','Exemplo'],
-    ['Nº Bobina (Coil Number)','Texto','Sim','BRZ-2024-00123'],
-    ['Data (AAAA-MM-DD)','AAAA-MM-DD ou DD/MM/AAAA','Sim','2024-03-15'],
-    ['Período','07x13 / 13x19 / 19x01 / 01x07','Sim','07x13'],
-    ['Veículo / Placa','ABC-1234 (padrão) ou ABC1D23 (Mercosul)','Não','ABC-1234'],
+    ['Nº Bobina (Coil Number)','Texto','✓ SIM','BRZ-2024-00123'],
+    ['Data','AAAA-MM-DD ou DD/MM/AAAA','✓ SIM','2024-03-15'],
+    ['Período','07x13 / 13x19 / 19x01 / 01x07','✓ SIM','07x13'],
+    ['Veículo / Placa','ABC-1234 ou ABC1D23','Não','ABC-1234'],
     ['Motorista','Texto livre','Não','João Silva'],
-    ['BL','Código do conhecimento de embarque','Não','MAEU2024001234'],
-    ['Navio','Nome do navio','Não','MSC GÜLSÜN'],
-    ['Cliente','Nome do cliente','Não','Usiminas'],
-    ['Viagem','Código da viagem','Não','2024001W'],
-    ['Produto','Descrição do produto','Não','Bobina HRC'],
-    ['Peso Bruto (kg)','Número inteiro em kg','Não','25300'],
-    ['Peso Líquido (kg)','Número inteiro em kg','Não','25000'],
-    ['Armazém','Código do armazém','Não','ARM-01'],
+    ['BL','⚡ Auto do banco','Não (auto)','MAEU2024001234'],
+    ['Navio','⚡ Auto do banco','Não (auto)','MSC GÜLSÜN'],
+    ['Cliente','⚡ Auto do banco','Não (auto)','Usiminas'],
+    ['Viagem','⚡ Auto do banco','Não (auto)','2024001W'],
+    ['Produto','⚡ Auto do banco','Não (auto)','Bobina HRC'],
+    ['Peso Bruto (kg)','⚡ Auto do banco','Não (auto)','25300'],
+    ['Peso Líquido (kg)','⚡ Auto do banco','Não (auto)','25000'],
+    ['Armazém','⚡ Auto do banco','Não (auto)','ARM-01'],
     ['Observações','Texto livre','Não','Qualquer observação'],
     [''],
     ['DICAS:'],
-    ['- A primeira linha com cabeçalho é detectada automaticamente e ignorada'],
-    ['- Datas no formato Excel (número serial) também são aceitas'],
-    ['- Registros com Coil Number já existente são ignorados no modo MESCLAR'],
-    ['- Use o modo SUBSTITUIR TUDO apenas para repopular do zero'],
+    ['- Preencha APENAS: Nº Bobina, Data, Período, Veículo e Motorista'],
+    ['- O sistema buscará automaticamente BL, Navio, Cliente, Pesos, etc. do banco'],
+    ['- Se o coil não estiver no banco, os campos (auto) ficarão vazios'],
+    ['- Datas em formato Excel (número serial) também são aceitas'],
+    ['- No preview da importação, campos preenchidos automaticamente aparecem em verde com ⚡'],
+    ['- Modo MESCLAR ignora coils já registrados; SUBSTITUIR TUDO recomeça do zero'],
   ];
   const wsInstr=XLSX.utils.aoa_to_sheet(instrData);
   wsInstr['!cols']=[{wch:28},{wch:35},{wch:14},{wch:22}];
@@ -2821,428 +2957,269 @@ function exportReportPDF(){
 document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }); });
 
 // ══════════════════════════════════════════
-// CAMERA SCANNER — API nativa + ZXing fallback
+// ══════════════════════════════════════════
+// CÂMERA OCR — Leitura de texto (Nº Bobina)
 // ══════════════════════════════════════════
 let scannerTarget    = null;
 let scannerStream    = null;
 let selectedDeviceId = null;
 let torchOn          = false;
-let scannerActive    = false;
-let zxingReader      = null;
-let barcodeDetector  = null;
-let scanInterval     = null;
+let tesseractWorker  = null;
+let ocrReady         = false;
+
+// Pré-carrega o Tesseract em background assim que a página carrega
+async function initTesseract(){
+  try{
+    tesseractWorker = await Tesseract.createWorker('eng', 1, {
+      logger: ()=>{} // silencia logs
+    });
+    // Configura para alfanumérico — padrão de Nº de bobina
+    await tesseractWorker.setParameters({
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.',
+      preserve_interword_spaces: '0',
+    });
+    ocrReady = true;
+  }catch(e){
+    console.warn('Tesseract não carregou:', e);
+  }
+}
+
+// Inicia carregamento em background
+setTimeout(initTesseract, 1000);
 
 async function openScanner(px){
   scannerTarget = px;
   document.getElementById('scanner-modal').classList.add('open');
+
+  // Reset UI
   document.getElementById('scanner-result').classList.remove('show');
   document.getElementById('scanner-result').textContent = '';
   document.getElementById('scanner-manual').value = '';
-  document.getElementById('scanner-status').textContent = 'Solicitando acesso à câmera...';
+  document.getElementById('scanner-ocr-result').style.display = 'none';
+  document.getElementById('scanner-ocr-text').value = '';
+  document.getElementById('scanner-canvas').style.display = 'none';
+  document.getElementById('scanner-box-live').style.display = '';
+  document.getElementById('btn-capture').style.display = '';
+  document.getElementById('btn-retry').style.display = 'none';
+  document.getElementById('scanner-status').textContent = 'Iniciando câmera...';
   torchOn = false;
-  scannerActive = true;
-  await initScanner();
+
+  await startScanner();
+
+  // Se Tesseract ainda não carregou, inicia agora
+  if(!ocrReady) initTesseract();
 }
 
-async function initScanner(){
-  try {
-    stopScannerStream();
+async function startScanner(){
+  stopScannerStream();
+  const statusEl = document.getElementById('scanner-status');
+  try{
+    const constraints = {
+      video: selectedDeviceId
+        ? { deviceId:{exact:selectedDeviceId}, width:{ideal:1920}, height:{ideal:1080} }
+        : { facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080} }
+    };
+    scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+    const videoEl = document.getElementById('scanner-video');
+    videoEl.srcObject = scannerStream;
+    videoEl.setAttribute('playsinline','true');
+    await videoEl.play();
 
-    // 1. Enumera câmeras via mediaDevices (API nativa — sempre disponível)
-    const allDevices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
-
-    const sel = document.getElementById('scanner-cam-select');
-    if(videoDevices.length){
-      sel.innerHTML = videoDevices.map((d,i) =>
-        `<option value="${d.deviceId}">${d.label || 'Câmera '+(i+1)}</option>`
-      ).join('');
-      // Prefere câmera traseira no mobile
-      const backCam = videoDevices.find(d => /back|rear|environment/i.test(d.label));
-      selectedDeviceId = backCam ? backCam.deviceId : videoDevices[0].deviceId;
-      sel.value = selectedDeviceId;
-    } else {
-      sel.innerHTML = '<option value="">Câmera padrão</option>';
-      selectedDeviceId = null;
-    }
+    // Lista câmeras após obter permissão
+    await populateCamSelect();
 
     document.getElementById('btn-torch').style.display =
-      /Mobi|Android/i.test(navigator.userAgent) ? '' : 'none';
+      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent) ? '' : 'none';
 
-    await startStream();
+    statusEl.textContent = ocrReady
+      ? '✓ Pronto — enquadre o número e pressione CAPTURAR'
+      : 'Carregando leitor... aguarde um momento';
 
-  } catch(err){
-    const status = document.getElementById('scanner-status');
-    if(err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError'){
-      status.textContent = '⚠ Permissão de câmera negada. Use a entrada manual abaixo.';
+    // Atualiza status quando Tesseract terminar de carregar
+    if(!ocrReady){
+      const poll = setInterval(()=>{
+        if(ocrReady){
+          clearInterval(poll);
+          document.getElementById('scanner-status').textContent =
+            '✓ Pronto — enquadre o número e pressione CAPTURAR';
+        }
+      }, 500);
+    }
+
+  }catch(err){
+    if(err.name==='NotAllowedError'||err.name==='PermissionDeniedError'){
+      statusEl.textContent='⚠ Permissão negada. Use a entrada manual abaixo.';
+    } else if(err.name==='NotFoundError'){
+      statusEl.textContent='⚠ Nenhuma câmera encontrada. Use a entrada manual.';
     } else {
-      status.textContent = '⚠ ' + err.message + ' — use a entrada manual.';
+      statusEl.textContent='⚠ '+err.message+' — use a entrada manual.';
     }
   }
 }
 
-async function startStream(){
+async function populateCamSelect(){
+  try{
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    const cams  = devs.filter(d=>d.kind==='videoinput');
+    const sel   = document.getElementById('scanner-cam-select');
+    if(cams.length>1){
+      sel.innerHTML=cams.map((d,i)=>`<option value="${d.deviceId}">${d.label||'Câmera '+(i+1)}</option>`).join('');
+      sel.style.display='';
+      if(selectedDeviceId) sel.value=selectedDeviceId;
+    } else { sel.style.display='none'; }
+  }catch(e){}
+}
+
+// ── CAPTURA E OCR ──────────────────────────────────────────────
+async function captureOCR(){
   const videoEl  = document.getElementById('scanner-video');
+  const canvas   = document.getElementById('scanner-canvas');
   const statusEl = document.getElementById('scanner-status');
 
-  // Monta constraints preferindo câmera traseira
-  const constraints = {
-    video: selectedDeviceId
-      ? { deviceId: { exact: selectedDeviceId } }
-      : { facingMode: { ideal: 'environment' } }
-  };
-
-  scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
-  videoEl.srcObject = scannerStream;
-  await videoEl.play();
-
-  // Re-enumera após obter stream (labels aparecem apenas após getUserMedia)
-  const allDevices = await navigator.mediaDevices.enumerateDevices();
-  const videoDevices = allDevices.filter(d => d.kind === 'videoinput');
-  if(videoDevices.length){
-    const sel = document.getElementById('scanner-cam-select');
-    sel.innerHTML = videoDevices.map((d,i) =>
-      `<option value="${d.deviceId}">${d.label || 'Câmera '+(i+1)}</option>`
-    ).join('');
-    if(selectedDeviceId) sel.value = selectedDeviceId;
-  }
-
-  statusEl.textContent = 'Câmera ativa — aponte para o código...';
-  scannerActive = true;
-
-  // Tenta BarcodeDetector nativo (Chrome Android, Samsung Internet)
-  if('BarcodeDetector' in window){
-    barcodeDetector = new BarcodeDetector({
-      formats: ['code_128','code_39','ean_13','ean_8','qr_code','data_matrix','itf','pdf417','aztec','upc_a','upc_e']
-    });
-    startNativeDetection(videoEl);
+  if(!videoEl.videoWidth){
+    statusEl.textContent = '⚠ Câmera ainda não pronta. Aguarde.';
     return;
   }
 
-  // Fallback: ZXing
-  if(typeof ZXing !== 'undefined'){
-    try{
-      // API nova (0.19+): BrowserMultiFormatReader com hints
-      zxingReader = new ZXing.BrowserMultiFormatReader();
-      // decodeFromStream usa a stream que já temos
-      decodeZXingLoop(videoEl);
-      return;
-    } catch(e){ console.warn('ZXing fallback falhou:', e); }
+  // Congela o vídeo e mostra o frame capturado
+  const W = videoEl.videoWidth;
+  const H = videoEl.videoHeight;
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(videoEl, 0, 0, W, H);
+
+  // Processamento para melhorar OCR:
+  // 1. Aumenta contraste
+  // 2. Converte para escala de cinza
+  const imgData = ctx.getImageData(0, 0, W, H);
+  const data    = imgData.data;
+  for(let i=0; i<data.length; i+=4){
+    // Luminância
+    const lum = 0.299*data[i] + 0.587*data[i+1] + 0.114*data[i+2];
+    // Threshold binarização: claro = branco, escuro = preto
+    const bin = lum > 128 ? 255 : 0;
+    data[i] = data[i+1] = data[i+2] = bin;
+  }
+  ctx.putImageData(imgData, 0, 0);
+
+  // Mostra canvas, esconde vídeo
+  document.getElementById('scanner-box-live').style.display = 'none';
+  canvas.style.display = 'block';
+  document.getElementById('btn-capture').style.display = 'none';
+  document.getElementById('btn-retry').style.display = '';
+  document.getElementById('scanner-ocr-result').style.display = 'none';
+
+  if(!ocrReady || !tesseractWorker){
+    statusEl.textContent = '⚠ Leitor OCR não carregado. Digite manualmente.';
+    return;
   }
 
-  // Último recurso: análise por canvas com intervalo
-  statusEl.textContent = 'Câmera ativa — aponte e aguarde a leitura...';
-  startCanvasFallback(videoEl);
+  statusEl.textContent = '🔍 Lendo texto... aguarde';
+  document.getElementById('btn-capture').disabled = true;
+
+  try{
+    const { data: { text } } = await tesseractWorker.recognize(canvas);
+
+    // Limpa o texto: remove espaços, quebras, caracteres inválidos
+    let cleaned = text
+      .toUpperCase()
+      .replace(/[^A-Z0-9\-\.]/g, ' ')
+      .split(/\s+/)
+      .filter(t => t.length >= 3)  // descarta tokens muito curtos
+      .join(' ')
+      .trim();
+
+    // Tenta extrair o token mais parecido com Nº de bobina
+    // (palavra com letras + números, mín 4 chars)
+    const tokens = cleaned.split(' ');
+    const best = tokens
+      .filter(t => /[A-Z]/.test(t) && /[0-9]/.test(t) && t.length >= 4)
+      .sort((a,b) => b.length - a.length)[0]
+      || tokens.sort((a,b) => b.length - a.length)[0]
+      || cleaned;
+
+    document.getElementById('scanner-ocr-text').value = best;
+    document.getElementById('scanner-ocr-result').style.display = '';
+    statusEl.textContent = `✓ Texto reconhecido — confirme ou edite se necessário`;
+
+  }catch(err){
+    statusEl.textContent = '⚠ Falha na leitura. Tente novamente ou use a entrada manual.';
+  }
+
+  document.getElementById('btn-capture').disabled = false;
 }
 
-// ── BarcodeDetector nativo ──────────────────────────────────────
-function startNativeDetection(videoEl){
-  if(scanInterval) clearInterval(scanInterval);
-  scanInterval = setInterval(async ()=>{
-    if(!scannerActive || videoEl.readyState < 2) return;
-    try{
-      const barcodes = await barcodeDetector.detect(videoEl);
-      if(barcodes.length > 0){
-        onScanSuccess(barcodes[0].rawValue.trim().toUpperCase());
-      }
-    } catch(e){}
-  }, 250);
-}
-
-// ── ZXing decode loop ───────────────────────────────────────────
-function decodeZXingLoop(videoEl){
-  const canvas = document.createElement('canvas');
-  const ctx    = canvas.getContext('2d');
-  if(scanInterval) clearInterval(scanInterval);
-  scanInterval = setInterval(async ()=>{
-    if(!scannerActive || videoEl.readyState < 2) return;
-    try{
-      canvas.width  = videoEl.videoWidth;
-      canvas.height = videoEl.videoHeight;
-      ctx.drawImage(videoEl, 0, 0);
-      const img = canvas.toDataURL('image/png');
-      // Usa a API de imagem do ZXing que é estável em todas as versões
-      const result = await zxingReader.decodeFromImageUrl(img);
-      if(result) onScanSuccess(result.getText().trim().toUpperCase());
-    } catch(e){
-      // NotFoundException é normal — ignora silenciosamente
-    }
-  }, 400);
-}
-
-// ── Canvas fallback (sem biblioteca) ───────────────────────────
-function startCanvasFallback(videoEl){
-  // Sem decodificador disponível — avisa usuário para usar manual
+function retryCapture(){
+  // Volta para o vídeo ao vivo
+  document.getElementById('scanner-canvas').style.display = 'none';
+  document.getElementById('scanner-box-live').style.display = '';
+  document.getElementById('btn-capture').style.display = '';
+  document.getElementById('btn-retry').style.display = 'none';
+  document.getElementById('scanner-ocr-result').style.display = 'none';
   document.getElementById('scanner-status').textContent =
-    'Câmera ativa. Decodificador não disponível — use a entrada manual abaixo.';
+    '✓ Enquadre o número e pressione CAPTURAR';
 }
 
-function onScanSuccess(code){
-  if(!scannerActive) return;
-  scannerActive = false;
-  if(scanInterval){ clearInterval(scanInterval); scanInterval = null; }
-
-  const resultEl = document.getElementById('scanner-result');
-  resultEl.textContent = '✓ Lido: ' + code;
-  resultEl.classList.add('show');
-  document.getElementById('scanner-status').textContent = 'Código detectado!';
-
-  if(navigator.vibrate) navigator.vibrate([100, 50, 100]);
-
-  setTimeout(()=>{
-    const inputEl = document.getElementById(scannerTarget + '-coil');
-    if(inputEl){ inputEl.value = code; checkCoilInput(scannerTarget); }
-    closeScanner();
-    showToast('✓ Coil lido: ' + code, '#22c55e', '#000');
-  }, 700);
+function confirmOCR(){
+  const val = document.getElementById('scanner-ocr-text').value.trim().toUpperCase();
+  if(!val){ showToast('Edite o campo com o Nº da bobina.','#e05c1a','#fff'); return; }
+  onScanSuccess(val);
 }
 
 function confirmScanManual(){
   const val = document.getElementById('scanner-manual').value.trim().toUpperCase();
-  if(!val){ showToast('Digite um código.', '#e05c1a', '#fff'); return; }
+  if(!val){ showToast('Digite um código.','#e05c1a','#fff'); return; }
   onScanSuccess(val);
 }
 
+function onScanSuccess(code){
+  document.getElementById('scanner-result').textContent='✓ '+code;
+  document.getElementById('scanner-result').classList.add('show');
+  if(navigator.vibrate) navigator.vibrate([80,40,80]);
+  setTimeout(()=>{
+    const el=document.getElementById(scannerTarget+'-coil');
+    if(el){ el.value=code; checkCoilInput(scannerTarget); }
+    closeScanner();
+    showToast('✓ Nº lido: '+code,'#22c55e','#000');
+  },600);
+}
+
 async function switchCamera(){
-  selectedDeviceId = document.getElementById('scanner-cam-select').value;
-  stopScannerStream();
-  document.getElementById('scanner-result').classList.remove('show');
-  scannerActive = true;
-  await startStream();
+  selectedDeviceId=document.getElementById('scanner-cam-select').value;
+  retryCapture();
+  await startScanner();
 }
 
 function stopScannerStream(){
-  scannerActive = false;
-  if(scanInterval){ clearInterval(scanInterval); scanInterval = null; }
-  if(zxingReader){ try{ zxingReader.reset(); }catch(e){} zxingReader = null; }
-  const videoEl = document.getElementById('scanner-video');
-  if(videoEl && videoEl.srcObject){
-    videoEl.srcObject.getTracks().forEach(t => t.stop());
-    videoEl.srcObject = null;
+  const videoEl=document.getElementById('scanner-video');
+  if(videoEl){
+    if(videoEl.srcObject){ videoEl.srcObject.getTracks().forEach(t=>t.stop()); videoEl.srcObject=null; }
+    try{ videoEl.pause(); }catch(e){}
   }
-  scannerStream = null;
+  scannerStream=null;
 }
 
 function closeScanner(){
   stopScannerStream();
   document.getElementById('scanner-modal').classList.remove('open');
   document.getElementById('scanner-result').classList.remove('show');
-  scannerTarget = null;
+  scannerTarget=null;
 }
 
 async function toggleTorch(){
   if(!scannerStream) return;
-  const track = scannerStream.getVideoTracks()[0];
-  if(!track) return;
+  const track=scannerStream.getVideoTracks()[0]; if(!track) return;
   try{
-    torchOn = !torchOn;
-    await track.applyConstraints({ advanced:[{ torch: torchOn }] });
-    document.getElementById('btn-torch').textContent = torchOn ? '🔦 ON' : '🔦 LANTERNA';
-  } catch(e){
-    showToast('Lanterna não suportada.', '#f59e0b', '#000');
-  }
+    torchOn=!torchOn;
+    await track.applyConstraints({advanced:[{torch:torchOn}]});
+    document.getElementById('btn-torch').textContent=torchOn?'🔦 ON':'🔦 LANTERNA';
+  }catch(e){ showToast('Lanterna não suportada.','#f59e0b','#000'); torchOn=false; }
 }
 
-// Fecha scanner com ESC
-document.addEventListener('keydown', e=>{
-  if(e.key==='Escape' && document.getElementById('scanner-modal').classList.contains('open')){
-    closeScanner();
-  }
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&document.getElementById('scanner-modal').classList.contains('open')) closeScanner();
 });
 </script>
-
-<!-- ══════════════════ LOADING OVERLAY ══════════════════ -->
-<div id="loading-overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9998;display:none;align-items:center;justify-content:center;flex-direction:column;gap:1.2rem;">
-  <div style="width:48px;height:48px;border:4px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;"></div>
-  <div id="loading-msg" style="color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:1px;text-align:center;max-width:300px;padding:0 1rem;"></div>
-</div>
-<style>@keyframes spin{to{transform:rotate(360deg)}}</style>
-
-<!-- ══════════════════ API SETUP MODAL ══════════════════ -->
-<div class="modal-overlay" id="modal-api-setup">
-  <div class="modal" style="max-width:620px;">
-    <div class="modal-title">⚙ CONFIGURAR SUPABASE</div>
-    <div class="modal-body" style="margin-bottom:0;">
-      <p style="color:var(--muted);font-size:14px;line-height:1.7;margin-bottom:1.2rem;">Configure o banco de dados <strong style="color:var(--success)">Supabase</strong> — gratuito, rápido e sem limite de linhas.</p>
-      <div style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.2rem;">
-
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 1 — Criar conta gratuita</div>
-          <p style="font-size:14px;color:var(--text);">Acesse <strong style="color:var(--accent)">supabase.com</strong>, clique em <strong>Start for free</strong> e crie uma conta com Google ou e-mail.</p>
-        </div>
-
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 2 — Criar projeto</div>
-          <p style="font-size:14px;color:var(--text);">Clique em <strong>New Project</strong>, dê um nome (ex: <em>steelport</em>), escolha uma senha forte e selecione a região <strong>South America (São Paulo)</strong>.</p>
-        </div>
-
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 3 — Criar as tabelas via SQL</div>
-          <p style="font-size:14px;color:var(--text);">No menu lateral, clique em <strong>SQL Editor</strong>, cole o SQL abaixo e clique <strong>Run</strong>:</p>
-          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-size:11px;color:var(--success);overflow-x:auto;margin-top:.5rem;line-height:1.6;">create table if not exists coilsdb (coil text primary key, armazem text, bl text, cliente text, navio text, viagem text, produto text, pesob text, pesol text);
-create table if not exists records (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
-create table if not exists expedicoes (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
-create table if not exists users (id text primary key, nome text, "user" text, pass text, role text, perms text, email text);
-create table if not exists navios (nome text primary key);
-alter table coilsdb enable row level security;
-alter table records enable row level security;
-alter table expedicoes enable row level security;
-alter table users enable row level security;
-alter table navios enable row level security;
-create policy "allow all" on coilsdb for all using (true) with check (true);
-create policy "allow all" on records for all using (true) with check (true);
-create policy "allow all" on expedicoes for all using (true) with check (true);
-create policy "allow all" on users for all using (true) with check (true);
-create policy "allow all" on navios for all using (true) with check (true);
--- Se as tabelas já existem, rode estas linhas para adicionar as novas colunas:
-alter table records add column if not exists "registradoPor" text;
-alter table expedicoes add column if not exists "registradoPor" text;
-alter table users add column if not exists email text;</pre>
-        </div>
-
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 4 — Copiar credenciais</div>
-          <p style="font-size:14px;color:var(--text);">Vá em <strong>Project Settings → API</strong>. Copie a <strong>Project URL</strong> e a chave <strong>anon public</strong>.</p>
-        </div>
-
-        <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
-          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 5 — Cole as credenciais abaixo</div>
-          <div style="display:flex;flex-direction:column;gap:.5rem;margin-top:.5rem;">
-            <input type="text" id="api-url-input" placeholder="https://xxxxxxxxxxxx.supabase.co"
-              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%;">
-            <input type="text" id="api-key-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9... (chave anon)"
-              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:6px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;width:100%;">
-            <button class="btn btn-primary" onclick="saveAndConnect()" style="width:100%;">✓ SALVAR E CONECTAR</button>
-          </div>
-        </div>
-
-      </div>
-      <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;text-align:center;">
-        Plano gratuito Supabase: 500 MB · 50.000 linhas · sem limite de leitura. Dados compartilhados entre todos os usuários em tempo real.
-      </div>
-    </div>
-    <div class="modal-actions" style="margin-top:1.5rem;">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-api-setup')">FECHAR</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════ IMPORTAR MOVIMENTAÇÕES ════════════════ -->
-<div class="modal-overlay" id="modal-import-mov">
-  <div class="modal" style="max-width:780px;">
-    <div class="modal-title" id="import-mov-title">↑ IMPORTAR REGISTROS VIA EXCEL</div>
-    <div class="modal-body" style="margin-bottom:1.2rem;">
-
-      <!-- Colunas esperadas -->
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);line-height:1.8;">
-        📌 Colunas esperadas na planilha:<br>
-        <span id="import-mov-cols" style="color:var(--accent);"></span>
-      </div>
-
-      <!-- Drop zone -->
-      <div id="drop-zone-mov"
-        style="border:2px dashed var(--border);border-radius:10px;padding:2rem 1.5rem;text-align:center;cursor:pointer;transition:border .2s,background .2s;margin-bottom:1rem;"
-        ondragover="dzOverMov(event)" ondragleave="dzLeaveMov()" ondrop="dzDropMov(event)"
-        onclick="document.getElementById('xls-input-mov').click()">
-        <div style="font-size:36px;margin-bottom:.5rem;">📊</div>
-        <div style="font-size:16px;font-weight:700;color:var(--text);">Arraste o arquivo Excel aqui</div>
-        <div style="font-size:13px;color:var(--muted);margin-top:.3rem;">ou clique para selecionar — .xlsx / .xls</div>
-        <input type="file" id="xls-input-mov" accept=".xlsx,.xls" style="display:none;" onchange="handleXLSMovFile(this.files[0])">
-      </div>
-
-      <!-- Preview -->
-      <div id="import-mov-preview" style="display:none;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
-          <span id="import-mov-preview-title" style="font-size:13px;font-weight:700;color:var(--success);"></span>
-          <button class="btn btn-secondary btn-sm" onclick="resetImportMov()">✕ LIMPAR</button>
-        </div>
-        <div style="overflow-x:auto;max-height:260px;border:1px solid var(--border);border-radius:8px;">
-          <table style="width:100%;border-collapse:collapse;font-size:12px;">
-            <thead id="import-mov-thead" style="position:sticky;top:0;background:var(--surface);"></thead>
-            <tbody id="import-mov-tbody"></tbody>
-          </table>
-        </div>
-        <div id="import-mov-warn" style="display:none;margin-top:.75rem;padding:.6rem 1rem;background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.3);border-radius:6px;font-size:12px;color:var(--accent);"></div>
-      </div>
-
-      <!-- Mode -->
-      <div id="import-mov-mode-row" style="display:none;margin-top:1rem;">
-        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;">MODO DE IMPORTAÇÃO</div>
-        <div style="display:flex;gap:1.5rem;">
-          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
-            <input type="radio" name="imp-mov-mode" value="merge" checked style="accent-color:var(--accent);width:16px;height:16px;"> MESCLAR (mantém existentes)
-          </label>
-          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
-            <input type="radio" name="imp-mov-mode" value="replace" style="accent-color:var(--danger);width:16px;height:16px;"> SUBSTITUIR TUDO
-          </label>
-        </div>
-      </div>
-    </div>
-
-    <div style="border-top:1px solid var(--border);padding-top:1.2rem;display:flex;justify-content:space-between;gap:1rem;">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-import-mov');resetImportMov();">CANCELAR</button>
-      <button class="btn btn-primary" id="btn-confirm-import-mov" style="display:none;" onclick="confirmImportMov()">✓ IMPORTAR REGISTROS</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════ ESQUECI MINHA SENHA ════════════════ -->
-<div class="modal-overlay" id="modal-forgot">
-  <div class="modal" style="max-width:420px;">
-    <div class="modal-title">🔑 REDEFINIR SENHA</div>
-    <div class="modal-body" style="margin-bottom:1.2rem;">
-      <p style="color:var(--muted);font-size:14px;line-height:1.6;margin-bottom:1.2rem;">
-        Informe seu <strong>usuário</strong> ou <strong>e-mail</strong> cadastrado. A nova senha temporária será exibida aqui e enviada por e-mail (se configurado).
-      </p>
-      <div class="login-field" style="margin-bottom:1rem;">
-        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Usuário ou E-mail</label>
-        <input type="text" id="forgot-input" placeholder="Digite seu usuário ou e-mail"
-          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;"
-          onkeydown="if(event.key==='Enter') doForgotPass()">
-      </div>
-      <!-- Resultado -->
-      <div id="forgot-result" style="display:none;padding:1rem;border-radius:8px;margin-top:.5rem;"></div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-forgot');document.getElementById('forgot-input').value='';document.getElementById('forgot-result').style.display='none';">CANCELAR</button>
-      <button class="btn btn-primary" onclick="doForgotPass()">ENVIAR NOVA SENHA</button>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════ SCANNER MODAL ═══ -->
-<div class="scanner-modal" id="scanner-modal">
-  <div class="scanner-title">📷 LEITURA DE CÓDIGO — BOBINA</div>
-
-  <select class="scanner-cam-select" id="scanner-cam-select" onchange="switchCamera()">
-    <option value="">Carregando câmeras...</option>
-  </select>
-
-  <div class="scanner-box">
-    <video id="scanner-video" autoplay muted playsinline></video>
-    <div class="scanner-line"></div>
-    <div class="scanner-corner sc-tl"></div>
-    <div class="scanner-corner sc-tr"></div>
-    <div class="scanner-corner sc-bl"></div>
-    <div class="scanner-corner sc-br"></div>
-    <div class="scanner-label">APONTE PARA O CÓDIGO DA BOBINA</div>
-  </div>
-
-  <div style="display:flex;gap:.5rem;align-items:center;width:100%;max-width:500px;">
-    <input type="text" id="scanner-manual" placeholder="Ou digite / cole o código manualmente..."
-      style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;"
-      onkeydown="if(event.key==='Enter') confirmScanManual()">
-    <button class="btn btn-secondary btn-sm" onclick="confirmScanManual()">USAR</button>
-  </div>
-
-  <div class="scanner-status" id="scanner-status">Iniciando câmera...</div>
-  <div class="scanner-result" id="scanner-result"></div>
-
-  <div class="scanner-actions">
-    <button class="btn btn-secondary btn-sm" onclick="toggleTorch()" id="btn-torch" style="display:none;">🔦 LANTERNA</button>
-    <button class="btn btn-danger btn-sm" onclick="closeScanner()">✕ FECHAR</button>
-  </div>
-</div>
-
 </body>
 </html>
