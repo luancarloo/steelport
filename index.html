@@ -184,6 +184,22 @@ input[readonly]{opacity:.7;cursor:default;}
 .btn-primary:hover{background:#ffc030;transform:translateY(-1px);}
 .btn-exp{background:var(--exp);color:#fff;}
 .btn-exp:hover{background:#c084fc;transform:translateY(-1px);}
+
+/* ── LOTE (batch entry) ── */
+.lote-coil-row{display:grid;grid-template-columns:1fr auto;gap:.5rem;align-items:center;margin-bottom:.5rem;}
+.lote-coil-input{font-family:'JetBrains Mono',monospace;text-transform:uppercase;letter-spacing:1px;}
+.lote-list{display:flex;flex-direction:column;gap:.4rem;max-height:320px;overflow-y:auto;padding:.25rem 0;}
+.lote-item{display:grid;grid-template-columns:auto 1fr 1fr 1fr 1fr auto;gap:.5rem;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.5rem .75rem;font-size:13px;transition:border .15s;}
+.lote-item.ok{border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.04);}
+.lote-item.warn{border-color:rgba(240,165,0,.35);background:rgba(240,165,0,.05);}
+.lote-item.err{border-color:rgba(224,92,26,.35);background:rgba(224,92,26,.05);}
+.lote-coil-badge{font-family:'JetBrains Mono',monospace;font-weight:700;font-size:12px;color:var(--accent);white-space:nowrap;}
+.lote-item-field{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.lote-item-status{font-size:11px;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.lote-totals{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;display:flex;gap:2rem;flex-wrap:wrap;margin-top:.75rem;}
+.lote-total-item{display:flex;flex-direction:column;gap:2px;}
+.lote-total-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;}
+.lote-total-val{font-size:20px;font-weight:900;color:var(--accent);line-height:1;}
 .btn-secondary{background:transparent;color:var(--accent);border:1px solid var(--accent);}
 .btn-secondary:hover{background:var(--accent);color:#000;}
 .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);}
@@ -239,7 +255,7 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 .sub-tab:hover:not(.active){color:var(--text);}
 
 /* ── TOAST & MODAL ── */
-#toast{position:fixed;bottom:2rem;right:2rem;padding:.8rem 1.5rem;border-radius:8px;font-weight:700;font-size:14px;transform:translateY(100px);opacity:0;transition:all .3s;z-index:999;pointer-events:none;max-width:420px;}
+#toast{position:fixed;bottom:2rem;right:2rem;padding:.9rem 1.5rem;border-radius:8px;font-weight:700;font-size:14px;transform:translateY(100px);opacity:0;transition:all .3s;z-index:9999;pointer-events:none;max-width:480px;line-height:1.5;word-break:break-word;}
 #toast.show{transform:translateY(0);opacity:1;}
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
@@ -433,60 +449,71 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
     </div>
 
     <div class="tabs">
-      <div class="tab active" onclick="showModuleTab('descarga','registrar')">📥 REGISTRAR</div>
+      <div class="tab active" onclick="showModuleTab('descarga','lote')">📥 REGISTRAR</div>
       <div class="tab" onclick="showModuleTab('descarga','consultar')">🔍 CONSULTAR</div>
     </div>
 
-    <!-- PANEL: REGISTRAR DESCARGA -->
-    <div id="dpanel-registrar" class="panel active">
-      <div class="form-grid" id="d-form">
-        <div class="error-banner" id="d-error"></div>
-        <div class="form-group">
-          <label>Nº Bobina (Coil Number) *</label>
-          <input type="text" id="d-coil" placeholder="ex: BRZ-2024-00123" oninput="checkCoilInput('d')">
-        </div>
+    <!-- PANEL: LOTE DESCARGA -->
+    <div id="dpanel-lote" class="panel active">
+      <!-- Dados fixos do caminhão -->
+      <div class="form-grid" style="margin-bottom:1.2rem;">
         <div class="form-group">
           <label>Data de Descarga *</label>
-          <input type="date" id="d-data">
+          <input type="date" id="dl-data">
         </div>
         <div class="form-group">
           <label>Período *</label>
-          <select id="d-periodo">
+          <select id="dl-periodo">
             <option value="">Selecionar período...</option>
             <option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
           </select>
         </div>
         <div class="form-group">
           <label>Veículo / Placa *</label>
-          <input type="text" id="d-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+          <input type="text" id="dl-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
             oninput="formatPlacaInput(this)"
             style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
         </div>
         <div class="form-group">
           <label>Motorista</label>
-          <input type="text" id="d-motorista" placeholder="Nome do motorista">
+          <input type="text" id="dl-motorista" placeholder="Nome do motorista">
         </div>
         <div class="form-group">
           <label>Posição no Armazém</label>
-          <input type="text" id="d-posicao" placeholder="ex: BLOCO-A / LINHA-3">
+          <input type="text" id="dl-posicao" placeholder="ex: BLOCO-A / LINHA-3">
         </div>
-        <div class="autofill-box">
-          <div class="autofill-box-title">⚡ DADOS DO BANCO (via Coil Number)</div>
-          <div class="autofill-inner">
-            <div class="form-group"><label>Nº BL</label><input type="text" id="d-bl" placeholder="—" readonly style="color:var(--accent);font-family:'JetBrains Mono',monospace;font-weight:600;"></div>
-            <div class="form-group"><label>Navio</label><input type="text" id="d-navio" placeholder="—" readonly style="color:var(--accent);font-weight:600;"></div>
-            <div class="form-group"><label>Cliente</label><input type="text" id="d-cliente" placeholder="—" readonly></div>
-            <div class="form-group"><label>Armazém</label><input type="text" id="d-armazem" placeholder="—" readonly></div>
-            <div class="form-group"><label>Viagem</label><input type="text" id="d-viagem" placeholder="—" readonly></div>
-            <div class="form-group"><label>Produto</label><input type="text" id="d-produto" placeholder="—" readonly></div>
-            <div class="form-group"><label>Peso Bruto (kg)</label><input type="text" id="d-pesob" placeholder="—" readonly></div>
-            <div class="form-group"><label>Peso Líquido (kg)</label><input type="text" id="d-pesol" placeholder="—" readonly></div>
-          </div>
+        <div class="form-group">
+          <label>Observações</label>
+          <input type="text" id="dl-obs" placeholder="Anotações gerais do caminhão...">
         </div>
-        <div class="form-group full"><label>Observações</label><input type="text" id="d-obs" placeholder="Anotações adicionais..."></div>
-        <div class="form-actions">
-          <button class="btn btn-secondary" onclick="clearRegForm('d')">LIMPAR</button>
-          <button class="btn btn-primary" onclick="registrar('descarga')">✓ REGISTRAR DESCARGA</button>
+      </div>
+
+      <!-- Adicionar bobinas -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem;margin-bottom:1rem;">
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1.5px;margin-bottom:.75rem;">➕ ADICIONAR BOBINAS AO LOTE</div>
+        <div class="lote-coil-row">
+          <input type="text" id="dl-coil-add" class="lote-coil-input"
+            placeholder="Digite o Nº da bobina e pressione Enter ou clique em +"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('d');}"
+            oninput="this.value=this.value.toUpperCase()">
+          <button class="btn btn-primary" onclick="addCoilLote('d')" style="white-space:nowrap;padding:.65rem 1.2rem;">+ ADICIONAR</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:.4rem;font-family:'JetBrains Mono',monospace;">
+          ⚡ BL, Navio, Cliente e Pesos são preenchidos automaticamente pelo banco de dados
+        </div>
+      </div>
+
+      <!-- Lista de bobinas adicionadas -->
+      <div id="dl-list-wrap" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+          <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;">BOBINAS NO LOTE — <span id="dl-list-count" style="color:var(--accent);font-weight:700;">0</span></span>
+          <button class="btn btn-secondary btn-sm" onclick="clearLote('d')">✕ LIMPAR LOTE</button>
+        </div>
+        <div class="lote-list" id="dl-list"></div>
+        <div class="lote-totals" id="dl-totals"></div>
+        <div style="display:flex;gap:1rem;justify-content:flex-end;margin-top:1rem;">
+          <button class="btn btn-secondary" onclick="clearLote('d')">CANCELAR</button>
+          <button class="btn btn-primary" id="dl-btn-confirm" onclick="confirmarLote('d')">✓ REGISTRAR TODAS AS DESCARGAS</button>
         </div>
       </div>
     </div>
@@ -550,60 +577,71 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
     </div>
 
     <div class="tabs">
-      <div class="tab exp-tab active" onclick="showModuleTab('expedicao','registrar')">📤 REGISTRAR</div>
+      <div class="tab exp-tab active" onclick="showModuleTab('expedicao','lote')">📤 REGISTRAR</div>
       <div class="tab exp-tab" onclick="showModuleTab('expedicao','consultar')">🔍 CONSULTAR</div>
     </div>
 
-    <!-- PANEL: REGISTRAR EXPEDIÇÃO -->
-    <div id="epanel-registrar" class="panel active">
-      <div class="form-grid exp-form" id="e-form">
-        <div class="error-banner" id="e-error"></div>
-        <div class="form-group">
-          <label>Nº Bobina (Coil Number) *</label>
-          <input type="text" id="e-coil" placeholder="ex: BRZ-2024-00123" oninput="checkCoilInput('e')">
-        </div>
+    <!-- PANEL: LOTE EXPEDIÇÃO -->
+    <div id="epanel-lote" class="panel active">
+      <!-- Dados fixos do caminhão -->
+      <div class="form-grid exp-form" style="margin-bottom:1.2rem;">
         <div class="form-group">
           <label>Data de Expedição *</label>
-          <input type="date" id="e-data">
+          <input type="date" id="el-data">
         </div>
         <div class="form-group">
           <label>Período *</label>
-          <select id="e-periodo">
+          <select id="el-periodo">
             <option value="">Selecionar período...</option>
             <option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
           </select>
         </div>
         <div class="form-group">
           <label>Veículo / Placa *</label>
-          <input type="text" id="e-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+          <input type="text" id="el-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
             oninput="formatPlacaInput(this)"
             style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
         </div>
         <div class="form-group">
           <label>Motorista</label>
-          <input type="text" id="e-motorista" placeholder="Nome do motorista">
+          <input type="text" id="el-motorista" placeholder="Nome do motorista">
         </div>
         <div class="form-group">
           <label>Destino</label>
-          <input type="text" id="e-destino" placeholder="ex: Fábrica / Cliente">
+          <input type="text" id="el-destino" placeholder="ex: Fábrica / Cliente">
         </div>
-        <div class="autofill-box exp">
-          <div class="autofill-box-title">⚡ DADOS DO BANCO (via Coil Number)</div>
-          <div class="autofill-inner">
-            <div class="form-group"><label>Nº BL</label><input type="text" id="e-bl" placeholder="—" readonly style="color:var(--exp);font-family:'JetBrains Mono',monospace;font-weight:600;"></div>
-            <div class="form-group"><label>Navio</label><input type="text" id="e-navio" placeholder="—" readonly style="color:var(--exp);font-weight:600;"></div>
-            <div class="form-group"><label>Cliente</label><input type="text" id="e-cliente" placeholder="—" readonly></div>
-            <div class="form-group"><label>Armazém</label><input type="text" id="e-armazem" placeholder="—" readonly></div>
-            <div class="form-group"><label>Viagem</label><input type="text" id="e-viagem" placeholder="—" readonly></div>
-            <div class="form-group"><label>Produto</label><input type="text" id="e-produto" placeholder="—" readonly></div>
-            <div class="form-group"><label>Peso Bruto (kg)</label><input type="text" id="e-pesob" placeholder="—" readonly></div>
-            <div class="form-group"><label>Peso Líquido (kg)</label><input type="text" id="e-pesol" placeholder="—" readonly></div>
-          </div>
+        <div class="form-group">
+          <label>Observações</label>
+          <input type="text" id="el-obs" placeholder="Anotações gerais do caminhão...">
         </div>
-        <div class="form-group full"><label>Observações</label><input type="text" id="e-obs" placeholder="Anotações adicionais..."></div>
-        <div class="form-actions">
-          <button class="btn btn-secondary" onclick="clearRegForm('e')">LIMPAR</button>
-          <button class="btn btn-exp" onclick="registrar('expedicao')">✓ REGISTRAR EXPEDIÇÃO</button>
+      </div>
+
+      <!-- Adicionar bobinas -->
+      <div style="background:var(--surface);border:1px solid rgba(168,85,247,.25);border-radius:10px;padding:1.2rem;margin-bottom:1rem;">
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--exp);letter-spacing:1.5px;margin-bottom:.75rem;">➕ ADICIONAR BOBINAS AO LOTE</div>
+        <div class="lote-coil-row">
+          <input type="text" id="el-coil-add" class="lote-coil-input"
+            placeholder="Digite o Nº da bobina e pressione Enter ou clique em +"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('e');}"
+            oninput="this.value=this.value.toUpperCase()">
+          <button class="btn btn-exp" onclick="addCoilLote('e')" style="white-space:nowrap;padding:.65rem 1.2rem;">+ ADICIONAR</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:.4rem;font-family:'JetBrains Mono',monospace;">
+          ⚡ BL, Navio, Cliente e Pesos são preenchidos automaticamente pelo banco de dados
+        </div>
+      </div>
+
+      <!-- Lista de bobinas adicionadas -->
+      <div id="el-list-wrap" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem;">
+          <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;">BOBINAS NO LOTE — <span id="el-list-count" style="color:var(--exp);font-weight:700;">0</span></span>
+          <button class="btn btn-secondary btn-sm" onclick="clearLote('e')">✕ LIMPAR LOTE</button>
+        </div>
+        <div class="lote-list" id="el-list"></div>
+        <div class="lote-totals" id="el-totals"></div>
+        <div style="display:flex;gap:1rem;justify-content:flex-end;margin-top:1rem;">
+          <button class="btn btn-secondary" onclick="clearLote('e')">CANCELAR</button>
+          <button class="btn btn-exp" id="el-btn-confirm" onclick="confirmarLote('e')">✓ REGISTRAR TODAS AS EXPEDIÇÕES</button>
         </div>
       </div>
     </div>
@@ -1047,6 +1085,8 @@ function doLogin(){
   document.getElementById('login-pass').value='';
   document.getElementById('login-screen').classList.add('hidden');
   applySessionUI();
+  preencherDataPeriodoLote('d');
+  preencherDataPeriodoLote('e');
   refreshHome();
   // Load data from Supabase after login (non-blocking)
   loadAllData().then(()=>{
@@ -1448,6 +1488,9 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('d-data').value = today;
   document.getElementById('e-data').value = today;
+  // Preenche data e período automáticos nos formulários de lote
+  preencherDataPeriodoLote('d');
+  preencherDataPeriodoLote('e');
   setInterval(()=>{ document.getElementById('clock').textContent=new Date().toLocaleString('pt-BR'); }, 1000);
 
   // Restore existing session
@@ -1480,23 +1523,48 @@ function openModule(mod){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+mod).classList.add('active');
   document.getElementById('btn-back').style.display='';
-  if(mod==='descarga')   { buildFilterSelects('d'); applyFilters('d'); }
-  if(mod==='expedicao')  { buildFilterSelects('e'); applyFilters('e'); }
+  if(mod==='descarga')   { buildFilterSelects('d'); applyFilters('d'); preencherDataPeriodoLote('d'); }
+  if(mod==='expedicao')  { buildFilterSelects('e'); applyFilters('e'); preencherDataPeriodoLote('e'); }
   if(mod==='database')   { buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); }
   if(mod==='relatorios') { buildRptSelects(); renderRptSummary(); renderReport(); }
   if(mod==='usuarios')   { togglePermFields(); renderUsersList(); }
 }
 
+// ── Retorna o período correspondente ao horário atual ──────────
+function getPeriodoAtual(){
+  const h = new Date().getHours();
+  if(h >= 7  && h < 13) return '07x13';
+  if(h >= 13 && h < 19) return '13x19';
+  if(h >= 19 || h < 1)  return '19x01';
+  return '01x07'; // 01:00 às 06:59
+}
+
+// ── Preenche data e período automáticos nos formulários de lote ─
+function preencherDataPeriodoLote(prefix){
+  const today   = new Date().toISOString().split('T')[0];
+  const periodo = getPeriodoAtual();
+  const dateEl  = document.getElementById(prefix+'l-data');
+  const perEl   = document.getElementById(prefix+'l-periodo');
+  if(dateEl) dateEl.value = today;
+  if(perEl)  perEl.value  = periodo;
+}
+
 function showModuleTab(mod, tab){
   const prefix = mod==='descarga'?'d':'e';
+  // lote panel is now the "registrar" tab — map it
+  const panelTab = tab==='registrar' ? 'lote' : tab;
   const panels = mod==='descarga'
-    ? ['dpanel-registrar','dpanel-consultar']
-    : ['epanel-registrar','epanel-consultar'];
+    ? ['dpanel-lote','dpanel-consultar']
+    : ['epanel-lote','epanel-consultar'];
   panels.forEach(p=>document.getElementById(p).classList.remove('active'));
-  document.getElementById(prefix+'panel-'+tab).classList.add('active');
+  document.getElementById(prefix+'panel-'+panelTab).classList.add('active');
   const tabEls = document.getElementById('screen-'+mod).querySelectorAll('.tab');
-  tabEls.forEach((t,i)=>t.classList.toggle('active', i===(tab==='registrar'?0:1)));
+  const tabIdx = (tab==='registrar'||tab==='lote') ? 0 : 1;
+  tabEls.forEach((t,i)=>t.classList.toggle('active', i===tabIdx));
   if(tab==='consultar') { buildFilterSelects(prefix); applyFilters(prefix); }
+  if(tab==='lote'||tab==='registrar'){
+    preencherDataPeriodoLote(prefix);
+  }
 }
 
 function refreshHome(){
@@ -1697,6 +1765,248 @@ async function saveMovimento(){
       showToast('⚠ Salvo localmente, sync falhou: '+err.message, '#f59e0b', '#000');
     }
   }
+}
+
+// ══════════════════════════════════════════
+// LANÇAMENTO EM LOTE (múltiplas bobinas / caminhão)
+// ══════════════════════════════════════════
+let loteItems = { d: [], e: [] };
+
+function addCoilLote(px){
+  const inputEl = document.getElementById(px+'l-coil-add');
+  const coil    = inputEl.value.trim().toUpperCase();
+  if(!coil){ showToast('Digite o Nº da bobina.','#e05c1a','#fff'); return; }
+
+  if(loteItems[px].find(r=>r.coil===coil)){
+    showToast('Esta bobina já foi adicionada ao lote.','#f59e0b','#000');
+    inputEl.value=''; inputEl.focus(); return;
+  }
+
+  const db      = coilsDB.find(c=>c.coil===coil);
+  const src     = px==='e' ? expedicoes : records;
+  const already = src.find(r=>r.coil===coil);
+
+  // ── Validação de cliente único por veículo (apenas na descarga) ──
+  if(px==='d' && db?.cliente){
+    const itensValidos = loteItems['d'].filter(r=>r.status!=='err' && r.cliente);
+    if(itensValidos.length > 0){
+      const clienteAtual = itensValidos[0].cliente;
+      if(db.cliente !== clienteAtual){
+        showToast(
+          `⚠ Cliente conflitante! Este veículo já tem bobinas do cliente "${clienteAtual}". A bobina ${coil} pertence ao cliente "${db.cliente}". Um veículo não pode transportar bobinas de clientes diferentes.`,
+          '#e05c1a','#fff'
+        );
+        inputEl.value=''; inputEl.focus(); return;
+      }
+    }
+  }
+
+  // ── Validação de BL único por veículo (apenas na descarga) ──
+  if(px==='d' && db?.bl){
+    const itensComBL = loteItems['d'].filter(r=>r.status!=='err' && r.bl);
+    if(itensComBL.length > 0){
+      const blAtual = itensComBL[0].bl;
+      if(db.bl !== blAtual){
+        showToast(
+          `⚠ BL conflitante! Este veículo já tem bobinas do BL "${blAtual}". A bobina ${coil} pertence ao BL "${db.bl}". Um veículo não pode transportar bobinas de BLs diferentes.`,
+          '#e05c1a','#fff'
+        );
+        inputEl.value=''; inputEl.focus(); return;
+      }
+    }
+  }
+
+  let status='ok', msg='';
+  if(already){
+    status='err';
+    msg = `Já ${px==='e'?'expedida':'descarregada'} em ${formatDate(already.data)}`;
+  } else if(!db){
+    status='warn';
+    msg = 'Não encontrada no banco';
+  } else {
+    msg = db.navio || '';
+  }
+
+  loteItems[px].push({
+    coil,
+    bl:      db?.bl      || '',
+    navio:   db?.navio   || '',
+    cliente: db?.cliente || '',
+    produto: db?.produto || '',
+    pesob:   db?.pesob   || '',
+    pesol:   db?.pesol   || '',
+    armazem: db?.armazem || '',
+    viagem:  db?.viagem  || '',
+    status, msg
+  });
+
+  inputEl.value=''; inputEl.focus();
+  renderLoteList(px);
+}
+
+function removeLoteItem(px, coil){
+  loteItems[px] = loteItems[px].filter(r=>r.coil!==coil);
+  renderLoteList(px);
+}
+
+function renderLoteList(px){
+  const items = loteItems[px];
+  const wrap  = document.getElementById(px+'l-list-wrap');
+  const list  = document.getElementById(px+'l-list');
+  const count = document.getElementById(px+'l-list-count');
+
+  if(!items.length){ wrap.style.display='none'; return; }
+  wrap.style.display='';
+  count.textContent = items.length;
+
+  const statusIcon  = { ok:'✓', warn:'⚠', err:'✕' };
+  const statusColor = { ok:'var(--success)', warn:'var(--warning)', err:'var(--danger)' };
+
+  list.innerHTML = items.map(r=>`
+    <div class="lote-item ${r.status}">
+      <span style="font-size:14px;color:${statusColor[r.status]};font-weight:700;">${statusIcon[r.status]}</span>
+      <span class="lote-coil-badge">${r.coil}</span>
+      <span class="lote-item-field" style="color:var(--accent)">${r.navio||'—'}</span>
+      <span class="lote-item-field">${r.cliente||'—'}</span>
+      <span class="lote-item-field">${r.pesob?fmtKg(r.pesob)+' kg':'—'}</span>
+      <span class="lote-item-status" style="color:${statusColor[r.status]}">${r.msg}</span>
+      <button onclick="removeLoteItem('${px}','${r.coil}')"
+        style="background:transparent;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:0 .25rem;" title="Remover">✕</button>
+    </div>`).join('');
+
+  const valid   = items.filter(r=>r.status!=='err');
+  const totalPB = valid.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const totalPL = valid.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0);
+  const erros   = items.filter(r=>r.status==='err').length;
+  const warns   = items.filter(r=>r.status==='warn').length;
+
+  document.getElementById(px+'l-totals').innerHTML=`
+    <div class="lote-total-item"><div class="lote-total-label">Total bobinas</div><div class="lote-total-val" style="color:var(--text)">${items.length}</div></div>
+    <div class="lote-total-item"><div class="lote-total-label">✓ Válidas</div><div class="lote-total-val" style="color:var(--success)">${valid.length}</div></div>
+    ${warns?`<div class="lote-total-item"><div class="lote-total-label">⚠ Sem banco</div><div class="lote-total-val" style="color:var(--warning)">${warns}</div></div>`:''}
+    ${erros?`<div class="lote-total-item"><div class="lote-total-label">✕ Já registradas</div><div class="lote-total-val" style="color:var(--danger)">${erros}</div></div>`:''}
+    <div class="lote-total-item"><div class="lote-total-label">P.Bruto total</div><div class="lote-total-val">${fmtKg(totalPB)} kg</div></div>
+    <div class="lote-total-item"><div class="lote-total-label">P.Líquido total</div><div class="lote-total-val">${fmtKg(totalPL)} kg</div></div>
+    ${px==='d'?(()=>{
+      const clientes=[...new Set(valid.filter(r=>r.cliente).map(r=>r.cliente))];
+      const bls=[...new Set(valid.filter(r=>r.bl).map(r=>r.bl))];
+      let html='';
+      if(clientes.length){
+        const cor = clientes.length>1?'var(--danger)':'#60a5fa';
+        const label = clientes.length>1?'⚠ CLIENTES MISTURADOS':'Cliente';
+        html+=`<div class="lote-total-item"><div class="lote-total-label" style="color:${cor}">${label}</div><div class="lote-total-val" style="font-size:14px;color:${cor}">${clientes.join(', ')}</div></div>`;
+      }
+      if(bls.length){
+        const cor = bls.length>1?'var(--danger)':'var(--muted)';
+        const label = bls.length>1?'⚠ BLs MISTURADOS':'BL';
+        html+=`<div class="lote-total-item"><div class="lote-total-label" style="color:${cor}">${label}</div><div class="lote-total-val" style="font-size:13px;color:${cor};font-family:'JetBrains Mono',monospace">${bls.join(', ')}</div></div>`;
+      }
+      return html;
+    })():''}
+  `;
+
+  const btn = document.getElementById(px+'l-btn-confirm');
+  if(btn){
+    const label = px==='e'?'EXPEDIÇÕES':'DESCARGAS';
+    btn.textContent = `✓ REGISTRAR ${valid.length} ${label}`;
+    btn.disabled = valid.length===0;
+    btn.style.opacity = valid.length===0?'.5':'1';
+  }
+}
+
+function clearLote(px){
+  loteItems[px]=[];
+  renderLoteList(px);
+  ['data','periodo','veiculo','motorista','obs'].forEach(f=>{
+    const el=document.getElementById(px+'l-'+f);
+    if(el) el.value='';
+  });
+  ['dl-posicao','el-destino'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  // Reaplica data e período atuais após limpar
+  preencherDataPeriodoLote(px);
+}
+
+async function confirmarLote(px){
+  const tipo    = px==='e' ? 'expedicao' : 'descarga';
+  const data    = document.getElementById(px+'l-data').value;
+  const periodo = document.getElementById(px+'l-periodo').value;
+  const veiculo = document.getElementById(px+'l-veiculo').value.trim().toUpperCase();
+  const motorista = document.getElementById(px+'l-motorista').value.trim();
+  const obs     = document.getElementById(px+'l-obs').value.trim();
+  const posicao = document.getElementById('dl-posicao')?.value.trim()||'';
+  const destino = document.getElementById('el-destino')?.value.trim()||'';
+
+  if(!data)    { showToast('Informe a data.','#e05c1a','#fff'); return; }
+  if(!periodo) { showToast('Informe o período.','#e05c1a','#fff'); return; }
+  if(!veiculo) { showToast('Informe o veículo/placa.','#e05c1a','#fff'); return; }
+  if(!validaPlaca(veiculo)){ showToast('Placa inválida. Use ABC-1234 ou ABC1D23.','#e05c1a','#fff'); return; }
+
+  const toSave = loteItems[px].filter(r=>r.status!=='err');
+  if(!toSave.length){ showToast('Nenhuma bobina válida para registrar.','#e05c1a','#fff'); return; }
+
+  // ── Guarda final: bloqueia descarga com clientes ou BLs misturados ──
+  if(px==='d'){
+    const clientes = [...new Set(toSave.filter(r=>r.cliente).map(r=>r.cliente))];
+    if(clientes.length > 1){
+      showToast(
+        `⚠ Bloqueado! O lote contém bobinas de ${clientes.length} clientes diferentes: ${clientes.join(', ')}. Remova as bobinas conflitantes antes de registrar.`,
+        '#e05c1a','#fff'
+      );
+      return;
+    }
+    const bls = [...new Set(toSave.filter(r=>r.bl).map(r=>r.bl))];
+    if(bls.length > 1){
+      showToast(
+        `⚠ Bloqueado! O lote contém bobinas de ${bls.length} BLs diferentes: ${bls.join(', ')}. Remova as bobinas conflitantes antes de registrar.`,
+        '#e05c1a','#fff'
+      );
+      return;
+    }
+  }
+
+  showLoading(`Registrando ${toSave.length} ${tipo==='expedicao'?'expedições':'descargas'}...`);
+
+  const now   = new Date().toISOString();
+  const src   = px==='e' ? expedicoes : records;
+  const table = px==='e' ? 'expedicoes' : 'records';
+
+  const entries = toSave.map((r,i)=>({
+    id:         Date.now()+i,
+    coil:       r.coil,
+    data, periodo, veiculo, motorista,
+    bl:         r.bl,
+    navio:      r.navio,
+    cliente:    r.cliente,
+    viagem:     r.viagem,
+    produto:    r.produto,
+    pesob:      r.pesob,
+    pesol:      r.pesol,
+    armazem:    r.armazem,
+    obs:        tipo==='expedicao' ? (destino+' '+obs).trim() : (posicao+' '+obs).trim(),
+    registradoEm:  now,
+    registradoPor: session ? session.nome : 'Sistema'
+  }));
+
+  entries.forEach(e=>src.unshift(e));
+
+  try{
+    const supaRows = entries.map(({registradoPor,...safe})=>safe);
+    await supaUpsertBulk(table, supaRows, 'id', 100, (done,total)=>{
+      showLoading(`Sincronizando ${done}/${total}...`);
+    });
+  }catch(err){
+    showToast('⚠ Salvo localmente, sync falhou: '+err.message,'#f59e0b','#000');
+  }
+
+  hideLoading();
+  showToast(
+    `✓ ${entries.length} ${tipo==='expedicao'?'expedições':'descargas'} registradas!`,
+    tipo==='expedicao'?'#a855f7':'#22c55e',
+    tipo==='expedicao'?'#fff':'#000'
+  );
+  clearLote(px);
+  buildFilterSelects(px); applyFilters(px); refreshHome();
+  showModuleTab(tipo,'consultar');
 }
 
 
@@ -2285,7 +2595,19 @@ function applyTheme(){
 }
 
 function formatDate(d){ if(!d) return '—'; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; }
-function showToast(msg,bg,color){ const t=document.getElementById('toast'); t.textContent=msg; t.style.background=bg||'#22c55e'; t.style.color=color||'#000'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3500); }
+function showToast(msg, bg, color){
+  const t = document.getElementById('toast');
+  // Clear any existing timer
+  if(t._timer) clearTimeout(t._timer);
+  t.textContent = msg;
+  t.style.background = bg  || '#22c55e';
+  t.style.color      = color || '#000';
+  t.classList.add('show');
+  // Errors/warnings stay longer (7s), success stays shorter (3.5s)
+  const isError = bg && (bg.includes('e05c1a') || bg.includes('dc26') || bg.includes('f59e0b') || bg.includes('f0a5'));
+  const duration = isError ? 7000 : 3500;
+  t._timer = setTimeout(() => t.classList.remove('show'), duration);
+}
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
 function exportCSV(px){
