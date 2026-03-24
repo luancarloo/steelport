@@ -420,6 +420,18 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         </div>
       </div>
 
+      <!-- MAPEAMENTO -->
+      <div class="module-card" onclick="openModule('mapeamento')" style="border-color:rgba(6,182,212,.2);">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">🗺</div>
+        <h2 style="color:#22d3ee;">MAPEAMENTO</h2>
+        <p>Mapa do armazém por pilha e BL. Visualize a ordem FIFO e o mapa de expedição.</p>
+        <div class="module-stats">
+          <div class="mini-stat" style="background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.2);">Pilhas: <span id="home-map-pilhas" style="color:#22d3ee;">0</span></div>
+          <div class="mini-stat" style="background:rgba(6,182,212,.08);border-color:rgba(6,182,212,.2);">BLs: <span id="home-map-bls" style="color:#22d3ee;">0</span></div>
+        </div>
+      </div>
+
       <!-- CONFIG API (admin only) -->
       <div class="module-card" id="card-api-cfg" style="display:none;border-color:rgba(34,197,94,.2);" onclick="document.getElementById('api-url-input').value=SUPA_URL||'';document.getElementById('api-key-input').value=SUPA_KEY||'';document.getElementById('modal-api-setup').classList.add('open')">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(34,197,94,.08),transparent 70%);pointer-events:none;"></div>
@@ -493,9 +505,11 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1.5px;margin-bottom:.75rem;">➕ ADICIONAR BOBINAS AO LOTE</div>
         <div class="lote-coil-row">
           <input type="text" id="dl-coil-add" class="lote-coil-input"
-            placeholder="Digite o Nº da bobina e pressione Enter ou clique em +"
+            placeholder="Digite o Nº ou últimos 5 dígitos e pressione Enter"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('d');}"
-            oninput="this.value=this.value.toUpperCase()">
+            oninput="autocompleteCoil('d')"
+            onblur="setTimeout(()=>document.getElementById('dl-coil-suggestions')?.remove(),200)"
+            autocomplete="off">
           <button class="btn btn-primary" onclick="addCoilLote('d')" style="white-space:nowrap;padding:.65rem 1.2rem;">+ ADICIONAR</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:.4rem;font-family:'JetBrains Mono',monospace;">
@@ -621,9 +635,11 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--exp);letter-spacing:1.5px;margin-bottom:.75rem;">➕ ADICIONAR BOBINAS AO LOTE</div>
         <div class="lote-coil-row">
           <input type="text" id="el-coil-add" class="lote-coil-input"
-            placeholder="Digite o Nº da bobina e pressione Enter ou clique em +"
+            placeholder="Digite o Nº ou últimos 5 dígitos e pressione Enter"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('e');}"
-            oninput="this.value=this.value.toUpperCase()">
+            oninput="autocompleteCoil('e')"
+            onblur="setTimeout(()=>document.getElementById('el-coil-suggestions')?.remove(),200)"
+            autocomplete="off">
           <button class="btn btn-exp" onclick="addCoilLote('e')" style="white-space:nowrap;padding:.65rem 1.2rem;">+ ADICIONAR</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:.4rem;font-family:'JetBrains Mono',monospace;">
@@ -662,6 +678,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('e')">↓ CSV</button>
         <button class="btn btn-purple btn-sm" onclick="openImportMov('expedicao')">↑ IMPORTAR EXCEL</button>
         <button class="btn btn-secondary btn-sm" onclick="downloadTemplateMov('expedicao')">↓ MODELO EXCEL</button>
+        <button class="btn btn-secondary btn-sm" onclick="openReprintModal()" title="Reimprimir tickets anteriores">🖨 REIMPRIMIR TICKET</button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
@@ -889,6 +906,17 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
               <input type="checkbox" id="perm-relatorios" style="accent-color:var(--success);width:16px;height:16px;"> 📊 Relatórios
             </label>
           </div>
+        </div>
+        <!-- ARMAZÉNS PERMITIDOS -->
+        <div style="grid-column:span 3;display:flex;flex-direction:column;gap:.5rem;">
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;">
+            🏭 Acesso ao Banco — Armazéns
+            <span style="font-weight:400;color:var(--muted);font-size:10px;margin-left:.5rem;">(nenhum selecionado = acesso a todos)</span>
+          </label>
+          <select id="uf-armazens" multiple
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .75rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;min-height:80px;max-height:130px;outline:none;accent-color:var(--accent);">
+          </select>
+          <div style="font-size:11px;color:var(--muted);">Segure Ctrl (ou Cmd no Mac) para selecionar múltiplos armazéns.</div>
         </div>
       </div>
       <div style="display:flex;gap:.75rem;margin-top:1.2rem;">
@@ -1244,15 +1272,18 @@ async function saveUser(){
         consulta:    document.getElementById('perm-consulta').checked,
         relatorios:  document.getElementById('perm-relatorios').checked
       };
+  // Armazéns permitidos (vazio = todos)
+  const armSel = document.getElementById('uf-armazens');
+  const armazens = armSel ? [...armSel.selectedOptions].map(o=>o.value).filter(Boolean) : [];
   let userData;
   if(editUserId){
     const idx=users.findIndex(u=>u.id===editUserId);
-    if(idx>=0){ users[idx]={...users[idx],nome,user,email,role,perms}; if(pass) users[idx].pass=pass; userData=users[idx]; }
+    if(idx>=0){ users[idx]={...users[idx],nome,user,email,role,perms,armazens}; if(pass) users[idx].pass=pass; userData=users[idx]; }
     editUserId=null;
     document.getElementById('user-form-title').textContent='➕ NOVO USUÁRIO';
     showToast('✓ Usuário atualizado!','#22c55e','#000');
   } else {
-    userData={id:'u'+Date.now(),nome,user,email,pass,role,perms};
+    userData={id:'u'+Date.now(),nome,user,email,pass,role,perms,armazens};
     users.push(userData);
     showToast('✓ Usuário '+nome+' criado!','#22c55e','#000');
   }
@@ -1275,6 +1306,11 @@ function editUser(id){
     document.getElementById('perm-consulta').checked  = u.perms?.consulta   !== false;
     document.getElementById('perm-relatorios').checked= u.perms?.relatorios === true;
   }
+  // Populate armazens
+  const armSel = document.getElementById('uf-armazens');
+  if(armSel){
+    [...armSel.options].forEach(o=>{ o.selected = !u.armazens?.length || u.armazens.includes(o.value); });
+  }
   togglePermFields();
   document.getElementById('user-form-title').textContent='✏ EDITAR USUÁRIO — '+u.nome;
   document.getElementById('user-form-section').scrollIntoView({behavior:'smooth'});
@@ -1290,6 +1326,14 @@ async function deleteUser(id){
   try { await api({action:'deleteUser',id}); } catch(err){}
 }
 
+function buildArmSelect(){
+  const sel = document.getElementById('uf-armazens');
+  if(!sel) return;
+  // Build list of armazens from coilsDB
+  const arms = [...new Set(coilsDB.map(c=>c.armazem).filter(Boolean))].sort();
+  sel.innerHTML = arms.map(a=>`<option value="${a}">${a}</option>`).join('');
+}
+
 function clearUserForm(){
   ['uf-nome','uf-user','uf-email','uf-pass'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('uf-role').value='operator';
@@ -1297,6 +1341,9 @@ function clearUserForm(){
   document.getElementById('perm-expedicao').checked=true;
   document.getElementById('perm-consulta').checked=true;
   document.getElementById('perm-relatorios').checked=false;
+  // Deselect all armazens (= access to all)
+  const sel=document.getElementById('uf-armazens');
+  if(sel) [...sel.options].forEach(o=>o.selected=false);
   togglePermFields();
   editUserId=null;
   document.getElementById('user-form-title').textContent='➕ NOVO USUÁRIO';
@@ -1305,6 +1352,7 @@ function clearUserForm(){
 
 let records    = [];
 let expedicoes = [];
+let ticketHistory = JSON.parse(localStorage.getItem('sp_tickets')||'[]'); // persists across sessions
 let navios     = [];
 let coilsDB    = [];
 let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
@@ -1527,7 +1575,8 @@ function openModule(mod){
   if(mod==='expedicao')  { buildFilterSelects('e'); applyFilters('e'); preencherDataPeriodoLote('e'); }
   if(mod==='database')   { buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); }
   if(mod==='relatorios') { buildRptSelects(); renderRptSummary(); renderReport(); }
-  if(mod==='usuarios')   { togglePermFields(); renderUsersList(); }
+  if(mod==='usuarios')   { togglePermFields(); renderUsersList(); buildArmSelect(); }
+  if(mod==='mapeamento') { buildMapFilters(); renderMapa(); }
 }
 
 // ── Retorna o período correspondente ao horário atual ──────────
@@ -1579,6 +1628,13 @@ function refreshHome(){
   document.getElementById('home-rep-navios').textContent = new Set(coilsDB.map(c=>c.navio).filter(Boolean)).size;
   document.getElementById('home-rep-clientes').textContent = new Set(coilsDB.map(c=>c.cliente).filter(Boolean)).size;
   document.getElementById('home-users-count').textContent = users.length;
+  // Mapeamento badges
+  const descSet=new Set(records.map(r=>r.coil)); const expSet=new Set(expedicoes.map(r=>r.coil));
+  const inStock=coilsDB.filter(c=>descSet.has(c.coil)&&!expSet.has(c.coil));
+  const mapPilhas=new Set(inStock.map(c=>(c.armazem||'')+'|'+(c.bl||''))).size;
+  const mapBLs=new Set(inStock.map(c=>c.bl).filter(Boolean)).size;
+  const hpEl=document.getElementById('home-map-pilhas'); if(hpEl) hpEl.textContent=mapPilhas;
+  const hbEl=document.getElementById('home-map-bls');    if(hbEl) hbEl.textContent=mapBLs;
 }
 
 // ══════════════════════════════════════════
@@ -1772,9 +1828,53 @@ async function saveMovimento(){
 // ══════════════════════════════════════════
 let loteItems = { d: [], e: [] };
 
+function normalizeCoilInput(raw){
+  // Remove caracteres especiais exceto letras, números e hífen
+  return raw.replace(/[^A-Z0-9\-]/gi,'').toUpperCase().trim();
+}
+
+function autocompleteCoil(px){
+  const inputEl = document.getElementById(px+'l-coil-add');
+  const raw     = normalizeCoilInput(inputEl.value);
+  inputEl.value = raw;
+  if(!raw || raw.length < 3) {
+    document.getElementById(px+'l-coil-suggestions')?.remove();
+    return;
+  }
+  // Se digitou 5 ou menos dígitos numéricos, busca por sufixo
+  const isSuffix = /^\d{1,5}$/.test(raw);
+  let matches = [];
+  if(isSuffix){
+    matches = coilsDB.filter(c=>c.coil && c.coil.endsWith(raw)).map(c=>c.coil).slice(0,8);
+  } else {
+    matches = coilsDB.filter(c=>c.coil && c.coil.startsWith(raw)).map(c=>c.coil).slice(0,8);
+  }
+  // Remove old suggestions
+  document.getElementById(px+'l-coil-suggestions')?.remove();
+  if(!matches.length) return;
+  // Render suggestions
+  const wrap    = inputEl.parentElement;
+  wrap.style.position = 'relative';
+  const box = document.createElement('div');
+  box.id    = px+'l-coil-suggestions';
+  box.style.cssText = `position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--accent);border-radius:6px;z-index:999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.3);`;
+  matches.forEach(coil=>{
+    const db  = coilsDB.find(c=>c.coil===coil);
+    const div = document.createElement('div');
+    div.style.cssText = `padding:.5rem .75rem;cursor:pointer;font-size:13px;font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);`;
+    div.innerHTML = `<span style="color:var(--accent);font-weight:700">${coil}</span><span style="color:var(--muted);font-size:11px">${db?.navio||''} ${db?.cliente?'· '+db.cliente:''}</span>`;
+    div.onmousedown = (e)=>{ e.preventDefault(); inputEl.value=coil; box.remove(); };
+    box.appendChild(div);
+  });
+  wrap.appendChild(box);
+}
+
 function addCoilLote(px){
   const inputEl = document.getElementById(px+'l-coil-add');
-  const coil    = inputEl.value.trim().toUpperCase();
+  // Normalise: strip special chars
+  const coil = normalizeCoilInput(inputEl.value);
+  inputEl.value = coil;
+  document.getElementById(px+'l-coil-suggestions')?.remove();
   if(!coil){ showToast('Digite o Nº da bobina.','#e05c1a','#fff'); return; }
 
   if(loteItems[px].find(r=>r.coil===coil)){
@@ -2006,9 +2106,178 @@ async function confirmarLote(px){
   );
   clearLote(px);
   buildFilterSelects(px); applyFilters(px); refreshHome();
+  // Offer ticket print for expedição
+  if(px==='e'){
+    printTicketExpedicao(entries, veiculo, motorista, destino, data, periodo, obs);
+  }
   showModuleTab(tipo,'consultar');
 }
 
+function printTicketExpedicao(entries, veiculo, motorista, destino, data, periodo, obs){
+  const ticketNum = 'EXP-' + Date.now().toString().slice(-6);
+  // Save to history (keep last 50)
+  const ticketData = {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs, emitidoEm: new Date().toISOString()};
+  ticketHistory.unshift(ticketData);
+  if(ticketHistory.length > 50) ticketHistory.pop();
+  try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory)); }catch(e){}
+  _renderTicketWindow(ticketData);
+}
+
+function reprintTicket(idx){
+  const t = ticketHistory[idx];
+  if(t) _renderTicketWindow(t);
+}
+
+function _renderTicketWindow(t){
+  const {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs} = t;
+  const totalPB   = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const totalPL   = entries.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0);
+  const bl        = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(', ');
+  const navio     = [...new Set(entries.map(r=>r.navio).filter(Boolean))].join(', ');
+  const cliente   = [...new Set(entries.map(r=>r.cliente).filter(Boolean))].join(', ');
+  const produto   = [...new Set(entries.map(r=>r.produto).filter(Boolean))].join(', ');
+  const dataFmt   = data ? data.split('-').reverse().join('/') : '—';
+
+  const w = window.open('','_blank','width=780,height=900');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>Ticket ${ticketNum}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Arial',sans-serif;font-size:13px;color:#111;background:#fff;padding:24px;}
+    .ticket{max-width:720px;margin:0 auto;border:2px solid #1e3a5f;border-radius:8px;overflow:hidden;}
+    .header{background:#1e3a5f;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;}
+    .header-title{font-size:20px;font-weight:900;letter-spacing:2px;}
+    .header-sub{font-size:11px;opacity:.8;margin-top:2px;}
+    .ticket-num{background:#f0a500;color:#000;font-weight:900;font-size:16px;padding:6px 14px;border-radius:6px;font-family:monospace;}
+    .section{padding:14px 20px;border-bottom:1px solid #ddd;}
+    .section:last-child{border-bottom:none;}
+    .section-title{font-size:10px;font-weight:700;letter-spacing:2px;color:#666;text-transform:uppercase;margin-bottom:8px;}
+    .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
+    .info-item label{font-size:10px;color:#888;display:block;margin-bottom:2px;text-transform:uppercase;}
+    .info-item span{font-weight:700;font-size:14px;color:#111;}
+    .coil-table{width:100%;border-collapse:collapse;font-size:12px;}
+    .coil-table th{background:#f5f5f5;padding:6px 10px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#555;border-bottom:2px solid #ddd;}
+    .coil-table td{padding:6px 10px;border-bottom:1px solid #eee;}
+    .coil-table tr:last-child td{border-bottom:none;}
+    .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:#f9f9f9;padding:14px 20px;}
+    .total-item label{font-size:10px;color:#888;display:block;text-transform:uppercase;}
+    .total-item span{font-weight:900;font-size:18px;color:#1e3a5f;}
+    .footer{background:#f5f5f5;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888;}
+    .assinatura{border-top:1px solid #ccc;margin-top:8px;padding-top:4px;width:200px;text-align:center;color:#888;font-size:11px;}
+    @media print{body{padding:0;}.no-print{display:none!important;}}
+  </style></head><body>
+  <div class="no-print" style="margin-bottom:16px;display:flex;gap:10px;">
+    <button onclick="window.print()" style="background:#1e3a5f;color:#fff;border:none;padding:10px 24px;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;">🖨 IMPRIMIR</button>
+    <button onclick="window.close()" style="background:#eee;color:#333;border:none;padding:10px 18px;border-radius:6px;font-size:14px;cursor:pointer;">✕ FECHAR</button>
+  </div>
+  <div class="ticket">
+    <div class="header">
+      <div>
+        <div class="header-title">STEELPORT · 4SIDES</div>
+        <div class="header-sub">TICKET DE EXPEDIÇÃO — WAREHOUSE SYSTEMS</div>
+      </div>
+      <div class="ticket-num">${ticketNum}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Dados do Transporte</div>
+      <div class="info-grid">
+        <div class="info-item"><label>Veículo / Placa</label><span>${veiculo}</span></div>
+        <div class="info-item"><label>Motorista</label><span>${motorista||'—'}</span></div>
+        <div class="info-item"><label>Destino</label><span>${destino||'—'}</span></div>
+        <div class="info-item"><label>Data</label><span>${dataFmt}</span></div>
+        <div class="info-item"><label>Período</label><span>${periodo}</span></div>
+        <div class="info-item"><label>Tipo de Carga</label><span>${produto||'—'}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Conhecimento de Embarque</div>
+      <div class="info-grid">
+        <div class="info-item"><label>BL</label><span style="font-family:monospace">${bl||'—'}</span></div>
+        <div class="info-item"><label>Navio</label><span>${navio||'—'}</span></div>
+        <div class="info-item"><label>Cliente</label><span>${cliente||'—'}</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Bobinas Expedidas — ${entries.length} unidade(s)</div>
+      <table class="coil-table">
+        <thead><tr><th>#</th><th>Coil Number</th><th>P. Bruto (kg)</th><th>P. Líquido (kg)</th><th>Produto</th></tr></thead>
+        <tbody>
+          ${entries.map((r,i)=>`<tr>
+            <td>${i+1}</td>
+            <td style="font-family:monospace;font-weight:700">${r.coil}</td>
+            <td>${r.pesob?fmtKg(r.pesob)+' kg':'—'}</td>
+            <td>${r.pesol?fmtKg(r.pesol)+' kg':'—'}</td>
+            <td>${r.produto||'—'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="totals">
+      <div class="total-item"><label>Qtd. Bobinas</label><span>${entries.length}</span></div>
+      <div class="total-item"><label>P. Bruto Total</label><span>${fmtKg(totalPB)} kg</span></div>
+      <div class="total-item"><label>P. Líquido Total</label><span>${fmtKg(totalPL)} kg</span></div>
+      <div class="total-item"><label>Observações</label><span style="font-size:13px">${obs||'—'}</span></div>
+    </div>
+
+    <div class="footer">
+      <span>Emitido em: ${new Date().toLocaleString('pt-BR')}</span>
+      <div style="display:flex;gap:60px;">
+        <div class="assinatura">Motorista</div>
+        <div class="assinatura">Responsável</div>
+      </div>
+    </div>
+  </div>
+  <script>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+
+function openReprintModal(){
+  const list = document.getElementById('reprint-list');
+  const empty= document.getElementById('reprint-empty');
+  if(!ticketHistory.length){
+    list.innerHTML=''; empty.style.display='';
+  } else {
+    empty.style.display='none';
+    list.innerHTML = ticketHistory.map((t,i)=>{
+      const dt = new Date(t.emitidoEm).toLocaleString('pt-BR');
+      const nCoils = t.entries?.length||0;
+      const bl = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
+      const totalPB = (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;gap:1rem;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${t.ticketNum}</span>
+            <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo}</span>
+            <span style="font-size:11px;color:var(--muted);">${t.motorista||'—'}</span>
+          </div>
+          <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
+            <span>BL: <b style="color:var(--text)">${bl}</b></span>
+            <span>${nCoils} bobina(s)</span>
+            <span>${fmtKg(totalPB)} kg</span>
+            <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo}</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:.2rem;">Emitido: ${dt}</div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="reprintTicket(${i});closeModal('modal-reprint');" style="flex-shrink:0;">🖨 IMPRIMIR</button>
+      </div>`;
+    }).join('');
+  }
+  document.getElementById('modal-reprint').classList.add('open');
+}
+
+function clearTicketHistory(){
+  if(!confirm('Deseja apagar todo o histórico de tickets?')) return;
+  ticketHistory=[];
+  localStorage.removeItem('sp_tickets');
+  openReprintModal();
+  showToast('Histórico apagado.','#22c55e','#000');
+}
 
 async function registrar(tipo){
   const px = tipo==='expedicao'?'e':'d';
@@ -2626,6 +2895,54 @@ function openImportModal(){ resetImport(); document.getElementById('modal-import
 function dzOver(e){ e.preventDefault(); const dz=document.getElementById('drop-zone'); dz.style.borderColor='var(--accent)'; dz.style.background='rgba(240,165,0,.05)'; }
 function dzLeave(){ const dz=document.getElementById('drop-zone'); dz.style.borderColor='var(--border)'; dz.style.background=''; }
 function dzDrop(e){ e.preventDefault(); dzLeave(); const f=e.dataTransfer.files[0]; if(f) handleXLSFile(f); }
+// ── Converte peso do Excel para número puro (kg) ────────────────
+// Aceita: "3,000" (milhar BR) → 3000; "3.000" (milhar BR) → 3000;
+// "3000" → 3000; "3.5" (decimal) → 3.5; número Excel → número
+function parseWeight(v){
+  if(v===''||v===null||v===undefined) return '';
+  if(typeof v==='number') return v;          // já é número (Excel numérico)
+  const s = String(v).trim();
+  if(!s) return '';
+  // Remove separador de milhar: tanto "3,000" quanto "3.000"
+  // Regra: se tem vírgula E depois dela há exatamente 3 dígitos → milhar BR
+  // Se tem ponto E depois dele há exatamente 3 dígitos → milhar BR
+  // Caso contrário → decimal
+  let clean = s;
+  // Remove espaços e símbolos comuns
+  clean = clean.replace(/[\s\u00a0]/g,'').replace(/[^0-9.,]/g,'');
+  // Detecta formato "1,000,000" ou "1.000.000" (múltiplos separadores)
+  const commaGroups = (clean.match(/,/g)||[]).length;
+  const dotGroups   = (clean.match(/\./g)||[]).length;
+  if(commaGroups > 1){
+    // "1,000,000" → remove vírgulas → 1000000
+    clean = clean.replace(/,/g,'');
+  } else if(dotGroups > 1){
+    // "1.000.000" → remove pontos → 1000000
+    clean = clean.replace(/\./g,'');
+  } else if(commaGroups===1 && dotGroups===1){
+    // "1.000,50" (BR) ou "1,000.50" (EN)
+    const ci=clean.indexOf(','), di=clean.indexOf('.');
+    if(di < ci){ clean=clean.replace(/\./g,'').replace(',','.'); } // BR: 1.000,50
+    else        { clean=clean.replace(/,/g,''); }                   // EN: 1,000.50
+  } else if(commaGroups===1){
+    // só uma vírgula: pode ser milhar ou decimal
+    const after = clean.split(',')[1];
+    if(after && after.length===3 && /^\d{3}$/.test(after)){
+      clean = clean.replace(',','');  // "3,000" → 3000
+    } else {
+      clean = clean.replace(',','.');  // "3,5" → 3.5
+    }
+  } else if(dotGroups===1){
+    const after = clean.split('.')[1];
+    if(after && after.length===3 && /^\d{3}$/.test(after)){
+      clean = clean.replace('.','');  // "3.000" → 3000
+    }
+    // else: "3.5" → keep as is
+  }
+  const n = parseFloat(clean);
+  return isNaN(n) ? '' : n;
+}
+
 function handleXLSFile(file){
   if(!file) return;
   if(!file.name.match(/\.(xlsx|xls)$/i)){ showToast('Use .xlsx ou .xls','#e05c1a','#fff'); return; }
@@ -2636,7 +2953,7 @@ function handleXLSFile(file){
       let hr=0; for(let i=0;i<Math.min(5,raw.length);i++){ const j=raw[i].join('|').toLowerCase(); if(j.includes('numero')||j.includes('bobina')||j.includes('coil')||j.includes('armazem')){ hr=i; break; } }
       const dr=raw.slice(hr+1).filter(r=>r.some(c=>c!==''));
       if(!dr.length){ showToast('Nenhum dado.','#e05c1a','#fff'); return; }
-      importRows=dr.map(r=>({coil:String(r[0]||'').trim().toUpperCase(),armazem:String(r[1]||'').trim(),bl:String(r[2]||'').trim(),cliente:String(r[3]||'').trim(),navio:String(r[4]||'').trim(),viagem:String(r[5]||'').trim(),produto:String(r[6]||'').trim(),pesob:r[7]!==''?r[7]:'',pesol:r[8]!==''?r[8]:''})).filter(r=>r.coil);
+      importRows=dr.map(r=>({coil:String(r[0]||'').trim().toUpperCase(),armazem:String(r[1]||'').trim(),bl:String(r[2]||'').trim(),cliente:String(r[3]||'').trim(),navio:String(r[4]||'').trim(),viagem:String(r[5]||'').trim(),produto:String(r[6]||'').trim(),pesob:parseWeight(r[7]),pesol:parseWeight(r[8])})).filter(r=>r.coil);
       if(!importRows.length){ showToast('Nenhuma bobina válida.','#e05c1a','#fff'); return; }
       document.getElementById('drop-zone').style.display='none';
       document.getElementById('import-preview').style.display='';
@@ -2783,8 +3100,8 @@ function handleXLSMovFile(file){
           let cliente  = String(r[7]||'').trim();
           let viagem   = String(r[8]||'').trim();
           let produto  = String(r[9]||'').trim();
-          let pesob    = r[10]!==''?String(r[10]).replace(',','.'):'';
-          let pesol    = r[11]!==''?String(r[11]).replace(',','.'):'';
+          let pesob    = parseWeight(r[10]);
+          let pesol    = parseWeight(r[11]);
           let armazem  = String(r[12]||'').trim();
 
           // ── AUTOFILL FROM coilsDB ──────────────────────────────
@@ -3279,6 +3596,221 @@ function exportReportPDF(){
   showToast('✓ PDF exportado com sucesso!','#22c55e','#000');
 }
 
+// ══════════════════════════════════════════
+// MAPEAMENTO DE ARMAZÉM
+// ══════════════════════════════════════════
+
+function buildMapFilters(){
+  const arms = [...new Set(coilsDB.map(c=>c.armazem).filter(Boolean))].sort();
+  const bls   = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+  const navs  = [...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
+
+  const aEl=document.getElementById('map-filter-armazem');
+  const bEl=document.getElementById('map-filter-bl');
+  const nEl=document.getElementById('map-filter-navio');
+  if(!aEl) return;
+
+  const cur = {a:aEl.value, b:bEl.value, n:nEl.value};
+  aEl.innerHTML='<option value="">Todos os armazéns</option>'+arms.map(v=>`<option value="${v}">${v}</option>`).join('');
+  bEl.innerHTML='<option value="">Todos os BLs</option>'+bls.map(v=>`<option value="${v}">${v}</option>`).join('');
+  nEl.innerHTML='<option value="">Todos os navios</option>'+navs.map(v=>`<option value="${v}">${v}</option>`).join('');
+  aEl.value=cur.a; bEl.value=cur.b; nEl.value=cur.n;
+}
+
+function renderMapa(){
+  const fa = document.getElementById('map-filter-armazem')?.value||'';
+  const fb = document.getElementById('map-filter-bl')?.value||'';
+  const fn = document.getElementById('map-filter-navio')?.value||'';
+
+  // Filter coilsDB
+  const base = coilsDB.filter(c=>
+    (!fa||c.armazem===fa) && (!fb||c.bl===fb) && (!fn||c.navio===fn)
+  );
+
+  // Sets for status lookup
+  const descSet = new Set(records.map(r=>r.coil));
+  const expSet  = new Set(expedicoes.map(r=>r.coil));
+
+  // Group by armazem → bl → ordered by descarga sequence (LIFO: última descarregada = topo da pilha)
+  const byArm = {};
+  base.forEach(c=>{
+    const arm = c.armazem||'(sem armazém)';
+    const bl  = c.bl||'(sem BL)';
+    if(!byArm[arm]) byArm[arm]={};
+    if(!byArm[arm][bl]) byArm[arm][bl]=[];
+    byArm[arm][bl].push(c);
+  });
+
+  // Sort each pilha by descarga order: records ordered by id desc = primeiro registrado = mais ao fundo
+  Object.values(byArm).forEach(bls=>{
+    Object.keys(bls).forEach(bl=>{
+      const pile = bls[bl];
+      // Match with records to get seq order
+      pile.forEach(c=>{
+        const rec = records.find(r=>r.coil===c.coil);
+        c._descSeq = rec ? rec.id : Infinity; // not yet discharged = pending
+      });
+      // Sort: smaller id = discharged earlier = bottom of pile (index 0 = bottom)
+      pile.sort((a,b)=>a._descSeq - b._descSeq);
+    });
+  });
+
+  const container = document.getElementById('map-container');
+  if(!Object.keys(byArm).length){
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">🗺</span>Nenhuma bobina encontrada para os filtros selecionados.</div>`;
+    return;
+  }
+
+  // Update home badges
+  const totalPilhas = Object.values(byArm).reduce((a,bls)=>a+Object.keys(bls).length,0);
+  const totalBLs    = new Set(base.map(c=>c.bl).filter(Boolean)).size;
+  const hpEl=document.getElementById('home-map-pilhas'); if(hpEl) hpEl.textContent=totalPilhas;
+  const hbEl=document.getElementById('home-map-bls');    if(hbEl) hbEl.textContent=totalBLs;
+
+  container.innerHTML = Object.entries(byArm).map(([arm, blGroups])=>`
+    <div style="margin-bottom:2rem;">
+      <div style="font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:2px;font-weight:700;margin-bottom:1rem;padding:.5rem 1rem;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent);">
+        🏭 ARMAZÉM: ${arm}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:1.2rem;align-items:flex-end;">
+        ${Object.entries(blGroups).map(([bl, pile])=>{
+          const total   = pile.length;
+          const expCount= pile.filter(c=>expSet.has(c.coil)).length;
+          const descCount= pile.filter(c=>descSet.has(c.coil)).length;
+          const pendDesc = pile.filter(c=>!descSet.has(c.coil)).length;
+          const cliente  = pile[0]?.cliente||'';
+          const navio    = pile[0]?.navio||'';
+          const totalPB  = pile.filter(c=>descSet.has(c.coil)&&!expSet.has(c.coil)).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
+
+          // Render bricks from TOP (last discharged) to BOTTOM
+          // Index 0 = bottom = first discharged = last to leave
+          const bricks = [...pile].reverse().map((c,pos)=>{
+            const isExp   = expSet.has(c.coil);
+            const isDesc  = descSet.has(c.coil);
+            const isTop   = pos===0; // topo = última descarregada = próxima a sair
+            let bg, border, label, txtColor;
+            if(isExp){
+              bg='rgba(168,85,247,.15)'; border='rgba(168,85,247,.5)'; txtColor='var(--exp)'; label='EXP';
+            } else if(isDesc){
+              bg=isTop?'rgba(34,197,94,.25)':'rgba(34,197,94,.1)';
+              border=isTop?'rgba(34,197,94,.8)':'rgba(34,197,94,.3)';
+              txtColor=isTop?'var(--success)':'#86efac'; label=isTop?'↑ TOPO':'';
+            } else {
+              bg='rgba(240,165,0,.08)'; border='rgba(240,165,0,.25)'; txtColor='var(--muted)'; label='PEND.';
+            }
+            return `<div title="${c.coil} — ${c.cliente||''} ${c.produto||''} ${c.pesob?fmtKg(c.pesob)+' kg':''}"
+              style="background:${bg};border:1px solid ${border};border-radius:4px;padding:5px 8px;margin-bottom:2px;min-width:170px;cursor:default;transition:all .15s;"
+              onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:${txtColor}">${c.coil}</span>
+                ${label?`<span style="font-size:9px;font-weight:700;color:${txtColor};opacity:.8">${label}</span>`:''}
+              </div>
+              <div style="font-size:10px;color:var(--muted);margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}</div>
+            </div>`;
+          }).join('');
+
+          return `<div style="display:flex;flex-direction:column;min-width:190px;">
+            <!-- Stack header -->
+            <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px 8px 0 0;padding:.6rem .8rem;border-bottom:none;">
+              <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;margin-bottom:2px;">BL: ${bl}</div>
+              <div style="font-size:10px;color:var(--muted);">${navio} ${cliente?'· '+cliente:''}</div>
+              <div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;">
+                <span style="font-size:9px;background:rgba(34,197,94,.1);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${descCount-expCount} em estoque</span>
+                ${expCount?`<span style="font-size:9px;background:rgba(168,85,247,.1);color:var(--exp);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${expCount} expedida(s)</span>`:''}
+                ${pendDesc?`<span style="font-size:9px;background:rgba(240,165,0,.1);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${pendDesc} pendente(s)</span>`:''}
+              </div>
+            </div>
+            <!-- Bricks (top → bottom) -->
+            <div style="border:1px solid var(--border);border-radius:0 0 8px 8px;padding:.5rem .5rem .3rem;background:var(--bg);">
+              ${bricks}
+              <!-- Ground indicator -->
+              <div style="border-top:3px solid var(--border);margin-top:4px;text-align:center;font-size:9px;color:var(--muted);padding-top:3px;font-family:'JetBrains Mono',monospace;letter-spacing:1px;">▬ PISO DO ARMAZÉM ▬</div>
+            </div>
+            ${totalPB?`<div style="font-size:10px;color:var(--success);font-family:'JetBrains Mono',monospace;margin-top:.3rem;text-align:center;">Em estoque: ${fmtKg(totalPB)} kg</div>`:''}
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+}
+
+function exportMapaPDF(){
+  const {jsPDF} = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const fa=document.getElementById('map-filter-armazem')?.value||'';
+  const descSet=new Set(records.map(r=>r.coil));
+  const expSet=new Set(expedicoes.map(r=>r.coil));
+  const base=coilsDB.filter(c=>!fa||c.armazem===fa);
+  const byBL={};
+  base.forEach(c=>{
+    const bl=c.bl||'(sem BL)';
+    if(!byBL[bl]) byBL[bl]=[];
+    const rec=records.find(r=>r.coil===c.coil);
+    byBL[bl].push({...c,_descSeq:rec?rec.id:Infinity});
+  });
+  Object.values(byBL).forEach(p=>p.sort((a,b)=>a._descSeq-b._descSeq));
+  doc.setFontSize(16); doc.setFont(undefined,'bold');
+  doc.text('STEELPORT · 4SIDES — MAPA DE ARMAZÉM',14,14);
+  doc.setFontSize(9); doc.setFont(undefined,'normal');
+  doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')} | Armazém: ${fa||'Todos'}`,14,20);
+  let y=28;
+  Object.entries(byBL).forEach(([bl,pile])=>{
+    const rows=pile.map((c,i)=>[
+      String(pile.length-i), // posição (topo=1)
+      c.coil,
+      expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE',
+      c.armazem||'—', c.cliente||'—', c.pesob?fmtKg(c.pesob)+' kg':'—', c.produto||'—'
+    ]);
+    doc.setFontSize(10); doc.setFont(undefined,'bold');
+    if(y>170){doc.addPage();y=14;}
+    doc.text(`BL: ${bl} (${pile[0]?.navio||'—'} · ${pile[0]?.cliente||'—'})`,14,y);
+    y+=4;
+    doc.autoTable({startY:y,head:[['Pos.','Coil Number','Status','Armazém','Cliente','P.Bruto','Produto']],body:rows,
+      styles:{fontSize:8},headStyles:{fillColor:[30,58,95]},
+      columnStyles:{0:{cellWidth:10},1:{cellWidth:42},2:{cellWidth:28}},
+      didParseCell:(d)=>{
+        if(d.section==='body'){
+          const s=d.row.raw[2];
+          if(s==='EM ESTOQUE')d.cell.styles.textColor=[34,197,94];
+          else if(s==='EXPEDIDA')d.cell.styles.textColor=[168,85,247];
+          else d.cell.styles.textColor=[240,165,0];
+        }
+      }
+    });
+    y=doc.lastAutoTable.finalY+6;
+  });
+  doc.save(`mapa_armazem_${new Date().toISOString().slice(0,10)}.pdf`);
+}
+
+function exportMapaExcel(){
+  const fa=document.getElementById('map-filter-armazem')?.value||'';
+  const descSet=new Set(records.map(r=>r.coil));
+  const expSet=new Set(expedicoes.map(r=>r.coil));
+  const base=coilsDB.filter(c=>!fa||c.armazem===fa);
+  const byBL={};
+  base.forEach(c=>{
+    const bl=c.bl||'(sem BL)';
+    if(!byBL[bl]) byBL[bl]=[];
+    const rec=records.find(r=>r.coil===c.coil);
+    byBL[bl].push({...c,_descSeq:rec?rec.id:Infinity});
+  });
+  Object.values(byBL).forEach(p=>p.sort((a,b)=>a._descSeq-b._descSeq));
+  const wb=XLSX.utils.book_new();
+  const rows=[['Posição na Pilha','BL','Coil Number','Status','Armazém','Navio','Cliente','P.Bruto (kg)','P.Líquido (kg)','Produto','Observação']];
+  Object.entries(byBL).forEach(([bl,pile])=>{
+    pile.forEach((c,i)=>{
+      const pos=pile.length-i; // topo=maior número
+      const status=expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE DESC.';
+      rows.push([pos,bl,c.coil,status,c.armazem||'',c.navio||'',c.cliente||'',c.pesob||'',c.pesol||'',c.produto||'',pos===pile.length?'← PRÓXIMA A SAIR':'']);
+    });
+    rows.push([]); // blank separator
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=[{wch:10},{wch:20},{wch:22},{wch:16},{wch:12},{wch:18},{wch:16},{wch:12},{wch:12},{wch:16},{wch:20}];
+  XLSX.utils.book_append_sheet(wb,ws,'Mapa Armazém');
+  XLSX.writeFile(wb,`mapa_armazem_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('✓ Mapa Excel exportado!','#22c55e','#000');
+}
+
 document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }); });
 
 </script>
@@ -3419,6 +3951,21 @@ alter table users add column if not exists email text;</pre>
   </div>
 </div>
 
+<!-- ═══════════════════ REIMPRIMIR TICKET ═══════════════════════ -->
+<div class="modal-overlay" id="modal-reprint">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-title">🖨 REIMPRIMIR TICKET DE EXPEDIÇÃO</div>
+    <div class="modal-body">
+      <div id="reprint-list" style="display:flex;flex-direction:column;gap:.5rem;max-height:440px;overflow-y:auto;"></div>
+      <div id="reprint-empty" style="display:none;text-align:center;color:var(--muted);padding:2rem;font-size:14px;">Nenhum ticket emitido neste dispositivo.</div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:1rem;display:flex;justify-content:space-between;align-items:center;margin-top:1rem;">
+      <button class="btn btn-danger btn-sm" onclick="clearTicketHistory()">🗑 LIMPAR HISTÓRICO</button>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-reprint')">FECHAR</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══════════════════ ESQUECI MINHA SENHA ════════════════ -->
 <div class="modal-overlay" id="modal-forgot">
   <div class="modal" style="max-width:420px;">
@@ -3443,6 +3990,40 @@ alter table users add column if not exists email text;</pre>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: MAPEAMENTO
+═══════════════════════════════════════════════════ -->
+<div id="screen-mapeamento" class="screen">
+  <div class="container">
+
+    <!-- FILTROS -->
+    <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem;">
+      <select id="map-filter-armazem" onchange="renderMapa()"
+        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
+        <option value="">Todos os armazéns</option>
+      </select>
+      <select id="map-filter-bl" onchange="renderMapa()"
+        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
+        <option value="">Todos os BLs</option>
+      </select>
+      <select id="map-filter-navio" onchange="renderMapa()"
+        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
+        <option value="">Todos os navios</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="exportMapaPDF()">↓ MAPA PDF</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportMapaExcel()">↓ MAPA EXCEL</button>
+    </div>
+
+    <!-- LEGENDA -->
+    <div style="display:flex;gap:1.2rem;flex-wrap:wrap;margin-bottom:1.2rem;font-size:12px;font-family:'JetBrains Mono',monospace;">
+      <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#22c55e;display:inline-block;"></span> Disponível (última descarregada = 1ª a sair)</span>
+      <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#a855f7;display:inline-block;"></span> Expedida</span>
+      <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:rgba(240,165,0,.4);display:inline-block;"></span> Aguardando (soterrada)</span>
+    </div>
+
+    <div id="map-container"></div>
+  </div>
+</div>
 
 </body>
 </html>
