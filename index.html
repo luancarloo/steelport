@@ -329,7 +329,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         </div>
       </div>
       <div class="login-error" id="login-error">Usuário ou senha incorretos.</div>
-      <button class="btn-login" onclick="doLogin()">ENTRAR</button>
+      <button class="btn-login" id="btn-login" onclick="doLogin()">ENTRAR</button>
       <button type="button" onclick="openForgotPass()" style="background:transparent;border:none;color:var(--muted);font-size:13px;font-family:'JetBrains Mono',monospace;cursor:pointer;margin-top:.5rem;text-decoration:underline;letter-spacing:.5px;">Esqueci minha senha</button>
     </div>
     <div class="login-footer">4SIDES · STEELPORT v2.0 · Acesso restrito</div>
@@ -1077,7 +1077,7 @@ function loadUsers(){
   try{ const d=localStorage.getItem('sp_users'); return d?JSON.parse(d):[DEFAULT_ADMIN]; }catch(e){ return [DEFAULT_ADMIN]; }
 }
 function loadSession(){
-  try{ const d=sessionStorage.getItem('sp_session'); return d?JSON.parse(d):null; }catch(e){ return null; }
+  try{ const d=localStorage.getItem('sp_session'); return d?JSON.parse(d):null; }catch(e){ return null; }
 }
 
 let users   = loadUsers();
@@ -1093,20 +1093,45 @@ function saveUsers(){
   }
 }
 
-function doLogin(){
-  const u  = document.getElementById('login-user').value.trim().toLowerCase();
-  const p  = document.getElementById('login-pass').value;
+async function doLogin(){
+  const u     = document.getElementById('login-user').value.trim().toLowerCase();
+  const p     = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
+  const btnEl = document.getElementById('btn-login');
+
+  // 1. Try local cache first (fast path)
   users = loadUsers();
-  const found = users.find(x => x.user.toLowerCase()===u && x.pass===p);
+  let found = users.find(x => x.user.toLowerCase()===u && x.pass===p);
+
+  // 2. If not found locally, try fetching from Supabase
+  //    (first access on a new device — localStorage only has DEFAULT_ADMIN)
+  if(!found && SUPA_URL && SUPA_KEY){
+    if(btnEl){ btnEl.disabled=true; btnEl.textContent='Verificando...'; }
+    try{
+      const remoteUsers = await supa('users?select=*');
+      if(remoteUsers && remoteUsers.length){
+        users = remoteUsers.map(normalizeUser);
+        // Merge DEFAULT_ADMIN if not present
+        if(!users.find(x=>x.id==='admin')) users.unshift(DEFAULT_ADMIN);
+        saveUsers(); // cache locally for next time
+      }
+      found = users.find(x => x.user.toLowerCase()===u && x.pass===p);
+    } catch(e){
+      // Supabase unreachable — keep local result (found stays null)
+    } finally {
+      if(btnEl){ btnEl.disabled=false; btnEl.textContent='ENTRAR'; }
+    }
+  }
+
   if(!found){
     errEl.classList.add('show');
     document.getElementById('login-user').classList.add('err');
     document.getElementById('login-pass').classList.add('err');
     return;
   }
+
   session = found;
-  sessionStorage.setItem('sp_session', JSON.stringify(session));
+  localStorage.setItem('sp_session', JSON.stringify(session));
   errEl.classList.remove('show');
   document.getElementById('login-user').classList.remove('err');
   document.getElementById('login-pass').classList.remove('err');
@@ -1116,7 +1141,7 @@ function doLogin(){
   preencherDataPeriodoLote('d');
   preencherDataPeriodoLote('e');
   refreshHome();
-  // Load data from Supabase after login (non-blocking)
+  // Load all data from Supabase after login (non-blocking)
   loadAllData().then(()=>{
     refreshHome();
     buildFilterSelects('d'); buildFilterSelects('e');
@@ -1125,7 +1150,7 @@ function doLogin(){
 
 function doLogout(){
   session = null;
-  sessionStorage.removeItem('sp_session');
+  localStorage.removeItem('sp_session');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-pass').value='';
   document.getElementById('login-user').value='';
@@ -2678,6 +2703,7 @@ function deleteMovimento(id,px,coil){ deleteTarget={id,px}; deleteType='mov'; do
 function deleteCoilDB(idx,coil){ deleteTarget={idx,coil}; deleteType='coil'; document.getElementById('modal-delete-body').innerHTML=`Deseja excluir a bobina <strong>${coil}</strong> do banco?`; document.getElementById('modal-delete').classList.add('open'); }
 
 async function confirmDelete(){
+  closeModal('modal-delete');
   try {
     if(deleteType==='mov'){
       const src=deleteTarget.px==='e'?expedicoes:records;
