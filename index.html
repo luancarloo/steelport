@@ -623,6 +623,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           <span class="sel-bar-count" id="d-sel-count">0 selecionados</span>
           <span class="sel-bar-info">dos registros visíveis com os filtros aplicados</span>
           <button class="btn btn-secondary btn-sm" onclick="selectAllMov('d')">☐ TODOS VISÍVEIS</button>
+          <button class="btn btn-info btn-sm" id="d-btn-edit-sel" style="display:none;" onclick="editSelectedMov('d')">✏ EDITAR SELECIONADO</button>
           <button class="btn btn-danger btn-sm" id="d-btn-del-sel" style="display:none;" onclick="deleteSelectedMov('d')">🗑 EXCLUIR SELECIONADOS</button>
           <button class="btn btn-secondary btn-sm" onclick="clearSelMov('d')">✕ CANCELAR</button>
         </div>
@@ -760,6 +761,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           <span class="sel-bar-count" id="e-sel-count">0 selecionados</span>
           <span class="sel-bar-info">dos registros visíveis com os filtros aplicados</span>
           <button class="btn btn-secondary btn-sm" onclick="selectAllMov('e')">☐ TODOS VISÍVEIS</button>
+          <button class="btn btn-info btn-sm" id="e-btn-edit-sel" style="display:none;" onclick="editSelectedMov('e')">✏ EDITAR SELECIONADO</button>
           <button class="btn btn-danger btn-sm" id="e-btn-del-sel" style="display:none;" onclick="deleteSelectedMov('e')">🗑 EXCLUIR SELECIONADOS</button>
           <button class="btn btn-secondary btn-sm" onclick="clearSelMov('e')">✕ CANCELAR</button>
         </div>
@@ -1098,9 +1100,18 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
       <input type="hidden" id="edit-mov-id">
       <input type="hidden" id="edit-mov-px">
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
-        <div class="form-group">
+        <div class="form-group" style="grid-column:span 1;">
           <label>Nº Bobina (Coil)</label>
-          <input type="text" id="edit-coil" style="font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()">
+          <div style="display:flex;gap:.4rem;">
+            <input type="text" id="edit-coil"
+              style="font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase;flex:1;"
+              oninput="this.value=this.value.toUpperCase()">
+            <button type="button" class="btn btn-secondary btn-sm"
+              onclick="editCoilAutofill()"
+              title="Buscar dados do banco pelo novo Nº Bobina"
+              style="white-space:nowrap;flex-shrink:0;">⚡ AUTO</button>
+          </div>
+          <div id="edit-coil-hint" style="font-size:11px;color:var(--muted);margin-top:3px;font-family:'JetBrains Mono',monospace;"></div>
         </div>
         <div class="form-group">
           <label>Data *</label>
@@ -1144,6 +1155,14 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div class="form-group">
           <label>Armazém</label>
           <input type="text" id="edit-armazem">
+        </div>
+        <div class="form-group">
+          <label>Peso Bruto (kg)</label>
+          <input type="number" id="edit-pesob" placeholder="ex: 25300" min="0">
+        </div>
+        <div class="form-group">
+          <label>Peso Líquido (kg)</label>
+          <input type="number" id="edit-pesol" placeholder="ex: 25000" min="0">
         </div>
         <div class="form-group">
           <label>Observações</label>
@@ -1875,6 +1894,30 @@ function validaPlaca(v){
 // ══════════════════════════════════════════
 // EDITAR REGISTRO (descarga/expedição)
 // ══════════════════════════════════════════
+function editCoilAutofill(){
+  const coil = document.getElementById('edit-coil').value.trim().toUpperCase();
+  const hint = document.getElementById('edit-coil-hint');
+  if(!coil){ hint.textContent=''; return; }
+  const db = coilsDB.find(c=>c.coil===coil);
+  if(!db){
+    hint.style.color='var(--warning)';
+    hint.textContent='⚠ Coil não encontrado no banco de dados';
+    return;
+  }
+  // Fill fields from DB
+  const fill=(id,val)=>{ const el=document.getElementById(id); if(el) el.value=val||''; };
+  fill('edit-bl',      db.bl);
+  fill('edit-navio',   db.navio);
+  fill('edit-cliente', db.cliente);
+  fill('edit-viagem',  db.viagem);
+  fill('edit-produto', db.produto);
+  fill('edit-armazem', db.armazem);
+  fill('edit-pesob',   db.pesob);
+  fill('edit-pesol',   db.pesol);
+  hint.style.color='var(--success)';
+  hint.textContent=`✓ Dados preenchidos: ${db.navio||''} · ${db.cliente||''} · BL ${db.bl||''}`;
+}
+
 function editMovimento(id, px){
   const src = px==='e' ? expedicoes : records;
   const r   = src.find(x => x.id === id);
@@ -1895,8 +1938,12 @@ function editMovimento(id, px){
   document.getElementById('edit-viagem').value   = r.viagem   || '';
   document.getElementById('edit-produto').value  = r.produto  || '';
   document.getElementById('edit-armazem').value  = r.armazem  || '';
+  document.getElementById('edit-pesob').value    = r.pesob    || '';
+  document.getElementById('edit-pesol').value    = r.pesol    || '';
   document.getElementById('edit-obs').value      = r.obs      || '';
   document.getElementById('edit-mov-warn').style.display = 'none';
+  const hint=document.getElementById('edit-coil-hint');
+  if(hint) hint.textContent='';
   document.getElementById('modal-edit-mov').classList.add('open');
 }
 
@@ -1937,6 +1984,8 @@ async function saveMovimento(){
     viagem:    document.getElementById('edit-viagem').value.trim(),
     produto:   document.getElementById('edit-produto').value.trim(),
     armazem:   document.getElementById('edit-armazem').value.trim(),
+    pesob:     document.getElementById('edit-pesob').value || src[idx].pesob,
+    pesol:     document.getElementById('edit-pesol').value || src[idx].pesol,
     obs:       document.getElementById('edit-obs').value.trim(),
     editadoEm: new Date().toISOString(),
     editadoPor: session ? session.nome : 'Sistema'
@@ -2868,17 +2917,27 @@ function updateSelBar(px){
   const ids  = getCheckedMov(px);
   const bar  = document.getElementById(px+'-sel-bar');
   const cnt  = document.getElementById(px+'-sel-count');
-  const btn  = document.getElementById(px+'-btn-del-sel');
+  const btnDel  = document.getElementById(px+'-btn-del-sel');
+  const btnEdit = document.getElementById(px+'-btn-edit-sel');
   if(!bar) return;
   if(ids.length > 0){
     bar.classList.add('show');
     cnt.textContent = `${ids.length} selecionado${ids.length>1?'s':''}`;
-    btn.style.display = '';
-    btn.textContent = `🗑 EXCLUIR ${ids.length} REGISTRO${ids.length>1?'S':''}`;
+    // Delete button — always shown
+    if(btnDel){ btnDel.style.display=''; btnDel.textContent=`🗑 EXCLUIR ${ids.length} REGISTRO${ids.length>1?'S':''}`; }
+    // Edit button — only shown when exactly 1 selected
+    if(btnEdit) btnEdit.style.display = ids.length===1 ? '' : 'none';
   } else {
     bar.classList.remove('show');
-    if(btn) btn.style.display = 'none';
+    if(btnDel)  btnDel.style.display='none';
+    if(btnEdit) btnEdit.style.display='none';
   }
+}
+
+function editSelectedMov(px){
+  const ids = getCheckedMov(px);
+  if(ids.length !== 1){ showToast('Selecione exatamente 1 registro para editar.','#f59e0b','#000'); return; }
+  editMovimento(ids[0], px);
 }
 
 function toggleAllMov(px, checked){
