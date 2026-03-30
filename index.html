@@ -2494,28 +2494,28 @@ function _renderTicketWindow(t){
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
     @page{size:80mm auto;margin:4mm 3mm;}
-    body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000;background:#fff;width:72mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#000;background:#fff;width:72mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
     .no-print{margin-bottom:10px;display:flex;gap:8px;}
-    .no-print button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:700;font-family:Arial,sans-serif;text-transform:uppercase;}
+    .no-print button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:700;font-family:Arial,sans-serif;text-transform:uppercase;}
     .header{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:3px;}
     .header img{height:26px;width:auto;}
-    .header-name{font-size:14px;font-weight:900;letter-spacing:1px;line-height:1.1;}
-    .header-sub{text-align:center;font-size:10px;font-weight:700;margin-bottom:2px;}
-    .tnum{text-align:center;font-size:16px;font-weight:900;letter-spacing:2px;margin:3px 0;}
-    .tdate{text-align:center;font-size:10px;margin-bottom:2px;}
-    .sep{white-space:pre;font-size:11px;margin:3px 0;font-family:Arial,sans-serif;letter-spacing:0;}
-    .stitle{font-size:12px;font-weight:900;margin-bottom:3px;}
-    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:11px;}
+    .header-name{font-size:16px;font-weight:900;letter-spacing:1px;line-height:1.1;}
+    .header-sub{text-align:center;font-size:12px;font-weight:700;margin-bottom:2px;}
+    .tnum{text-align:center;font-size:18px;font-weight:900;letter-spacing:2px;margin:3px 0;}
+    .tdate{text-align:center;font-size:12px;margin-bottom:2px;}
+    .sep{white-space:pre;font-size:13px;margin:3px 0;font-family:Arial,sans-serif;letter-spacing:0;}
+    .stitle{font-size:14px;font-weight:900;margin-bottom:3px;}
+    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:13px;}
     .lbl{flex-shrink:0;margin-right:6px;font-weight:700;}
     .val{font-weight:900;text-align:right;word-break:break-all;}
-    .coil-row{display:flex;justify-content:space-between;font-size:11px;padding:3px 0;border-bottom:1px dashed #999;}
+    .coil-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #999;}
     .coil-row:last-child{border-bottom:none;}
     .coil-num{font-weight:900;flex:1;}
     .coil-peso{text-align:right;flex-shrink:0;margin-left:6px;font-weight:700;}
-    .total-row{display:flex;justify-content:space-between;font-size:13px;font-weight:900;margin:3px 0;}
+    .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:3px 0;}
     .sign-area{margin-top:8px;}
-    .sign-line{border-top:1.5px solid #000;margin-top:22px;padding-top:3px;text-align:center;font-size:10px;font-weight:700;}
-    .footer{text-align:center;font-size:9px;margin-top:8px;color:#555;}
+    .sign-line{border-top:1.5px solid #000;margin-top:22px;padding-top:3px;text-align:center;font-size:12px;font-weight:700;}
+    .footer{text-align:center;font-size:11px;margin-top:8px;color:#555;}
     @media print{.no-print{display:none!important;}body{width:72mm;margin:0;padding:0;}}
   </style></head><body>
 
@@ -2560,7 +2560,7 @@ function _renderTicketWindow(t){
   <div class="total-row"><span>QTDE BOBINAS:</span><span>${entries.length}</span></div>
   <div class="total-row"><span>P.BRUTO TOTAL:</span><span>${fmtKg(totalPB)} KG</span></div>
   <div class="total-row"><span>P.LIQ. TOTAL:</span><span>${fmtKg(totalPL)} KG</span></div>
-  ${obs?`<div class="sep">${LINE}</div><div style="font-size:11px;font-weight:900;">OBS: ${obs.toString().toUpperCase()}</div>`:''}
+  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${obs.toString().toUpperCase()}</div>`:''}
   <div class="sep">${DLINE}</div>
 
   <div class="sign-area">
