@@ -432,7 +432,41 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         </div>
       </div>
 
+      <!-- FATURAMENTO -->
+      <div class="module-card" id="card-faturamento" onclick="openModule('faturamento')" style="border-color:rgba(34,197,94,.2);display:none;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(34,197,94,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">💰</div>
+        <h2 style="color:var(--success);">FATURAMENTO</h2>
+        <p>Cálculo de armazenagem por BL/Cliente. Períodos de 15 dias sobre peso em estoque.</p>
+        <div class="module-stats">
+          <div class="mini-stat" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2);">BLs: <span id="home-fat-bls" style="color:var(--success);">0</span></div>
+          <div class="mini-stat" style="background:rgba(34,197,94,.08);border-color:rgba(34,197,94,.2);">A vencer: <span id="home-fat-vencer" style="color:var(--success);">0</span></div>
+        </div>
+      </div>
+
       <!-- CONFIG API (admin only) -->
+      <!-- HISTÓRICO / ROLLBACK (admin only) -->
+      <div class="module-card" id="card-historico" style="display:none;border-color:rgba(251,146,60,.2);" onclick="openModule('historico')">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(251,146,60,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">🕐</div>
+        <h2 style="color:#fb923c;">HISTÓRICO</h2>
+        <p>Auditoria de todas as alterações. Reverta operações indesejadas com um clique.</p>
+        <div class="module-stats">
+          <div class="mini-stat" style="background:rgba(251,146,60,.08);border-color:rgba(251,146,60,.2);">Ações: <span id="home-hist-count" style="color:#fb923c;">0</span></div>
+        </div>
+      </div>
+
+      <!-- BACKUP (admin only) -->
+      <div class="module-card" id="card-backup" style="display:none;border-color:rgba(99,102,241,.2);" onclick="openModule('backup')">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(99,102,241,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">💾</div>
+        <h2 style="color:#818cf8;">BACKUP</h2>
+        <p>Backup automático diário. Exporte e restaure todos os dados do sistema.</p>
+        <div class="module-stats">
+          <div class="mini-stat" style="background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.2);">Último: <span id="home-backup-last" style="color:#818cf8;">—</span></div>
+        </div>
+      </div>
+
       <div class="module-card" id="card-api-cfg" style="display:none;border-color:rgba(34,197,94,.2);" onclick="document.getElementById('api-url-input').value=SUPA_URL||'';document.getElementById('api-key-input').value=SUPA_KEY||'';document.getElementById('modal-api-setup').classList.add('open')">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(34,197,94,.08),transparent 70%);pointer-events:none;"></div>
         <div class="module-icon">⚙</div>
@@ -1013,6 +1047,9 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-consulta-db" style="accent-color:#22d3ee;width:16px;height:16px;"> 🗄 Consultar Banco
             </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-faturamento" style="accent-color:var(--success);width:16px;height:16px;"> 💰 Faturamento
+            </label>
           </div>
         </div>
         <!-- ARMAZÉNS PERMITIDOS -->
@@ -1271,6 +1308,8 @@ async function doLogin(){
   loadAllData().then(()=>{
     refreshHome();
     buildFilterSelects('d'); buildFilterSelects('e');
+    // Check if daily backup is needed
+    setTimeout(checkBackupAutomatico, 3000);
   }).catch(err=>{ showToast('⚠ Erro ao carregar dados: '+err.message,'#f59e0b','#000'); });
 }
 
@@ -1311,11 +1350,17 @@ function applySessionUI(){
   const repCard  = document.querySelector('.module-card.rep');
   const usrCard  = document.getElementById('card-usuarios');
   const cfgCard  = document.getElementById('card-api-cfg');
+  const fatCard  = document.getElementById('card-faturamento');
+  const histCard = document.getElementById('card-historico');
+  const bkpCard  = document.getElementById('card-backup');
 
   if(isAdmin){
     [descCard,expCard,dbCard,repCard].forEach(c=>{ if(c) c.style.display=''; });
-    if(usrCard) usrCard.style.display='';
-    if(cfgCard) cfgCard.style.display='';
+    if(usrCard)  usrCard.style.display='';
+    if(cfgCard)  cfgCard.style.display='';
+    if(fatCard)  fatCard.style.display='';
+    if(histCard) histCard.style.display='';
+    if(bkpCard)  bkpCard.style.display='';
     const badge = document.getElementById('api-status-badge');
     if(badge) badge.innerHTML = (SUPA_URL && SUPA_KEY)
       ? 'Status: <span style="color:var(--success);">✓ CONECTADO</span>'
@@ -1327,6 +1372,9 @@ function applySessionUI(){
     if(repCard)  repCard.style.display='';
     if(usrCard)  usrCard.style.display='none';
     if(cfgCard)  cfgCard.style.display='none';
+    if(fatCard)  fatCard.style.display='none';
+    if(histCard) histCard.style.display='none';
+    if(bkpCard)  bkpCard.style.display='none';
   } else {
     // operator
     if(descCard) descCard.style.display=(perms.descarga===false)?'none':'';
@@ -1335,6 +1383,9 @@ function applySessionUI(){
     if(repCard)  repCard.style.display =(perms.relatorios===true)?'':'none';
     if(usrCard)  usrCard.style.display ='none';
     if(cfgCard)  cfgCard.style.display ='none';
+    if(fatCard)  fatCard.style.display =(perms.faturamento===true)?'':'none';
+    if(histCard) histCard.style.display='none';
+    if(bkpCard)  bkpCard.style.display='none';
   }
 }
 
@@ -1348,6 +1399,7 @@ function canAccess(mod){
   if(mod==='expedicao')  return (perms.expedicao  !== false);
   if(mod==='relatorios') return (perms.relatorios === true);
   if(mod==='database')   return (perms.consultaDB === true);
+  if(mod==='faturamento')return (perms.faturamento === true);
   return false;
 }
 
@@ -1423,7 +1475,8 @@ async function saveUser(){
         expedicao:   document.getElementById('perm-expedicao').checked,
         consulta:    document.getElementById('perm-consulta').checked,
         relatorios:  document.getElementById('perm-relatorios').checked,
-        consultaDB:  document.getElementById('perm-consulta-db').checked
+        consultaDB:  document.getElementById('perm-consulta-db').checked,
+        faturamento: document.getElementById('perm-faturamento').checked
       };
   // Armazéns permitidos (vazio = todos)
   const armSel = document.getElementById('uf-armazens');
@@ -1459,6 +1512,7 @@ function editUser(id){
     document.getElementById('perm-consulta').checked  = u.perms?.consulta   !== false;
     document.getElementById('perm-relatorios').checked= u.perms?.relatorios === true;
     document.getElementById('perm-consulta-db').checked= u.perms?.consultaDB === true;
+    document.getElementById('perm-faturamento').checked= u.perms?.faturamento === true;
   }
   // Populate armazens
   const armSel = document.getElementById('uf-armazens');
@@ -1496,6 +1550,7 @@ function clearUserForm(){
   document.getElementById('perm-consulta').checked=true;
   document.getElementById('perm-relatorios').checked=false;
   document.getElementById('perm-consulta-db').checked=false;
+  document.getElementById('perm-faturamento').checked=false;
   // Deselect all armazens (= access to all)
   const sel=document.getElementById('uf-armazens');
   if(sel) [...sel.options].forEach(o=>o.selected=false);
@@ -1700,10 +1755,13 @@ document.addEventListener('DOMContentLoaded', async ()=>{
   if(session){
     document.getElementById('login-screen').classList.add('hidden');
     applySessionUI();
-    // Load data in background after restoring session
     loadAllData().then(()=>{ refreshHome(); }).catch(()=>{});
   }
-  // If no session → stay on login screen, do NOT load data yet
+  // Update admin badges
+  const hh=document.getElementById('home-hist-count'); if(hh) hh.textContent=auditLog.length;
+  const last=localStorage.getItem('sp_last_backup');
+  const hbl=document.getElementById('home-backup-last');
+  if(hbl&&last) hbl.textContent=new Date(last).toLocaleDateString('pt-BR');
   refreshHome();
 });
 
@@ -1731,7 +1789,10 @@ function openModule(mod){
   if(mod==='database')   { buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); }
   if(mod==='relatorios') { buildRptSelects(); renderRptSummary(); renderReport(); }
   if(mod==='usuarios')   { togglePermFields(); renderUsersList(); buildArmSelect(); }
-  if(mod==='mapeamento') { buildMapFilters(); renderMapa(); }
+  if(mod==='mapeamento') { applyMapOverrides(); buildMapFilters(); renderMapa(); }
+  if(mod==='faturamento'){ buildFatSelects(); renderFaturamento(); }
+  if(mod==='historico')  { renderHistorico(); }
+  if(mod==='backup')     { renderBackup(); }
 }
 
 // ── Retorna o período correspondente ao horário atual ──────────
@@ -1995,6 +2056,10 @@ async function saveMovimento(){
   closeModal('modal-edit-mov');
   buildFilterSelects(px); applyFilters(px); refreshHome();
   showToast('✓ Registro atualizado!', '#22c55e', '#000');
+  registrarAudit('edicao',
+    `Edição de registro: ${updated.coil} · ${px==='e'?'Expedição':'Descarga'} · ${formatDate(updated.data)}`,
+    { antes: src[idx-1]||updated, tabela: px==='e'?'expedicoes':'records' }
+  );
 
   // Sync to Supabase
   try {
@@ -2379,6 +2444,11 @@ async function confirmarLote(px){
     tipo==='expedicao'?'#a855f7':'#22c55e',
     tipo==='expedicao'?'#fff':'#000'
   );
+  // Audit log
+  registrarAudit(tipo,
+    `${tipo==='expedicao'?'Expedição':'Descarga'} em lote: ${entries.length} bobina(s) · Veículo: ${veiculo} · ${entries.map(e=>e.coil).slice(0,3).join(', ')}${entries.length>3?'...':''}`,
+    { coils: entries.map(e=>e.coil), ids: entries.map(e=>e.id), tabela: table }
+  );
   clearLote(px);
   buildFilterSelects(px); applyFilters(px); refreshHome();
   // Offer ticket print for expedição
@@ -2405,107 +2475,115 @@ function reprintTicket(idx){
 
 function _renderTicketWindow(t){
   const {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs} = t;
-  const totalPB   = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
-  const totalPL   = entries.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0);
-  const bl        = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(', ');
-  const navio     = [...new Set(entries.map(r=>r.navio).filter(Boolean))].join(', ');
-  const cliente   = [...new Set(entries.map(r=>r.cliente).filter(Boolean))].join(', ');
-  const produto   = [...new Set(entries.map(r=>r.produto).filter(Boolean))].join(', ');
-  const dataFmt   = data ? data.split('-').reverse().join('/') : '—';
+  const totalPB = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const totalPL = entries.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0);
+  const bl      = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(' / ');
+  const navio   = [...new Set(entries.map(r=>r.navio).filter(Boolean))].join(' / ');
+  const cliente = [...new Set(entries.map(r=>r.cliente).filter(Boolean))].join(' / ');
+  const produto = [...new Set(entries.map(r=>r.produto).filter(Boolean))].join(' / ');
+  const dataFmt = data ? data.split('-').reverse().join('/') : '—';
+  // 80mm thermal ≈ 48 chars per line at ~12px monospace
+  const LINE = '------------------------------------------------';
+  const DLINE= '================================================';
 
-  const w = window.open('','_blank','width=780,height=900');
+  // Pad/truncate to fixed width for alignment
+  const W = 28; // label width
+  const row=(label,val)=>`<div class="row"><span class="lbl">${label}</span><span class="val">${val||'—'}</span></div>`;
+
+  const w = window.open('','_blank','width=380,height=700');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>Ticket ${ticketNum}</title>
+  <title>${ticketNum}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:'Arial',sans-serif;font-size:13px;color:#111;background:#fff;padding:24px;}
-    .ticket{max-width:720px;margin:0 auto;border:2px solid #1e3a5f;border-radius:8px;overflow:hidden;}
-    .header{background:#1e3a5f;color:#fff;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;}
-    .header-title{font-size:20px;font-weight:900;letter-spacing:2px;}
-    .header-sub{font-size:11px;opacity:.8;margin-top:2px;}
-    .ticket-num{background:#f0a500;color:#000;font-weight:900;font-size:16px;padding:6px 14px;border-radius:6px;font-family:monospace;}
-    .section{padding:14px 20px;border-bottom:1px solid #ddd;}
-    .section:last-child{border-bottom:none;}
-    .section-title{font-size:10px;font-weight:700;letter-spacing:2px;color:#666;text-transform:uppercase;margin-bottom:8px;}
-    .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;}
-    .info-item label{font-size:10px;color:#888;display:block;margin-bottom:2px;text-transform:uppercase;}
-    .info-item span{font-weight:700;font-size:14px;color:#111;}
-    .coil-table{width:100%;border-collapse:collapse;font-size:12px;}
-    .coil-table th{background:#f5f5f5;padding:6px 10px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#555;border-bottom:2px solid #ddd;}
-    .coil-table td{padding:6px 10px;border-bottom:1px solid #eee;}
-    .coil-table tr:last-child td{border-bottom:none;}
-    .totals{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;background:#f9f9f9;padding:14px 20px;}
-    .total-item label{font-size:10px;color:#888;display:block;text-transform:uppercase;}
-    .total-item span{font-weight:900;font-size:18px;color:#1e3a5f;}
-    .footer{background:#f5f5f5;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#888;}
-    .assinatura{border-top:1px solid #ccc;margin-top:8px;padding-top:4px;width:200px;text-align:center;color:#888;font-size:11px;}
-    @media print{body{padding:0;}.no-print{display:none!important;}}
+    @page{size:80mm auto;margin:4mm 3mm;}
+    body{
+      font-family:'Courier New',Courier,monospace;
+      font-size:11px;
+      color:#000;
+      background:#fff;
+      width:72mm;
+      margin:0 auto;
+      padding:4px 0;
+    }
+    .no-print{margin-bottom:10px;display:flex;gap:8px;}
+    .no-print button{padding:7px 14px;border:none;border-radius:4px;cursor:pointer;font-size:13px;font-weight:700;}
+    .center{text-align:center;}
+    .bold{font-weight:700;}
+    .big{font-size:14px;font-weight:700;}
+    .xlg{font-size:17px;font-weight:900;letter-spacing:1px;}
+    .sep{color:#000;letter-spacing:0;white-space:pre;margin:3px 0;}
+    .row{display:flex;justify-content:space-between;margin:1.5px 0;font-size:10.5px;}
+    .lbl{color:#333;flex-shrink:0;margin-right:4px;}
+    .val{font-weight:700;text-align:right;word-break:break-all;}
+    .coil-row{display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px dashed #bbb;}
+    .coil-row:last-child{border-bottom:none;}
+    .coil-num{font-weight:700;flex:1;}
+    .coil-peso{text-align:right;flex-shrink:0;margin-left:6px;}
+    .total-row{display:flex;justify-content:space-between;font-size:12px;font-weight:700;margin:2px 0;}
+    .sign-area{margin-top:6px;}
+    .sign-line{border-top:1px solid #000;margin-top:18px;padding-top:2px;text-align:center;font-size:9px;color:#555;}
+    @media print{
+      .no-print{display:none!important;}
+      body{width:72mm;margin:0;padding:0;}
+    }
   </style></head><body>
-  <div class="no-print" style="margin-bottom:16px;display:flex;gap:10px;">
-    <button onclick="window.print()" style="background:#1e3a5f;color:#fff;border:none;padding:10px 24px;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;">🖨 IMPRIMIR</button>
-    <button onclick="window.close()" style="background:#eee;color:#333;border:none;padding:10px 18px;border-radius:6px;font-size:14px;cursor:pointer;">✕ FECHAR</button>
+
+  <div class="no-print">
+    <button onclick="window.print()" style="background:#000;color:#fff;">🖨 IMPRIMIR</button>
+    <button onclick="window.close()" style="background:#eee;color:#333;">✕ FECHAR</button>
   </div>
-  <div class="ticket">
-    <div class="header">
-      <div>
-        <div class="header-title">STEELPORT · 4SIDES</div>
-        <div class="header-sub">TICKET DE EXPEDIÇÃO — WAREHOUSE SYSTEMS</div>
-      </div>
-      <div class="ticket-num">${ticketNum}</div>
-    </div>
 
-    <div class="section">
-      <div class="section-title">Dados do Transporte</div>
-      <div class="info-grid">
-        <div class="info-item"><label>Veículo / Placa</label><span>${veiculo}</span></div>
-        <div class="info-item"><label>Motorista</label><span>${motorista||'—'}</span></div>
-        <div class="info-item"><label>Destino</label><span>${destino||'—'}</span></div>
-        <div class="info-item"><label>Data</label><span>${dataFmt}</span></div>
-        <div class="info-item"><label>Período</label><span>${periodo}</span></div>
-        <div class="info-item"><label>Tipo de Carga</label><span>${produto||'—'}</span></div>
-      </div>
-    </div>
+  <!-- CABEÇALHO -->
+  <div class="center xlg">STEELPORT · 4SIDES</div>
+  <div class="center" style="font-size:9px;margin-bottom:3px;">TICKET DE EXPEDIÇÃO</div>
+  <div class="sep center">${DLINE}</div>
+  <div class="center big">${ticketNum}</div>
+  <div class="center" style="font-size:9px;">${new Date().toLocaleString('pt-BR')}</div>
+  <div class="sep">${LINE}</div>
 
-    <div class="section">
-      <div class="section-title">Conhecimento de Embarque</div>
-      <div class="info-grid">
-        <div class="info-item"><label>BL</label><span style="font-family:monospace">${bl||'—'}</span></div>
-        <div class="info-item"><label>Navio</label><span>${navio||'—'}</span></div>
-        <div class="info-item"><label>Cliente</label><span>${cliente||'—'}</span></div>
-      </div>
-    </div>
+  <!-- TRANSPORTE -->
+  <div class="bold" style="font-size:10px;margin-bottom:2px;">TRANSPORTE</div>
+  ${row('Veiculo:', veiculo)}
+  ${row('Motorista:', motorista)}
+  ${row('Destino:', destino)}
+  ${row('Data:', dataFmt)}
+  ${row('Periodo:', periodo)}
+  <div class="sep">${LINE}</div>
 
-    <div class="section">
-      <div class="section-title">Bobinas Expedidas — ${entries.length} unidade(s)</div>
-      <table class="coil-table">
-        <thead><tr><th>#</th><th>Coil Number</th><th>P. Bruto (kg)</th><th>P. Líquido (kg)</th><th>Produto</th></tr></thead>
-        <tbody>
-          ${entries.map((r,i)=>`<tr>
-            <td>${i+1}</td>
-            <td style="font-family:monospace;font-weight:700">${r.coil}</td>
-            <td>${r.pesob?fmtKg(r.pesob)+' kg':'—'}</td>
-            <td>${r.pesol?fmtKg(r.pesol)+' kg':'—'}</td>
-            <td>${r.produto||'—'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+  <!-- BL / NAVIO -->
+  <div class="bold" style="font-size:10px;margin-bottom:2px;">EMBARQUE</div>
+  ${row('BL:', bl)}
+  ${row('Navio:', navio)}
+  ${row('Cliente:', cliente)}
+  ${row('Produto:', produto)}
+  <div class="sep">${LINE}</div>
 
-    <div class="totals">
-      <div class="total-item"><label>Qtd. Bobinas</label><span>${entries.length}</span></div>
-      <div class="total-item"><label>P. Bruto Total</label><span>${fmtKg(totalPB)} kg</span></div>
-      <div class="total-item"><label>P. Líquido Total</label><span>${fmtKg(totalPL)} kg</span></div>
-      <div class="total-item"><label>Observações</label><span style="font-size:13px">${obs||'—'}</span></div>
-    </div>
+  <!-- BOBINAS -->
+  <div class="bold" style="font-size:10px;margin-bottom:3px;">BOBINAS — ${entries.length} UN.</div>
+  ${entries.map((r,i)=>`
+    <div class="coil-row">
+      <span class="coil-num">${String(i+1).padStart(2,'0')}. ${r.coil}</span>
+      <span class="coil-peso">${r.pesob?fmtKg(r.pesob)+' kg':'—'}</span>
+    </div>`).join('')}
+  <div class="sep">${LINE}</div>
 
-    <div class="footer">
-      <span>Emitido em: ${new Date().toLocaleString('pt-BR')}</span>
-      <div style="display:flex;gap:60px;">
-        <div class="assinatura">Motorista</div>
-        <div class="assinatura">Responsável</div>
-      </div>
-    </div>
+  <!-- TOTAIS -->
+  <div class="total-row"><span>QTDE BOBINAS:</span><span>${entries.length}</span></div>
+  <div class="total-row"><span>P.BRUTO TOTAL:</span><span>${fmtKg(totalPB)} kg</span></div>
+  <div class="total-row"><span>P.LIQ. TOTAL:</span><span>${fmtKg(totalPL)} kg</span></div>
+  ${obs?`<div class="sep">${LINE}</div><div style="font-size:10px;"><span style="font-weight:700;">OBS: </span>${obs}</div>`:''}
+  <div class="sep">${DLINE}</div>
+
+  <!-- ASSINATURAS -->
+  <div class="sign-area">
+    <div class="sign-line">Assinatura do Motorista</div>
+    <div class="sign-line" style="margin-top:12px;">Responsavel pela Expedicao</div>
   </div>
+
+  <div style="text-align:center;font-size:8px;margin-top:8px;color:#888;">
+    STEELPORT · 4SIDES WAREHOUSE SYSTEMS
+  </div>
+
   <script>setTimeout(()=>window.print(),400);<\/script>
   </body></html>`);
   w.document.close();
@@ -3018,6 +3096,16 @@ async function confirmDelete(){
     }
     buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); applyFilters('d'); applyFilters('e'); renderDBDescarga(); refreshHome();
     showToast('Excluído com sucesso.','#e05c1a','#fff');
+    registrarAudit('exclusao',
+      deleteType==='mov'?`Exclusão de registro: ${deleteTarget.px==='e'?'Expedição':'Descarga'}`:
+      deleteType==='movs-sel'?`Exclusão em lote: ${deleteTarget.ids?.length||0} registro(s)`:
+      deleteType==='coil'?`Exclusão de bobina do banco: ${deleteTarget.coil}`:
+      deleteType==='coils-sel'?`Exclusão em lote de bobinas: ${deleteTarget.length} bobinas`:
+      `Exclusão: ${JSON.stringify(deleteTarget).substring(0,60)}`,
+      { tipo: deleteType, target: deleteType==='mov'?deleteTarget:null,
+        registros: deleteType==='movs-sel'?[...((deleteTarget.px==='e'?expedicoes:records))].filter(r=>deleteTarget.ids?.includes(r.id)):null,
+        tabela: deleteType==='movs-sel'?(deleteTarget.px==='e'?'expedicoes':'records'):null }
+    );
   } catch(err){
     showToast('⚠ Erro ao excluir: '+err.message,'#e05c1a','#fff');
   }
@@ -3205,19 +3293,32 @@ function dzDrop(e){ e.preventDefault(); dzLeave(); const f=e.dataTransfer.files[
 // "3000" → 3000; "3.5" (decimal) → 3.5; número Excel → número
 function parseWeight(v){
   if(v===''||v===null||v===undefined) return '';
-  if(typeof v==='number') return v;          // já é número (Excel numérico)
+
+  // Se é número JS (Excel já converteu internamente)
+  if(typeof v==='number'){
+    // Excel lê "8,100" (formato americano milhar) como 8.1
+    // Detecta: número com parte decimal que, multiplicado por 1000, dá inteiro
+    // Ex: 8.1 → 8100, 12.5 → 12500, 3.0 → 3000, 15.75 → 15750
+    // Mas NÃO queremos converter 8.5 que poderia ser 8.5 kg (improvável, mas possível)
+    // Regra: se a parte decimal × 1000 resultar em número inteiro → é milhar americano
+    const frac = v - Math.floor(v);
+    if(frac > 0){
+      const asKg = Math.round(v * 1000);
+      // Verifica se a conversão é "limpa" (sem resíduo de ponto flutuante)
+      if(Math.abs(asKg - v*1000) < 0.01){
+        return asKg;
+      }
+    }
+    return v; // número inteiro → já em kg
+  }
+
   const s = String(v).trim();
   if(!s) return '';
-  // Remove separador de milhar: tanto "3,000" quanto "3.000"
-  // Regra: se tem vírgula E depois dela há exatamente 3 dígitos → milhar BR
-  // Se tem ponto E depois dele há exatamente 3 dígitos → milhar BR
-  // Caso contrário → decimal
-  let clean = s;
-  // Remove espaços e símbolos comuns
-  clean = clean.replace(/[\s\u00a0]/g,'').replace(/[^0-9.,]/g,'');
-  // Detecta formato "1,000,000" ou "1.000.000" (múltiplos separadores)
+
+  let clean = s.replace(/[\s\u00a0]/g,'').replace(/[^0-9.,]/g,'');
   const commaGroups = (clean.match(/,/g)||[]).length;
   const dotGroups   = (clean.match(/\./g)||[]).length;
+
   if(commaGroups > 1){
     // "1,000,000" → remove vírgulas → 1000000
     clean = clean.replace(/,/g,'');
@@ -3225,24 +3326,22 @@ function parseWeight(v){
     // "1.000.000" → remove pontos → 1000000
     clean = clean.replace(/\./g,'');
   } else if(commaGroups===1 && dotGroups===1){
-    // "1.000,50" (BR) ou "1,000.50" (EN)
     const ci=clean.indexOf(','), di=clean.indexOf('.');
     if(di < ci){ clean=clean.replace(/\./g,'').replace(',','.'); } // BR: 1.000,50
     else        { clean=clean.replace(/,/g,''); }                   // EN: 1,000.50
   } else if(commaGroups===1){
-    // só uma vírgula: pode ser milhar ou decimal
     const after = clean.split(',')[1];
     if(after && after.length===3 && /^\d{3}$/.test(after)){
-      clean = clean.replace(',','');  // "3,000" → 3000
+      clean = clean.replace(',','');  // "8,100" → 8100
     } else {
       clean = clean.replace(',','.');  // "3,5" → 3.5
     }
   } else if(dotGroups===1){
     const after = clean.split('.')[1];
     if(after && after.length===3 && /^\d{3}$/.test(after)){
-      clean = clean.replace('.','');  // "3.000" → 3000
+      clean = clean.replace('.','');  // "8.100" → 8100
     }
-    // else: "3.5" → keep as is
+    // else: "3.5" → mantém como está
   }
   const n = parseFloat(clean);
   return isNaN(n) ? '' : n;
@@ -3254,7 +3353,7 @@ function handleXLSFile(file){
   const reader=new FileReader();
   reader.onload=e=>{
     try{
-      const wb=XLSX.read(e.target.result,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]],raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      const wb=XLSX.read(e.target.result,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]],raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
       let hr=0; for(let i=0;i<Math.min(5,raw.length);i++){ const j=raw[i].join('|').toLowerCase(); if(j.includes('numero')||j.includes('bobina')||j.includes('coil')||j.includes('armazem')){ hr=i; break; } }
       const dr=raw.slice(hr+1).filter(r=>r.some(c=>c!==''));
       if(!dr.length){ showToast('Nenhum dado.','#e05c1a','#fff'); return; }
@@ -3368,7 +3467,7 @@ function handleXLSMovFile(file){
     try{
       const wb=XLSX.read(e.target.result,{type:'array'});
       const ws=wb.Sheets[wb.SheetNames[0]];
-      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
       if(raw.length<2){ showToast('Planilha vazia ou sem dados.','#e05c1a','#fff'); return; }
 
       // Detect header row
@@ -4019,8 +4118,14 @@ function renderMapa(){
         const rec = records.find(r=>r.coil===c.coil);
         c._descSeq = rec ? rec.id : Infinity; // not yet discharged = pending
       });
-      // Sort: smaller id = discharged earlier = bottom of pile (index 0 = bottom)
-      pile.sort((a,b)=>a._descSeq - b._descSeq);
+      // Sort: _mapPos override takes priority, then descarga sequence
+      // smaller = fundo (bottom), larger = topo (top)
+      pile.sort((a,b)=>{
+        if(a._mapPos && b._mapPos) return a._mapPos - b._mapPos;
+        if(a._mapPos) return -1; // has manual pos → use it
+        if(b._mapPos) return 1;
+        return a._descSeq - b._descSeq; // default: LIFO
+      });
     });
   });
 
@@ -4068,13 +4173,19 @@ function renderMapa(){
               bg='rgba(240,165,0,.08)'; border='rgba(240,165,0,.25)'; txtColor='var(--muted)'; label='PEND.';
             }
             return `<div title="${c.coil} — ${c.cliente||''} ${c.produto||''} ${c.pesob?fmtKg(c.pesob)+' kg':''}"
-              style="background:${bg};border:1px solid ${border};border-radius:4px;padding:5px 8px;margin-bottom:2px;min-width:170px;cursor:default;transition:all .15s;"
-              onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform=''">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:${txtColor}">${c.coil}</span>
-                ${label?`<span style="font-size:9px;font-weight:700;color:${txtColor};opacity:.8">${label}</span>`:''}
+              style="background:${bg};border:1px solid ${border};border-radius:4px;padding:5px 8px;margin-bottom:2px;min-width:170px;cursor:default;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:4px;"
+              onmouseover="this.style.transform='scale(1.01)'" onmouseout="this.style.transform=''">
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:${txtColor}">${c.coil}</span>
+                  ${label?`<span style="font-size:9px;font-weight:700;color:${txtColor};opacity:.8">${label}</span>`:''}
+                </div>
+                <div style="font-size:10px;color:var(--muted);margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}${c._mapObs?` · <em>${c._mapObs}</em>`:''}</div>
               </div>
-              <div style="font-size:10px;color:var(--muted);margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}</div>
+              <button onclick="event.stopPropagation();abrirMapEdit('${c.coil}')"
+                style="background:transparent;border:1px solid ${border};border-radius:3px;cursor:pointer;color:${txtColor};font-size:10px;padding:2px 5px;flex-shrink:0;opacity:.7;transition:opacity .15s;"
+                onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.7'"
+                title="Editar posição">✏</button>
             </div>`;
           }).join('');
 
@@ -4100,6 +4211,118 @@ function renderMapa(){
         }).join('')}
       </div>
     </div>`).join('');
+}
+
+// ══════════════════════════════════════════
+// EDIÇÃO MANUAL DO MAPEAMENTO
+// ══════════════════════════════════════════
+
+// mapOverrides: { coil → { armazem, posicao, obs } }
+// Stored in localStorage for persistence
+let mapOverrides = JSON.parse(localStorage.getItem('sp_map_overrides')||'{}');
+
+function saveMapOverrides(){
+  localStorage.setItem('sp_map_overrides', JSON.stringify(mapOverrides));
+}
+
+function applyMapOverrides(){
+  // Apply manual overrides to coilsDB in memory
+  coilsDB.forEach(c=>{
+    if(mapOverrides[c.coil]){
+      const ov = mapOverrides[c.coil];
+      if(ov.armazem !== undefined) c.armazem   = ov.armazem;
+      if(ov.posicao !== undefined) c._mapPos    = ov.posicao;
+      if(ov.obs     !== undefined) c._mapObs    = ov.obs;
+    }
+  });
+}
+
+function abrirMapEdit(coil){
+  const c = coilsDB.find(x=>x.coil===coil);
+  if(!c) return;
+  const ov = mapOverrides[coil]||{};
+
+  document.getElementById('map-edit-coil').value       = coil;
+  document.getElementById('map-edit-coil-label').textContent = coil;
+  document.getElementById('map-edit-coil-info').textContent  =
+    [c.navio, c.cliente, c.bl, c.produto].filter(Boolean).join(' · ');
+  document.getElementById('map-edit-armazem').value    = ov.armazem ?? c.armazem ?? '';
+  document.getElementById('map-edit-posicao').value    = ov.posicao ?? c._mapPos ?? '';
+  document.getElementById('map-edit-obs-pos').value    = ov.obs ?? c._mapObs ?? '';
+  document.getElementById('map-edit-bl-label').textContent = c.bl||'—';
+  document.getElementById('map-edit-arm-pilha').value  = ov.armazem ?? c.armazem ?? '';
+
+  // Populate existing armazens selector
+  const arms = [...new Set(coilsDB.map(x=>x.armazem).filter(Boolean))].sort();
+  const sel  = document.getElementById('map-edit-armazem-sel');
+  sel.innerHTML = '<option value="">Existentes...</option>' + arms.map(a=>`<option>${a}</option>`).join('');
+
+  document.getElementById('modal-map-edit').classList.add('open');
+}
+
+async function salvarMapEdit(){
+  const coil    = document.getElementById('map-edit-coil').value;
+  const armazem = document.getElementById('map-edit-armazem').value.trim().toUpperCase();
+  const posicao = parseInt(document.getElementById('map-edit-posicao').value)||null;
+  const obs     = document.getElementById('map-edit-obs-pos').value.trim();
+  if(!coil) return;
+
+  // Save override
+  mapOverrides[coil] = { armazem, posicao, obs };
+  saveMapOverrides();
+
+  // Update coilsDB in memory
+  const c = coilsDB.find(x=>x.coil===coil);
+  if(c){
+    c.armazem  = armazem;
+    c._mapPos  = posicao;
+    c._mapObs  = obs;
+    // Sync armazem to Supabase
+    try{
+      await supaUpsert('coilsdb', {coil:c.coil, armazem}, 'coil');
+    } catch(e){
+      showToast('⚠ Posição salva localmente, sync falhou.','#f59e0b','#000');
+    }
+  }
+
+  closeModal('modal-map-edit');
+  renderMapa();
+  showToast(`✓ Posição de ${coil} atualizada!`,'#22c55e','#000');
+}
+
+async function moverPilhaInteira(){
+  const coil      = document.getElementById('map-edit-coil').value;
+  const novoArm   = document.getElementById('map-edit-arm-pilha').value.trim().toUpperCase();
+  if(!novoArm){ showToast('Informe o novo armazém.','#e05c1a','#fff'); return; }
+  const c         = coilsDB.find(x=>x.coil===coil);
+  if(!c) return;
+  const bl        = c.bl;
+  const pilha     = coilsDB.filter(x=>x.bl===bl);
+
+  showLoading(`Movendo ${pilha.length} bobinas do BL ${bl} para ${novoArm}...`);
+
+  // Update all locally
+  pilha.forEach(x=>{
+    x.armazem = novoArm;
+    mapOverrides[x.coil] = { ...(mapOverrides[x.coil]||{}), armazem: novoArm };
+  });
+  saveMapOverrides();
+
+  // Sync to Supabase in batch
+  try{
+    await supaUpsertBulk('coilsdb',
+      pilha.map(x=>({coil:x.coil, armazem:novoArm})),
+      'coil', 50
+    );
+    showToast(`✓ ${pilha.length} bobinas do BL ${bl} movidas para ${novoArm}!`,'#22c55e','#000');
+  } catch(e){
+    showToast('⚠ Movido localmente, sync falhou.','#f59e0b','#000');
+  }
+
+  hideLoading();
+  closeModal('modal-map-edit');
+  buildMapFilters();
+  renderMapa();
 }
 
 function exportMapaPDF(){
@@ -4187,6 +4410,629 @@ function exportMapaExcel(){
   XLSX.utils.book_append_sheet(wb,ws,'Mapa Armazém');
   XLSX.writeFile(wb,`mapa_armazem_${new Date().toISOString().slice(0,10)}.xlsx`);
   showToast('✓ Mapa Excel exportado!','#22c55e','#000');
+}
+
+// ══════════════════════════════════════════
+// FATURAMENTO — ARMAZENAGEM POR BL/CLIENTE
+// ══════════════════════════════════════════
+
+function salvarTarifa(){
+  const t=document.getElementById('fat-tarifa')?.value;
+  const p=document.getElementById('fat-periodo-dias')?.value;
+  if(t) localStorage.setItem('sp_fat_tarifa', t);
+  if(p) localStorage.setItem('sp_fat_periodo', p);
+}
+
+function carregarTarifa(){
+  const t=localStorage.getItem('sp_fat_tarifa')||'';
+  const p=localStorage.getItem('sp_fat_periodo')||'15';
+  const te=document.getElementById('fat-tarifa');
+  const pe=document.getElementById('fat-periodo-dias');
+  if(te) te.value=t;
+  if(pe) pe.value=p;
+}
+
+function buildFatSelects(){
+  carregarTarifa();
+  const cliSet=[...new Set(coilsDB.map(c=>c.cliente).filter(Boolean))].sort();
+  const navSet=[...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
+  const fc=document.getElementById('fat-filter-cliente');
+  const fn=document.getElementById('fat-filter-navio');
+  if(fc){ const v=fc.value; fc.innerHTML='<option value="">Todos os clientes</option>'+cliSet.map(c=>`<option>${c}</option>`).join(''); fc.value=v; }
+  if(fn){ const v=fn.value; fn.innerHTML='<option value="">Todos os navios</option>'+navSet.map(n=>`<option>${n}</option>`).join(''); fn.value=v; }
+}
+
+// Calcula a data em que o BL finalizou a descarga (última bobina descarregada)
+function getDataFimDescarga(bl){
+  const bobinas = coilsDB.filter(c=>c.bl===bl);
+  if(!bobinas.length) return null;
+  // Todos os coils deste BL que foram descarregados
+  const descarregados = bobinas.map(c=>records.find(r=>r.coil===c.coil)).filter(Boolean);
+  if(descarregados.length < bobinas.length) return null; // ainda há pendentes
+  // Data mais recente = data em que o BL completou a descarga
+  return descarregados.map(r=>r.data).sort().pop();
+}
+
+// Retorna os períodos de cobrança de um BL com peso em estoque em cada período
+function calcPeriodosBL(bl, periodoDias){
+  const dataFim = getDataFimDescarga(bl);
+  if(!dataFim) return null; // descarga não completa
+
+  const bobinas   = coilsDB.filter(c=>c.bl===bl);
+  const inicio    = new Date(dataFim + 'T00:00:00');
+  const hoje      = new Date(); hoje.setHours(0,0,0,0);
+  const periodos  = [];
+
+  let periodoNum = 1;
+  while(true){
+    const dataIni = new Date(inicio);
+    dataIni.setDate(dataIni.getDate() + (periodoNum-1)*periodoDias);
+    const dataFimP = new Date(dataIni);
+    dataFimP.setDate(dataFimP.getDate() + periodoDias);
+    const fatDataStr = dataFimP.toISOString().split('T')[0]; // data de cobrança
+
+    // Peso em estoque no momento da cobrança:
+    // bobinas descarregadas até a data de início do período
+    // e que não foram expedidas até a data de cobrança
+    const pesoBruto = bobinas.reduce((acc, c)=>{
+      const rec = records.find(r=>r.coil===c.coil);
+      if(!rec || rec.data > fatDataStr) return acc; // não descarregada ainda
+      const exp = expedicoes.find(e=>e.coil===c.coil);
+      if(exp && exp.data <= fatDataStr) return acc;  // já expedida antes da cobrança
+      return acc + (parseFloat(c.pesob)||0);
+    }, 0);
+
+    // Só inclui período se tem peso > 0
+    if(pesoBruto > 0){
+      periodos.push({
+        num:     periodoNum,
+        dataIni: dataIni.toISOString().split('T')[0],
+        dataFim: fatDataStr,
+        pesoBruto,
+        vencido: fatDataStr <= hoje.toISOString().split('T')[0]
+      });
+    }
+
+    // Para quando não há mais carga
+    if(pesoBruto === 0) break;
+    // Para quando o próximo início já ultrapassa 2 anos (segurança)
+    if(periodoNum > 50) break;
+    periodoNum++;
+  }
+  return periodos;
+}
+
+function renderFaturamento(){
+  const tarifa     = parseFloat(document.getElementById('fat-tarifa')?.value||0);
+  const periodoDias= parseInt(document.getElementById('fat-periodo-dias')?.value||15);
+  const fc         = document.getElementById('fat-filter-cliente')?.value||'';
+  const fn         = document.getElementById('fat-filter-navio')?.value||'';
+  const container  = document.getElementById('fat-container');
+  if(!container) return;
+
+  // Get unique BLs
+  let bls = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
+  if(fc) bls = bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
+  if(fn) bls = bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+
+  if(!bls.length){
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado para os filtros selecionados.</div>`;
+    return;
+  }
+
+  let htmlOut = '';
+  let totalFaturarGeral = 0;
+  let blsAtivosCount = 0;
+  let blsVencendoCount = 0;
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const em7dias = new Date(hoje); em7dias.setDate(em7dias.getDate()+7);
+
+  bls.sort().forEach(bl=>{
+    const dbCoils  = coilsDB.filter(c=>c.bl===bl);
+    const cliente  = dbCoils[0]?.cliente||'—';
+    const navio    = dbCoils[0]?.navio||'—';
+    const viagem   = dbCoils[0]?.viagem||'—';
+    const produto  = dbCoils[0]?.produto||'—';
+    const totalCoils = dbCoils.length;
+    const descCoils  = dbCoils.filter(c=>records.find(r=>r.coil===c.coil)).length;
+    const expCoils   = dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+    const emEstoque  = descCoils - expCoils;
+
+    const periodos = calcPeriodosBL(bl, periodoDias);
+
+    // Status do BL
+    let statusBadge;
+    if(!periodos){
+      statusBadge=`<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(240,165,0,.12);color:var(--accent);border:1px solid rgba(240,165,0,.3);font-family:'JetBrains Mono',monospace;">⏳ DESCARGA INCOMPLETA (${descCoils}/${totalCoils})</span>`;
+    } else if(emEstoque===0){
+      statusBadge=`<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA</span>`;
+    } else {
+      statusBadge=`<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`;
+      blsAtivosCount++;
+    }
+
+    // Períodos table
+    let periodsHTML = '';
+    let totalFaturarBL = 0;
+    if(periodos && periodos.length){
+      periodos.forEach(p=>{
+        const toneladas = p.pesoBruto / 1000;
+        const valor     = tarifa > 0 ? toneladas * tarifa : null;
+        const dtFmt     = p.dataFim.split('-').reverse().join('/');
+        const dtIniFmt  = p.dataIni.split('-').reverse().join('/');
+        const dtVenc    = new Date(p.dataFim+'T00:00:00');
+
+        let statusPer, rowStyle='';
+        if(p.dataFim <= hoje.toISOString().split('T')[0]){
+          statusPer=`<span style="color:var(--danger);font-size:10px;font-weight:700;">● VENCIDO</span>`;
+          rowStyle='background:rgba(224,92,26,.05);';
+        } else if(dtVenc<=em7dias){
+          statusPer=`<span style="color:var(--warning);font-size:10px;font-weight:700;">⚠ VENCE EM BREVE</span>`;
+          rowStyle='background:rgba(240,165,0,.05);';
+          blsVencendoCount++;
+        } else {
+          statusPer=`<span style="color:var(--success);font-size:10px;font-weight:700;">✓ A VENCER</span>`;
+        }
+        if(valor) totalFaturarBL += valor;
+        periodsHTML += `<tr style="${rowStyle}">
+          <td style="padding:.4rem .75rem;font-size:12px;">${p.num}º período</td>
+          <td style="padding:.4rem .75rem;font-size:12px;">${dtIniFmt} → ${dtFmt}</td>
+          <td style="padding:.4rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg</td>
+          <td style="padding:.4rem .75rem;font-size:12px;">${toneladas.toFixed(3)} t</td>
+          <td style="padding:.4rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):tarifa?'—':'Configure tarifa'}</td>
+          <td style="padding:.4rem .75rem;">${statusPer}</td>
+          <td style="padding:.4rem .75rem;">
+            <button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="white-space:nowrap;font-size:11px;">📄 FATURA</button>
+          </td>
+        </tr>`;
+      });
+      totalFaturarGeral += totalFaturarBL;
+    } else if(periodos && !periodos.length){
+      periodsHTML = `<tr><td colspan="7" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Nenhum período de cobrança ativo (toda carga expedida).</td></tr>`;
+    } else {
+      periodsHTML = `<tr><td colspan="7" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Aguardando conclusão da descarga de todas as bobinas do BL.</td></tr>`;
+    }
+
+    htmlOut += `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:1.2rem;overflow:hidden;">
+      <!-- BL Header -->
+      <div style="background:var(--surface2);border-bottom:1px solid var(--border);padding:.85rem 1.2rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--accent);">BL: ${bl}</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600;">${cliente}</div>
+        <div style="font-size:12px;color:var(--muted);">🚢 ${navio} · Viagem: ${viagem}</div>
+        <div style="font-size:12px;color:var(--muted);">${produto}</div>
+        ${statusBadge}
+        ${totalFaturarBL>0?`<div style="margin-left:auto;font-weight:700;font-size:14px;color:var(--success);">Total: R$ ${totalFaturarBL.toFixed(2).replace('.',',')}</div>`:''}
+      </div>
+      <!-- Periods table -->
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="background:var(--bg);">
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">PERÍODO</th>
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">DATAS</th>
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">PESO COBRADO</th>
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">TONELADAS</th>
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">VALOR (R$)</th>
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">STATUS</th>
+            <th style="padding:.5rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;letter-spacing:1px;">AÇÃO</th>
+          </tr></thead>
+          <tbody>${periodsHTML}</tbody>
+        </table>
+      </div>
+    </div>`;
+  });
+
+  // Update home badges
+  const hfb=document.getElementById('home-fat-bls');     if(hfb) hfb.textContent=blsAtivosCount;
+  const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsVencendoCount;
+
+  // Total geral header
+  const totalHeader = totalFaturarGeral>0
+    ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:1.2rem;display:flex;gap:2rem;align-items:center;flex-wrap:wrap;">
+        <div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);">TOTAL FATURÁVEL (períodos com tarifa configurada)</div>
+        <div style="font-size:22px;font-weight:900;color:var(--success);">R$ ${totalFaturarGeral.toFixed(2).replace('.',',')}</div>
+        <div style="font-size:12px;color:var(--muted);">Tarifa: R$ ${parseFloat(document.getElementById('fat-tarifa')?.value||0).toFixed(2).replace('.',',')} / t · Período: ${periodoDias} dias</div>
+      </div>`
+    : '';
+
+  container.innerHTML = totalHeader + htmlOut;
+}
+
+function emitirFatura(bl, periodoNum){
+  const tarifa     = parseFloat(document.getElementById('fat-tarifa')?.value||0);
+  const periodoDias= parseInt(document.getElementById('fat-periodo-dias')?.value||15);
+  const periodos   = calcPeriodosBL(bl, periodoDias);
+  if(!periodos) return;
+  const p = periodos.find(x=>x.num===periodoNum);
+  if(!p) return;
+
+  const dbCoils = coilsDB.filter(c=>c.bl===bl);
+  const cliente = dbCoils[0]?.cliente||'—';
+  const navio   = dbCoils[0]?.navio||'—';
+  const viagem  = dbCoils[0]?.viagem||'—';
+  const produto = dbCoils[0]?.produto||'—';
+  const toneladas = p.pesoBruto/1000;
+  const valor     = tarifa>0 ? toneladas*tarifa : null;
+  const dtIniFmt  = p.dataIni.split('-').reverse().join('/');
+  const dtFimFmt  = p.dataFim.split('-').reverse().join('/');
+  const fatNum    = `FAT-${bl.replace(/[^A-Z0-9]/gi,'').substring(0,8).toUpperCase()}-${String(periodoNum).padStart(2,'0')}`;
+
+  // Bobinas em estoque neste período
+  const bobinasEmEstoque = dbCoils.filter(c=>{
+    const rec=records.find(r=>r.coil===c.coil);
+    if(!rec||rec.data>p.dataFim) return false;
+    const exp=expedicoes.find(e=>e.coil===c.coil);
+    return !(exp&&exp.data<=p.dataFim);
+  });
+
+  const w=window.open('','_blank','width=700,height=900');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fatura ${fatNum}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:13px;color:#111;background:#fff;padding:30px;}
+    .no-print{margin-bottom:16px;display:flex;gap:8px;}
+    .no-print button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;}
+    h1{font-size:22px;font-weight:900;letter-spacing:2px;color:#1e3a5f;}
+    .sub{font-size:11px;color:#888;margin-bottom:20px;}
+    .fatura-num{font-size:14px;font-weight:700;font-family:monospace;background:#f0a500;padding:4px 12px;border-radius:4px;color:#000;display:inline-block;margin-bottom:16px;}
+    .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;background:#f7f9fc;border:1px solid #dde3ee;border-radius:8px;padding:16px;}
+    .info-item label{font-size:9px;font-weight:700;color:#888;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:3px;}
+    .info-item span{font-weight:700;font-size:14px;}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;}
+    th{background:#1e3a5f;color:#fff;padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;}
+    td{padding:7px 12px;border-bottom:1px solid #eee;}
+    tr:last-child td{border-bottom:none;}
+    .total-box{background:#1e3a5f;color:#fff;padding:16px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+    .total-label{font-size:11px;opacity:.8;letter-spacing:1px;text-transform:uppercase;}
+    .total-val{font-size:26px;font-weight:900;}
+    .sign-area{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px;}
+    .sign-line{border-top:1px solid #999;padding-top:5px;text-align:center;font-size:10px;color:#777;}
+    .footer{margin-top:20px;text-align:center;font-size:10px;color:#aaa;}
+    @media print{.no-print{display:none!important;}body{padding:10px;}}
+  </style></head><body>
+  <div class="no-print">
+    <button onclick="window.print()" style="background:#1e3a5f;color:#fff;">🖨 IMPRIMIR</button>
+    <button onclick="window.close()" style="background:#eee;color:#333;">✕ FECHAR</button>
+  </div>
+
+  <h1>STEELPORT · 4SIDES</h1>
+  <div class="sub">WAREHOUSE SYSTEMS — FATURA DE ARMAZENAGEM</div>
+  <div class="fatura-num">${fatNum}</div>
+
+  <div class="info-grid">
+    <div class="info-item"><label>Cliente</label><span>${cliente}</span></div>
+    <div class="info-item"><label>BL</label><span style="font-family:monospace">${bl}</span></div>
+    <div class="info-item"><label>Navio</label><span>${navio}</span></div>
+    <div class="info-item"><label>Viagem</label><span>${viagem}</span></div>
+    <div class="info-item"><label>Produto</label><span>${produto}</span></div>
+    <div class="info-item"><label>Período de cobrança</label><span>${dtIniFmt} → ${dtFimFmt}</span></div>
+    <div class="info-item"><label>Referência</label><span>${periodoNum}º Período (${periodoDias} dias)</span></div>
+    <div class="info-item"><label>Emissão</label><span>${new Date().toLocaleDateString('pt-BR')}</span></div>
+    <div class="info-item"><label>Tarifa</label><span>R$ ${tarifa.toFixed(2).replace('.',',')} / t</span></div>
+  </div>
+
+  <table>
+    <thead><tr><th>#</th><th>Coil Number</th><th>P. Bruto (kg)</th></tr></thead>
+    <tbody>
+      ${bobinasEmEstoque.map((c,i)=>`<tr>
+        <td>${i+1}</td>
+        <td style="font-family:monospace;font-weight:700">${c.coil}</td>
+        <td>${c.pesob?fmtKg(c.pesob)+' kg':'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+
+  <div class="total-box">
+    <div>
+      <div class="total-label">Peso total cobrado</div>
+      <div style="font-size:16px;font-weight:700;margin-top:2px;">${fmtKg(p.pesoBruto)} kg · ${toneladas.toFixed(3)} t</div>
+    </div>
+    <div style="text-align:right;">
+      <div class="total-label">Valor total</div>
+      <div class="total-val">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}</div>
+    </div>
+  </div>
+
+  <div class="sign-area">
+    <div class="sign-line">Responsável pelo Armazém</div>
+    <div class="sign-line">Responsável pelo Cliente</div>
+  </div>
+
+  <div class="footer">STEELPORT · 4SIDES WAREHOUSE SYSTEMS · Emitido em ${new Date().toLocaleString('pt-BR')}</div>
+  <script>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+  w.document.close();
+}
+
+// ══════════════════════════════════════════
+// AUDITORIA / HISTÓRICO / ROLLBACK
+// ══════════════════════════════════════════
+const HIST_MAX = 200;
+let auditLog = JSON.parse(localStorage.getItem('sp_audit')||'[]');
+let rollbackTarget = null;
+
+function saveAudit(){ try{ localStorage.setItem('sp_audit', JSON.stringify(auditLog.slice(0,HIST_MAX))); }catch(e){} }
+
+function registrarAudit(tipo, descricao, snapshot){
+  const entry = {
+    id:        Date.now(),
+    tipo,
+    descricao,
+    usuario:   session?.nome||'Sistema',
+    userId:    session?.user||'',
+    ts:        new Date().toISOString(),
+    snapshot   // dados antes da alteração para possibilitar rollback
+  };
+  auditLog.unshift(entry);
+  if(auditLog.length > HIST_MAX) auditLog.pop();
+  saveAudit();
+  const el=document.getElementById('home-hist-count');
+  if(el) el.textContent=auditLog.length;
+}
+
+function renderHistorico(){
+  const q    = (document.getElementById('hist-search')?.value||'').toLowerCase();
+  const tipo = document.getElementById('hist-filter-tipo')?.value||'';
+  const cont = document.getElementById('hist-container');
+  if(!cont) return;
+
+  const list = auditLog.filter(e=>{
+    const mQ = !q || [e.descricao,e.usuario,e.tipo].some(f=>f&&f.toLowerCase().includes(q));
+    const mT = !tipo || e.tipo===tipo;
+    return mQ && mT;
+  });
+
+  if(!list.length){
+    cont.innerHTML=`<div class="empty-state"><span class="empty-icon">🕐</span>Nenhuma alteração encontrada.</div>`;
+    return;
+  }
+
+  const tipoColors={
+    descarga:   'rgba(34,197,94,.15)',
+    expedicao:  'rgba(168,85,247,.15)',
+    edicao:     'rgba(59,130,246,.15)',
+    exclusao:   'rgba(224,92,26,.15)',
+    importacao: 'rgba(240,165,0,.15)',
+  };
+  const tipoIcons={descarga:'📥',expedicao:'📤',edicao:'✏',exclusao:'🗑',importacao:'📊'};
+
+  cont.innerHTML=list.map((e,i)=>{
+    const dt   = new Date(e.ts).toLocaleString('pt-BR');
+    const color= tipoColors[e.tipo]||'rgba(107,114,128,.1)';
+    const icon = tipoIcons[e.tipo]||'•';
+    const canRollback = e.snapshot && (e.tipo==='exclusao'||e.tipo==='edicao'||e.tipo==='descarga'||e.tipo==='expedicao');
+    return `<div style="display:flex;align-items:flex-start;gap:1rem;padding:.85rem 1rem;background:${color};border-radius:8px;margin-bottom:.5rem;border:1px solid rgba(255,255,255,.05);">
+      <div style="font-size:20px;flex-shrink:0;">${icon}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
+          <span style="font-weight:700;font-size:13px;color:var(--text);">${e.descricao}</span>
+          <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;flex-shrink:0;">${dt}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+          👤 ${e.usuario} &nbsp;·&nbsp;
+          <span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--surface2);padding:1px 5px;border-radius:3px;">${e.tipo.toUpperCase()}</span>
+        </div>
+      </div>
+      ${canRollback?`<button class="btn btn-warn btn-sm" style="flex-shrink:0;font-size:11px;" onclick="confirmarRollback(${e.id})">↩ Reverter</button>`:''}
+    </div>`;
+  }).join('');
+}
+
+function limparHistorico(){
+  if(!confirm('Deseja apagar todo o histórico de alterações? Esta ação não pode ser desfeita.')) return;
+  auditLog=[];
+  saveAudit();
+  renderHistorico();
+  showToast('Histórico apagado.','#22c55e','#000');
+}
+
+function confirmarRollback(id){
+  const e = auditLog.find(x=>x.id===id);
+  if(!e) return;
+  rollbackTarget = e;
+  const snap = e.snapshot;
+  let detalhe = '';
+  if(snap?.coils) detalhe=`<br><span style="font-size:12px;color:var(--muted);">Afeta ${snap.coils.length} registro(s)</span>`;
+  else if(snap?.coil) detalhe=`<br><span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--accent);">${snap.coil}</span>`;
+  document.getElementById('rollback-body').innerHTML=`
+    <div style="margin-bottom:1rem;">
+      Você está prestes a <strong>reverter</strong> a seguinte ação:
+    </div>
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.85rem 1rem;margin-bottom:1rem;">
+      <div style="font-weight:700;">${e.descricao}${detalhe}</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:.3rem;">Por: ${e.usuario} &nbsp;·&nbsp; ${new Date(e.ts).toLocaleString('pt-BR')}</div>
+    </div>
+    <div style="color:var(--danger);font-size:13px;">⚠ Esta operação irá restaurar os dados ao estado anterior. Ação registrada no histórico.</div>`;
+  document.getElementById('modal-rollback').classList.add('open');
+}
+
+async function executarRollback(){
+  closeModal('modal-rollback');
+  if(!rollbackTarget) return;
+  const e = rollbackTarget;
+  const snap = e.snapshot;
+  showLoading('Revertendo alteração...');
+
+  try{
+    if(e.tipo==='exclusao' && snap?.registros){
+      // Restore deleted records/expedicoes
+      const table = snap.tabela;
+      const src   = table==='expedicoes'?expedicoes:records;
+      snap.registros.forEach(r=>{ if(!src.find(x=>x.id===r.id)) src.unshift(r); });
+      await supaUpsertBulk(table, snap.registros.map(({registradoPor,...s})=>s), 'id', 50);
+    } else if(e.tipo==='edicao' && snap?.antes){
+      const src   = snap.tabela==='expedicoes'?expedicoes:records;
+      const idx   = src.findIndex(r=>r.id===snap.antes.id);
+      if(idx>=0) src[idx]={...snap.antes};
+      else src.unshift(snap.antes);
+      const {registradoPor,...supaEntry}=snap.antes;
+      await supaUpsert(snap.tabela, supaEntry, 'id');
+    } else if((e.tipo==='descarga'||e.tipo==='expedicao') && snap?.coils){
+      // Undo a lote insertion: delete from local + Supabase
+      const table = e.tipo==='expedicao'?'expedicoes':'records';
+      const src   = e.tipo==='expedicao'?expedicoes:records;
+      snap.coils.forEach(coil=>{ const i=src.findIndex(r=>r.coil===coil); if(i>=0) src.splice(i,1); });
+      const idList=snap.ids.join(',');
+      await supa(`${table}?id=in.(${idList})`,{method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    }
+    registrarAudit('edicao',`↩ ROLLBACK: ${e.descricao}`,null);
+    buildFilterSelects('d'); buildFilterSelects('e'); applyFilters('d'); applyFilters('e');
+    buildDBNavSelect(); renderCoilsGrouped(); refreshHome();
+    hideLoading();
+    showToast('✓ Ação revertida com sucesso!','#22c55e','#000');
+    renderHistorico();
+  } catch(err){
+    hideLoading();
+    showToast('⚠ Erro ao reverter: '+err.message,'#e05c1a','#fff');
+  }
+  rollbackTarget=null;
+}
+
+// ══════════════════════════════════════════
+// BACKUP AUTOMÁTICO DIÁRIO
+// ══════════════════════════════════════════
+const BKP_MAX = 7; // keep 7 daily backups
+
+function getBackups(){ try{ return JSON.parse(localStorage.getItem('sp_backups')||'[]'); }catch(e){ return []; } }
+function saveBackups(bkps){ try{ localStorage.setItem('sp_backups',JSON.stringify(bkps)); }catch(e){ showToast('⚠ Espaço insuficiente para backup no navegador.','#f59e0b','#000'); } }
+
+function fazerBackupAgora(){
+  const bkp = {
+    ts:         new Date().toISOString(),
+    label:      new Date().toLocaleString('pt-BR'),
+    records:    JSON.parse(JSON.stringify(records)),
+    expedicoes: JSON.parse(JSON.stringify(expedicoes)),
+    coilsDB:    JSON.parse(JSON.stringify(coilsDB)),
+    users:      JSON.parse(JSON.stringify(users)),
+    navios:     [...navios],
+  };
+  const size = JSON.stringify(bkp).length;
+  bkp.sizeKB = Math.round(size/1024);
+
+  const bkps = getBackups();
+  bkps.unshift(bkp);
+  if(bkps.length > BKP_MAX) bkps.pop();
+  saveBackups(bkps);
+  localStorage.setItem('sp_last_backup', new Date().toISOString());
+  showToast(`✓ Backup criado! ${bkp.sizeKB} KB · ${bkp.label}`,'#22c55e','#000');
+  renderBackup();
+}
+
+function checkBackupAutomatico(){
+  const last = localStorage.getItem('sp_last_backup');
+  if(!last) { fazerBackupAgora(); return; }
+  const diff = Date.now() - new Date(last).getTime();
+  const hours = diff / 3600000;
+  if(hours >= 24) fazerBackupAgora();
+}
+
+function renderBackup(){
+  const bkps = getBackups();
+  const last  = localStorage.getItem('sp_last_backup');
+
+  // Update summary cards
+  const lastEl=document.getElementById('bkp-last-date');
+  const sizeEl=document.getElementById('bkp-last-size');
+  const cntEl =document.getElementById('bkp-count');
+  const nextEl=document.getElementById('bkp-next');
+
+  if(last){
+    const lastDt=new Date(last);
+    if(lastEl) lastEl.textContent=lastDt.toLocaleString('pt-BR');
+    if(bkps[0] && sizeEl) sizeEl.textContent=bkps[0].sizeKB+' KB';
+    const next=new Date(lastDt); next.setDate(next.getDate()+1);
+    if(nextEl) nextEl.textContent=next.toLocaleString('pt-BR');
+  }
+  if(cntEl) cntEl.textContent=bkps.length;
+
+  // Home badge
+  const hbl=document.getElementById('home-backup-last');
+  if(hbl && last) hbl.textContent=new Date(last).toLocaleDateString('pt-BR');
+
+  const cont=document.getElementById('bkp-list');
+  if(!cont) return;
+  if(!bkps.length){
+    cont.innerHTML=`<div class="empty-state"><span class="empty-icon">💾</span>Nenhum backup disponível.</div>`;
+    return;
+  }
+  cont.innerHTML=bkps.map((b,i)=>`
+    <div style="display:flex;align-items:center;gap:1rem;padding:.85rem 1.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;margin-bottom:.5rem;flex-wrap:wrap;">
+      <div style="font-size:22px;">💾</div>
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:14px;">${b.label}</div>
+        <div style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+          ${b.records?.length||0} descargas · ${b.expedicoes?.length||0} expedições · ${b.coilsDB?.length||0} bobinas no banco · ${b.sizeKB} KB
+        </div>
+      </div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="exportarBackupJSON(${i})">↓ JSON</button>
+        <button class="btn btn-danger btn-sm" onclick="confirmarRestaurarBackup(${i})">↩ RESTAURAR</button>
+      </div>
+    </div>`).join('');
+}
+
+function exportarBackupJSON(idx){
+  const bkps = getBackups();
+  const bkp  = idx!==undefined ? bkps[idx] : {
+    ts:new Date().toISOString(),label:new Date().toLocaleString('pt-BR'),
+    records, expedicoes, coilsDB, users, navios,
+    sizeKB: 0
+  };
+  const json = JSON.stringify(bkp, null, 2);
+  const blob = new Blob([json],{type:'application/json'});
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `steelport_backup_${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  showToast('✓ Backup JSON exportado!','#22c55e','#000');
+}
+
+function exportarBackupExcel(){
+  const wb = XLSX.utils.book_new();
+  const addSheet=(name,data)=>{ if(data?.length){ XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), name); } };
+  addSheet('Descarga',    records);
+  addSheet('Expedicao',   expedicoes);
+  addSheet('BancoDados',  coilsDB);
+  addSheet('Usuarios',    users.map(({pass,...u})=>u)); // omit passwords
+  addSheet('Navios',      navios.map(n=>({nome:n})));
+  XLSX.writeFile(wb, `steelport_backup_${new Date().toISOString().slice(0,10)}.xlsx`);
+  showToast('✓ Backup Excel exportado!','#22c55e','#000');
+}
+
+function confirmarRestaurarBackup(idx){
+  const bkps = getBackups();
+  const bkp  = bkps[idx];
+  if(!bkp) return;
+  if(!confirm(`Restaurar o backup de ${bkp.label}?\n\n⚠ ATENÇÃO: Os dados atuais em memória serão SUBSTITUÍDOS pelos dados do backup.\n\nIsso NÃO afeta o Supabase automaticamente — use apenas para visualização ou antes de sincronizar manualmente.`)) return;
+  // Restore in memory
+  records.length=0;     (bkp.records||[]).forEach(r=>records.push(r));
+  expedicoes.length=0;  (bkp.expedicoes||[]).forEach(r=>expedicoes.push(r));
+  coilsDB.length=0;     (bkp.coilsDB||[]).forEach(r=>coilsDB.push(r));
+  if(bkp.navios) { navios.length=0; bkp.navios.forEach(n=>navios.push(n)); }
+  buildFilterSelects('d'); buildFilterSelects('e'); applyFilters('d'); applyFilters('e');
+  buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); refreshHome();
+  showToast(`✓ Backup de ${bkp.label} restaurado em memória!`,'#22c55e','#000');
+  registrarAudit('edicao',`↩ Restauração de backup: ${bkp.label}`,null);
+}
+
+function restaurarBackup(file){
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const bkp=JSON.parse(e.target.result);
+      if(!bkp.records && !bkp.coilsDB){ showToast('Arquivo de backup inválido.','#e05c1a','#fff'); return; }
+      if(!confirm(`Restaurar backup de ${bkp.label||bkp.ts}?\n\n⚠ Os dados atuais em memória serão substituídos.`)) return;
+      records.length=0;     (bkp.records||[]).forEach(r=>records.push(r));
+      expedicoes.length=0;  (bkp.expedicoes||[]).forEach(r=>expedicoes.push(r));
+      coilsDB.length=0;     (bkp.coilsDB||[]).forEach(r=>coilsDB.push(r));
+      if(bkp.navios){ navios.length=0; bkp.navios.forEach(n=>navios.push(n)); }
+      buildFilterSelects('d'); buildFilterSelects('e'); applyFilters('d'); applyFilters('e');
+      buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); refreshHome();
+      showToast(`✓ Backup restaurado de arquivo!`,'#22c55e','#000');
+      registrarAudit('edicao',`↩ Restauração de arquivo JSON: ${bkp.label||bkp.ts}`,null);
+    } catch(err){ showToast('Erro ao ler arquivo: '+err.message,'#e05c1a','#fff'); }
+  };
+  reader.readAsText(file);
 }
 
 document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }); });
@@ -4397,9 +5243,206 @@ alter table users add column if not exists email text;</pre>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#22c55e;display:inline-block;"></span> Disponível (última descarregada = 1ª a sair)</span>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#a855f7;display:inline-block;"></span> Expedida</span>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:rgba(240,165,0,.4);display:inline-block;"></span> Aguardando (soterrada)</span>
+      <span style="display:flex;align-items:center;gap:.4rem;color:var(--muted);">Clique em <kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:10px;">✏</kbd> para editar posição de uma bobina</span>
     </div>
 
     <div id="map-container"></div>
+  </div>
+</div>
+
+<!-- ═══════════════════ EDITAR POSIÇÃO NO MAPA ══════════════════ -->
+<div class="modal-overlay" id="modal-map-edit">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-title">🗺 EDITAR POSIÇÃO NO MAPA</div>
+    <div class="modal-body">
+      <input type="hidden" id="map-edit-coil">
+      <!-- Info da bobina -->
+      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1.2rem;font-family:'JetBrains Mono',monospace;">
+        <div style="font-size:13px;font-weight:700;color:var(--accent);" id="map-edit-coil-label">—</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="map-edit-coil-info">—</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="form-group" style="grid-column:span 2;">
+          <label>Armazém *</label>
+          <div style="display:flex;gap:.5rem;">
+            <input type="text" id="map-edit-armazem" placeholder="ex: ARM-01, BLOCO-A"
+              style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;text-transform:uppercase;"
+              oninput="this.value=this.value.toUpperCase()">
+            <select id="map-edit-armazem-sel" onchange="document.getElementById('map-edit-armazem').value=this.value"
+              style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem .75rem;border-radius:8px;font-size:13px;outline:none;">
+              <option value="">Existentes...</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Posição na pilha (ordem)</label>
+          <input type="number" id="map-edit-posicao" min="1"
+            placeholder="1 = fundo, maior = topo"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">1 = primeira descarregada (fundo) · maior número = topo</div>
+        </div>
+        <div class="form-group">
+          <label>Observação de posição</label>
+          <input type="text" id="map-edit-obs-pos" placeholder="ex: Linha 3, Coluna B"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
+        </div>
+      </div>
+      <!-- Mover pilha inteira -->
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-top:.5rem;">
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;margin-bottom:.5rem;">MOVER PILHA INTEIRA (mesmo BL)</div>
+        <div style="display:flex;gap:.5rem;align-items:center;">
+          <span style="font-size:13px;color:var(--text);">Mover todas as bobinas do BL <strong id="map-edit-bl-label">—</strong> para:</span>
+          <input type="text" id="map-edit-arm-pilha" placeholder="Novo armazém"
+            style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .75rem;border-radius:6px;font-size:13px;outline:none;text-transform:uppercase;"
+            oninput="this.value=this.value.toUpperCase()">
+          <button class="btn btn-warn btn-sm" onclick="moverPilhaInteira()">MOVER TUDO</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-map-edit')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="salvarMapEdit()">✓ SALVAR POSIÇÃO</button>
+    </div>
+  </div>
+</div>
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: FATURAMENTO
+═══════════════════════════════════════════════════ -->
+<div id="screen-faturamento" class="screen">
+  <div class="container">
+
+    <!-- CONFIGURAÇÃO DE TARIFA -->
+    <div class="rpt-section">
+      <div class="rpt-section-title">⚙ CONFIGURAÇÃO DE TARIFA</div>
+      <div style="display:flex;gap:1.2rem;align-items:flex-end;flex-wrap:wrap;">
+        <div class="form-group" style="min-width:200px;">
+          <label>Valor por Tonelada (R$)</label>
+          <input type="number" id="fat-tarifa" placeholder="ex: 15.00" min="0" step="0.01"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-weight:700;width:100%;outline:none;"
+            oninput="salvarTarifa()">
+        </div>
+        <div class="form-group" style="min-width:160px;">
+          <label>Período de cobrança (dias)</label>
+          <input type="number" id="fat-periodo-dias" value="15" min="1" max="90"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-weight:700;width:100%;outline:none;"
+            oninput="salvarTarifa()">
+        </div>
+        <div class="form-group" style="min-width:160px;">
+          <label>Filtrar por Cliente</label>
+          <select id="fat-filter-cliente" onchange="renderFaturamento()"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
+            <option value="">Todos os clientes</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:160px;">
+          <label>Filtrar por Navio</label>
+          <select id="fat-filter-navio" onchange="renderFaturamento()"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
+            <option value="">Todos os navios</option>
+          </select>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="renderFaturamento()">🔄 CALCULAR</button>
+      </div>
+    </div>
+
+    <!-- TABELA DE BLs -->
+    <div class="rpt-section">
+      <div class="rpt-section-title">📋 BLs EM ARMAZENAGEM</div>
+      <div id="fat-container">
+        <div class="empty-state"><span class="empty-icon">💰</span>Configure a tarifa e clique em Calcular.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: HISTÓRICO / ROLLBACK
+═══════════════════════════════════════════════════ -->
+<div id="screen-historico" class="screen">
+  <div class="container">
+    <div class="rpt-section">
+      <div class="rpt-section-title">🕐 HISTÓRICO DE ALTERAÇÕES</div>
+      <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1.2rem;">
+        <input type="text" id="hist-search" placeholder="⌕  Buscar por usuário, tipo, coil..."
+          oninput="renderHistorico()"
+          style="flex:1;min-width:200px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
+        <select id="hist-filter-tipo" onchange="renderHistorico()"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
+          <option value="">Todos os tipos</option>
+          <option value="descarga">Descarga</option>
+          <option value="expedicao">Expedição</option>
+          <option value="edicao">Edição</option>
+          <option value="exclusao">Exclusão</option>
+          <option value="importacao">Importação</option>
+        </select>
+        <button class="btn btn-danger btn-sm" onclick="limparHistorico()">🗑 LIMPAR HISTÓRICO</button>
+      </div>
+      <div id="hist-container">
+        <div class="empty-state"><span class="empty-icon">🕐</span>Nenhuma alteração registrada ainda.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: BACKUP
+═══════════════════════════════════════════════════ -->
+<div id="screen-backup" class="screen">
+  <div class="container">
+
+    <!-- STATUS DO BACKUP -->
+    <div class="rpt-section">
+      <div class="rpt-section-title">💾 STATUS DO BACKUP AUTOMÁTICO</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin-bottom:1.2rem;">
+        <div class="rpt-summary-card">
+          <div class="rpt-sum-label">ÚLTIMO BACKUP</div>
+          <div class="rpt-sum-value" id="bkp-last-date" style="font-size:16px;">—</div>
+          <div class="rpt-sum-unit" id="bkp-last-size">—</div>
+        </div>
+        <div class="rpt-summary-card">
+          <div class="rpt-sum-label">BACKUPS SALVOS</div>
+          <div class="rpt-sum-value" id="bkp-count">0</div>
+          <div class="rpt-sum-unit">no navegador (máx 7)</div>
+        </div>
+        <div class="rpt-summary-card">
+          <div class="rpt-sum-label">PRÓXIMO BACKUP AUTO</div>
+          <div class="rpt-sum-value" id="bkp-next" style="font-size:16px;">—</div>
+          <div class="rpt-sum-unit">automático à meia-noite</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:.75rem;flex-wrap:wrap;">
+        <button class="btn btn-primary" onclick="fazerBackupAgora()">💾 FAZER BACKUP AGORA</button>
+        <button class="btn btn-secondary" onclick="exportarBackupJSON()">↓ EXPORTAR JSON</button>
+        <button class="btn btn-secondary" onclick="exportarBackupExcel()">↓ EXPORTAR EXCEL</button>
+        <label class="btn btn-warn btn-sm" style="cursor:pointer;">
+          📂 RESTAURAR DE ARQUIVO
+          <input type="file" accept=".json" style="display:none" onchange="restaurarBackup(this.files[0])">
+        </label>
+      </div>
+    </div>
+
+    <!-- LISTA DE BACKUPS -->
+    <div class="rpt-section">
+      <div class="rpt-section-title">📋 BACKUPS DISPONÍVEIS NO NAVEGADOR</div>
+      <div id="bkp-list">
+        <div class="empty-state"><span class="empty-icon">💾</span>Nenhum backup disponível.</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ CONFIRMAR ROLLBACK ═══════════════════ -->
+<div class="modal-overlay" id="modal-rollback">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" style="color:#fb923c;">⚠ CONFIRMAR ROLLBACK</div>
+    <div class="modal-body">
+      <div id="rollback-body" style="font-size:14px;line-height:1.8;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-rollback')">CANCELAR</button>
+      <button class="btn btn-danger" onclick="executarRollback()">↩ REVERTER ESTA AÇÃO</button>
+    </div>
   </div>
 </div>
 
