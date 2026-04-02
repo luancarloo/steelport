@@ -907,6 +907,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <option value="veiculo">Por Veículo</option>
             <option value="periodo">Por Período</option>
             <option value="armazem">Por Armazém</option>
+            <option value="faturamento">💰 Faturamento</option>
             <option value="geral">Geral (todos)</option>
           </select>
         </div>
@@ -3869,6 +3870,37 @@ function renderReport(){
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
         fmtKg(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
     });
+  } else if(tipo==='faturamento'){
+    document.getElementById('rpt-group-title').textContent='💰 RELATÓRIO DE FATURAMENTO';
+    groupHeaders=['BL','CLIENTE','NAVIO','PERÍODO','DATA COBRANÇA','PESO (kg)','TONELADAS','ARMAZENAGEM (R$)','HANDLING (R$)','TOTAL (R$)','STATUS','NF'];
+    const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
+    const blsAll=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    blsAll.forEach(bl=>{
+      const dbCoils=coilsDB.filter(c=>c.bl===bl);
+      const cliente=dbCoils[0]?.cliente||'—';
+      const navio=dbCoils[0]?.navio||'—';
+      const fat=calcPeriodosBL(bl,periodoDias);
+      if(!fat||!fat.periodos.length) return;
+      const tarifaBL=getTarifaBL(bl,tarifaGlobal);
+      fat.periodos.forEach(p=>{
+        const ton=p.pesoBruto/1000;
+        const vArm=tarifaBL>0?ton*tarifaBL:0;
+        const vHand=p.num===1?(getHandlingBL(bl)||0):0;
+        const total=vArm+vHand;
+        const state=getFatState(bl,p.num);
+        groupRows.push([
+          bl,cliente,navio,`${p.num}º`,
+          p.dataIni.split('-').reverse().join('/'),
+          fmtKg(p.pesoBruto),ton.toFixed(3),
+          vArm>0?'R$ '+vArm.toFixed(2).replace('.',','):'—',
+          vHand>0?'R$ '+vHand.toFixed(2).replace('.',','):'—',
+          total>0?'R$ '+total.toFixed(2).replace('.',','):'—',
+          state.enviado?`✓ ${state.dataEnvio||''}`:p.encerrado?'⚠ Pendente':'Em aberto',
+          state.nf||'—'
+        ]);
+      });
+    });
   } else {
     document.getElementById('rpt-group-title').textContent='📋 RESUMO GERAL';
     groupHeaders=['TIPO','QUANTIDADE','P.BRUTO TOTAL (kg)','P.LÍQUIDO TOTAL (kg)'];
@@ -3920,6 +3952,46 @@ function exportReportXLSX(){
   const tipo=document.getElementById('rpt-tipo').value;
   const mv=document.getElementById('rpt-movimento').value;
   const wb=XLSX.utils.book_new();
+
+  // ── Relatório de Faturamento ──────────────────────────
+  if(tipo==='faturamento'){
+    const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
+    const blsAll=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    const rows=[['BL','CLIENTE','NAVIO','VIAGEM','PRODUTO','Nº PERÍODO','DATA COBRANÇA','PERÍODO (INI→FIM)',
+      'PESO (kg)','TONELADAS','TARIFA (R$/t)','ARMAZENAGEM (R$)','HANDLING (R$)','TOTAL (R$)',
+      'STATUS','NF','DATA ENVIO','ENVIADO POR']];
+    blsAll.forEach(bl=>{
+      const dbCoils=coilsDB.filter(c=>c.bl===bl);
+      const cliente=dbCoils[0]?.cliente||'';
+      const navio=dbCoils[0]?.navio||'';
+      const viagem=dbCoils[0]?.viagem||'';
+      const produto=dbCoils[0]?.produto||'';
+      const fat=calcPeriodosBL(bl,periodoDias);
+      if(!fat||!fat.periodos.length) return;
+      const tarifaBL=getTarifaBL(bl,tarifaGlobal);
+      fat.periodos.forEach(p=>{
+        const ton=p.pesoBruto/1000;
+        const vArm=tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+        const vHand=p.num===1?parseFloat((getHandlingBL(bl)||0)):0;
+        const total=parseFloat((vArm+vHand).toFixed(2));
+        const state=getFatState(bl,p.num);
+        rows.push([
+          bl,cliente,navio,viagem,produto,p.num,
+          p.dataIni.split('-').reverse().join('/'),
+          p.dataIni.split('-').reverse().join('/')+' → '+p.dataFim.split('-').reverse().join('/'),
+          p.pesoBruto, parseFloat(ton.toFixed(3)),
+          tarifaBL||0, vArm||0, vHand||0, total||0,
+          state.enviado?'ENVIADO':p.encerrado?'PENDENTE':'EM ABERTO',
+          state.nf||'', state.dataEnvio||'', state.usuario||''
+        ]);
+      });
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Faturamento');
+    XLSX.writeFile(wb, '4SIDES_STEELPORT_Faturamento_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    showToast('✓ Relatório de Faturamento exportado!','#22c55e','#000');
+    return;
+  }
 
   // Sheet 1: Resumo
   let summaryData=[];
@@ -3977,15 +4049,83 @@ function exportReportXLSX(){
 
 function exportReportPDF(){
   const {jsPDF}=window.jspdf;
+  const tipo=document.getElementById('rpt-tipo').value;
+  const now=new Date().toLocaleString('pt-BR');
+
+  // ── Relatório de Faturamento em PDF ──────────────────
+  if(tipo==='faturamento'){
+    const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+    const pageW=doc.internal.pageSize.getWidth();
+    doc.setFillColor(10,12,15); doc.rect(0,0,pageW,18,'F');
+    doc.setFillColor(240,165,0); doc.rect(0,16,pageW,2,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(240,165,0);
+    doc.text('4SIDES · STEELPORT',14,11);
+    doc.setFontSize(10); doc.setTextColor(180,180,180);
+    doc.text('RELATÓRIO DE FATURAMENTO',14,17);
+    doc.text('Gerado: '+now,pageW-14,11,{align:'right'});
+    doc.setTextColor(0,0,0);
+
+    const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
+    const blsAll=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    const rows=[];
+    let totalArm=0, totalHand=0, totalGeral=0;
+    blsAll.forEach(bl=>{
+      const dbCoils=coilsDB.filter(c=>c.bl===bl);
+      const fat=calcPeriodosBL(bl,periodoDias);
+      if(!fat||!fat.periodos.length) return;
+      const tarifaBL=getTarifaBL(bl,tarifaGlobal);
+      fat.periodos.forEach(p=>{
+        const ton=p.pesoBruto/1000;
+        const vArm=tarifaBL>0?ton*tarifaBL:0;
+        const vHand=p.num===1?(getHandlingBL(bl)||0):0;
+        const total=vArm+vHand;
+        const state=getFatState(bl,p.num);
+        totalArm+=vArm; totalHand+=vHand; totalGeral+=total;
+        rows.push([
+          bl, dbCoils[0]?.cliente||'—', dbCoils[0]?.navio||'—',
+          p.num+'º', p.dataIni.split('-').reverse().join('/'),
+          fmtKg(p.pesoBruto)+' kg', ton.toFixed(3)+' t',
+          vArm>0?'R$'+vArm.toFixed(2):'—',
+          vHand>0?'R$'+vHand.toFixed(2):'—',
+          total>0?'R$'+total.toFixed(2):'—',
+          state.enviado?'✓ ENV':p.encerrado?'⚠ PEND':'ABERTO',
+          state.nf||'—'
+        ]);
+      });
+    });
+    doc.autoTable({
+      startY:22,
+      head:[['BL','CLIENTE','NAVIO','PER.','DATA COB.','PESO','TON.','ARMAZ.','HANDLING','TOTAL','STATUS','NF']],
+      body:rows,
+      styles:{fontSize:7,cellPadding:2},
+      headStyles:{fillColor:[30,58,95],textColor:255,fontStyle:'bold'},
+      columnStyles:{0:{cellWidth:22},1:{cellWidth:28},2:{cellWidth:26},11:{cellWidth:18}},
+      didParseCell:d=>{
+        if(d.section==='body'){
+          const s=d.row.raw[10];
+          if(s&&s.includes('✓')) d.cell.styles.textColor=[34,139,34];
+          else if(s&&s.includes('⚠')) d.cell.styles.textColor=[200,100,0];
+        }
+      }
+    });
+    // Totals row
+    const finalY=doc.lastAutoTable.finalY+6;
+    doc.setFontSize(10); doc.setFont('helvetica','bold');
+    doc.setTextColor(34,139,34);
+    doc.text(`TOTAL ARMAZENAGEM: R$ ${totalArm.toFixed(2).replace('.',',')}   HANDLING: R$ ${totalHand.toFixed(2).replace('.',',')}   TOTAL GERAL: R$ ${totalGeral.toFixed(2).replace('.',',')}`, 14, finalY);
+    doc.save('4SIDES_STEELPORT_Faturamento_'+new Date().toISOString().split('T')[0]+'.pdf');
+    showToast('✓ PDF de Faturamento exportado!','#22c55e','#000');
+    return;
+  }
+
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
   const {desc,exps}=getRptData();
-  const tipo=document.getElementById('rpt-tipo').value;
   const mv=document.getElementById('rpt-movimento').value;
   const fn=document.getElementById('rpt-navio').value;
   const fc=document.getElementById('rpt-cliente').value;
   const di=document.getElementById('rpt-data-ini').value;
   const df=document.getElementById('rpt-data-fim').value;
-  const now=new Date().toLocaleString('pt-BR');
   const pageW=doc.internal.pageSize.getWidth();
 
   function addHeader(title){
@@ -4497,220 +4637,347 @@ function getDataFimDescarga(bl){
 // Retorna os períodos de cobrança de um BL com peso em estoque em cada período
 // ── Chave de armazenamento para pesos congelados por período ──────
 // formato: sp_fat_peso_<bl>_<periodoNum> → pesoBruto em kg
-function getFatKey(bl, num){ return `sp_fat_peso_${bl}_${num}`; }
+// ══════════════════════════════════════════════════════
+// FATURAMENTO — LÓGICA DE PERÍODOS E COBRANÇA
+// ══════════════════════════════════════════════════════
 
-function getCongeladoPeso(bl, num){
+// ── Storage keys ─────────────────────────────────────
+function getFatKey(bl,num){ return `sp_fat_peso_${bl}_${num}`; }
+function getTarifaKey(bl){  return `sp_fat_tarifa_bl_${bl}`; }
+function getFatLogoKey(){   return 'sp_fat_logo'; }
+function getFatStateKey(bl,num){ return `sp_fat_state_${bl}_${num}`; }
+function getHandlingKey(bl){    return `sp_fat_handling_${bl}`; }
+
+// Estado por período: { enviado, nf, handling, dataEnvio, usuario }
+function getFatState(bl,num){
+  try{ return JSON.parse(localStorage.getItem(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
+}
+function setFatState(bl,num,state){
+  localStorage.setItem(getFatStateKey(bl,num), JSON.stringify(state));
+}
+function getHandlingBL(bl){
+  const v=localStorage.getItem(getHandlingKey(bl));
+  return v!==null ? parseFloat(v) : null;
+}
+function setHandlingBL(bl,v){ localStorage.setItem(getHandlingKey(bl), String(v)); }
+
+function getCongeladoPeso(bl,num){
   const v=localStorage.getItem(getFatKey(bl,num));
   return v!==null ? parseFloat(v) : null;
 }
+function congelarPeso(bl,num,kg){
+  localStorage.setItem(getFatKey(bl,num), String(kg));
+}
+function getTarifaBL(bl, global){
+  const v=localStorage.getItem(getTarifaKey(bl));
+  return v!==null ? parseFloat(v) : global;
+}
+function setTarifaBL(bl, v){ localStorage.setItem(getTarifaKey(bl), String(v)); }
 
-function congelarPeso(bl, num, pesoBruto){
-  localStorage.setItem(getFatKey(bl,num), String(pesoBruto));
+// ── Tarifa global e por BL filtrado ──────────────────
+function salvarTarifa(){
+  const t=document.getElementById('fat-tarifa')?.value;
+  const p=document.getElementById('fat-periodo-dias')?.value;
+  if(t) localStorage.setItem('sp_fat_tarifa', t);
+  if(p) localStorage.setItem('sp_fat_periodo', p);
+}
+function salvarTarifaFiltrada(){
+  salvarTarifa();
+  const t=parseFloat(document.getElementById('fat-tarifa')?.value||0);
+  if(!t) return;
+  const fc=document.getElementById('fat-filter-cliente')?.value||'';
+  const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fb=document.getElementById('fat-filter-bl')?.value||'';
+  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
+  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
+  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fb) bls=bls.filter(bl=>bl===fb);
+  bls.forEach(bl=>setTarifaBL(bl,t));
+  renderFaturamento();
+}
+function carregarTarifa(){
+  const t=localStorage.getItem('sp_fat_tarifa')||'';
+  const p=localStorage.getItem('sp_fat_periodo')||'15';
+  const te=document.getElementById('fat-tarifa');
+  const pe=document.getElementById('fat-periodo-dias');
+  if(te) te.value=t;
+  if(pe) pe.value=p;
 }
 
-// Retorna o ÚNICO período relevante para o BL:
-// - Se o período atual ainda não venceu → mostra ele (período em aberto)
-// - Se venceu → congela o peso e mostra o próximo período
-// - Se não há mais carga → null
-function calcPeriodoBL(bl, periodoDias){
-  const dataFimDesc = getDataFimDescarga(bl);
-  if(!dataFimDesc) return { status:'incompleta', periodos:[] };
+// Atualiza select de BL cascateado por cliente+navio
+function atualizarBLsFaturamento(){
+  const fc=document.getElementById('fat-filter-cliente')?.value||'';
+  const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fb=document.getElementById('fat-filter-bl');
+  if(!fb) return;
+  const vAtual=fb.value;
+  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
+  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  fb.innerHTML='<option value="">Todos os BLs</option>'+bls.map(b=>`<option>${b}</option>`).join('');
+  if(bls.includes(vAtual)) fb.value=vAtual;
+}
+function buildFatSelects(){
+  carregarTarifa();
+  const cliSet=[...new Set(coilsDB.map(c=>c.cliente).filter(Boolean))].sort();
+  const navSet=[...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
+  const fc=document.getElementById('fat-filter-cliente');
+  const fn=document.getElementById('fat-filter-navio');
+  if(fc){ const v=fc.value; fc.innerHTML='<option value="">Todos os clientes</option>'+cliSet.map(c=>`<option>${c}</option>`).join(''); fc.value=v; }
+  if(fn){ const v=fn.value; fn.innerHTML='<option value="">Todos os navios</option>'+navSet.map(n=>`<option>${n}</option>`).join(''); fn.value=v; }
+  atualizarBLsFaturamento();
+}
 
-  const bobinas = coilsDB.filter(c=>c.bl===bl);
-  const inicio  = new Date(dataFimDesc + 'T00:00:00');
-  const hojeStr = new Date().toISOString().split('T')[0];
-  const periodos = [];
-  let num = 1;
+// ── Cálculo de períodos ───────────────────────────────
+// Regra:
+//   • Cobrança no PRIMEIRO DIA de cada período (dataIni)
+//   • Peso cobrado = estoque em dataIni (dia da cobrança)
+//   • Peso é congelado em dataIni e só muda no início do próximo período
+//   • Mostra: todos os períodos passados + período atual (com peso ao vivo ou congelado)
+function calcPeriodosBL(bl, periodoDias){
+  const dataFimDesc=getDataFimDescarga(bl);
+  if(!dataFimDesc) return null;
 
-  while(num <= 60){
-    const dataIniP = new Date(inicio);
-    dataIniP.setDate(dataIniP.getDate() + (num-1)*periodoDias);
-    const dataFimP = new Date(dataIniP);
-    dataFimP.setDate(dataFimP.getDate() + periodoDias);
-    const iniStr = dataIniP.toISOString().split('T')[0];
-    const fimStr = dataFimP.toISOString().split('T')[0];
+  const bobinas=coilsDB.filter(c=>c.bl===bl);
+  const inicio=new Date(dataFimDesc+'T00:00:00');
+  const hojeStr=new Date().toISOString().split('T')[0];
+  const periodos=[];
 
-    // Verifica se este período já venceu
-    const vencido = fimStr <= hojeStr;
+  for(let num=1; num<=60; num++){
+    // Primeiro dia do período (= data da cobrança)
+    const dataIniP=new Date(inicio);
+    dataIniP.setDate(dataIniP.getDate()+(num-1)*periodoDias);
+    // Último dia do período (= primeiro dia do próximo - 1)
+    const dataFimP=new Date(dataIniP);
+    dataFimP.setDate(dataFimP.getDate()+periodoDias-1);
+    const iniStr=dataIniP.toISOString().split('T')[0];
+    const fimStr=dataFimP.toISOString().split('T')[0];
 
-    // Peso congelado (salvo quando o período venceu)
-    let pesoBruto = getCongeladoPeso(bl, num);
+    // Período já iniciou?
+    if(iniStr > hojeStr) break; // ainda não chegou
 
-    if(pesoBruto === null){
-      // Ainda não congelado — calcula em tempo real
-      pesoBruto = bobinas.reduce((acc,c)=>{
-        const rec = records.find(r=>r.coil===c.coil);
-        if(!rec || rec.data > fimStr) return acc;
-        const exp = expedicoes.find(e=>e.coil===c.coil);
-        if(exp && exp.data <= fimStr) return acc;
-        return acc + (parseFloat(c.pesob)||0);
-      }, 0);
+    // Período encerrado = próximo já começou
+    const encerrado = fimStr < hojeStr;
 
-      // Se o período já venceu, congela o peso agora
-      if(vencido) congelarPeso(bl, num, pesoBruto);
+    // Peso congelado no iniStr (dia da cobrança)
+    let pesoBruto=getCongeladoPeso(bl,num);
+    if(pesoBruto===null){
+      // Calcula estoque no dia da cobrança (iniStr)
+      pesoBruto=bobinas.reduce((acc,c)=>{
+        const rec=records.find(r=>r.coil===c.coil);
+        if(!rec||rec.data>iniStr) return acc; // não descarregada ainda
+        const exp=expedicoes.find(e=>e.coil===c.coil);
+        if(exp&&exp.data<iniStr) return acc; // já expedida antes da cobrança
+        return acc+(parseFloat(c.pesob)||0);
+      },0);
+      // Congela quando o período encerrou (próximo já iniciou)
+      if(encerrado) congelarPeso(bl,num,pesoBruto);
     }
 
-    if(pesoBruto === 0 && vencido){
-      // Período vencido sem peso = carga zerada neste ponto
-      break;
-    }
+    if(pesoBruto===0 && encerrado) break; // sem carga neste período encerrado
 
-    periodos.push({ num, dataIni:iniStr, dataFim:fimStr, pesoBruto, vencido,
-      congelado: getCongeladoPeso(bl,num)!==null });
-
-    // Só mostra o próximo período NÃO vencido — para quando encontramos o 1º a vencer
-    if(!vencido) break;
-
-    num++;
+    periodos.push({
+      num, dataIni:iniStr, dataFim:fimStr, pesoBruto, encerrado,
+      congelado: getCongeladoPeso(bl,num)!==null
+    });
   }
 
-  // Status geral do BL
-  const descCoils = bobinas.filter(c=>records.find(r=>r.coil===c.coil)).length;
-  const expCoils  = bobinas.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
-  const emEstoque = descCoils - expCoils;
-  const status = emEstoque > 0 ? 'estoque' : 'zerada';
-
-  return { status, periodos, descCoils, expCoils, emEstoque, totalCoils: bobinas.length };
+  const descCoils=bobinas.filter(c=>records.find(r=>r.coil===c.coil)).length;
+  const expCoils =bobinas.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+  return { periodos, descCoils, expCoils, emEstoque:descCoils-expCoils, totalCoils:bobinas.length };
 }
 
+// Alias para compatibilidade
+function calcPeriodoBL(bl, periodoDias){ return calcPeriodosBL(bl, periodoDias)||{periodos:[],descCoils:0,expCoils:0,emEstoque:0,totalCoils:0}; }
+
+// ── Editar tarifa inline por BL ───────────────────────
+function editarTarifaBL(bl){
+  const atual=getTarifaBL(bl, parseFloat(document.getElementById('fat-tarifa')?.value||0));
+  const nova=prompt(`Tarifa para BL ${bl} (R$/tonelada):`, atual.toFixed(2).replace('.',','));
+  if(nova===null) return;
+  const v=parseFloat(nova.replace(',','.'));
+  if(isNaN(v)||v<0){ showToast('Valor inválido.','#e05c1a','#fff'); return; }
+  setTarifaBL(bl,v);
+  renderFaturamento();
+  showToast(`✓ Tarifa do BL ${bl} salva: R$ ${v.toFixed(2).replace('.',',')} /t`,'#22c55e','#000');
+}
+
+// ── Logo da fatura ────────────────────────────────────
+function salvarLogoFatura(file){
+  if(!file) return;
+  const r=new FileReader();
+  r.onload=e=>{
+    localStorage.setItem(getFatLogoKey(), e.target.result);
+    showToast('✓ Logo da fatura salva!','#22c55e','#000');
+    renderFaturamento();
+  };
+  r.readAsDataURL(file);
+}
+function getLogoFatura(){
+  return localStorage.getItem(getFatLogoKey())||'';
+}
+function removerLogoFatura(){
+  localStorage.removeItem(getFatLogoKey());
+  showToast('Logo removida.','#f59e0b','#000');
+  renderFaturamento();
+}
+
+// ── Render principal ──────────────────────────────────
 function renderFaturamento(){
-  const tarifa     = parseFloat(document.getElementById('fat-tarifa')?.value||0);
-  const periodoDias= parseInt(document.getElementById('fat-periodo-dias')?.value||15);
-  const fc         = document.getElementById('fat-filter-cliente')?.value||'';
-  const fn         = document.getElementById('fat-filter-navio')?.value||'';
-  const fb         = document.getElementById('fat-filter-bl')?.value||'';
-  const fs         = document.getElementById('fat-filter-status')?.value||'';
-  const container  = document.getElementById('fat-container');
+  const tarifa    =parseFloat(document.getElementById('fat-tarifa')?.value||0);
+  const periodoDias=parseInt(document.getElementById('fat-periodo-dias')?.value||15);
+  const fc=document.getElementById('fat-filter-cliente')?.value||'';
+  const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fb=document.getElementById('fat-filter-bl')?.value||'';
+  const fs=document.getElementById('fat-filter-status')?.value||'';
+  const container=document.getElementById('fat-container');
   if(!container) return;
 
-  // Collect all BLs
-  let bls = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
-  if(fc) bls = bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) bls = bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  if(fb) bls = bls.filter(bl=>bl===fb);
+  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
+  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
+  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fb) bls=bls.filter(bl=>bl===fb);
+  if(!bls.length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`; return; }
 
-  if(!bls.length){
-    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`;
-    return;
-  }
+  const hojeStr=new Date().toISOString().split('T')[0];
+  const em7dias=new Date(); em7dias.setDate(em7dias.getDate()+7);
+  const em7Str=em7dias.toISOString().split('T')[0];
+  let htmlOut='', totalGeral=0, blsAtivos=0, blsVencendo=0;
+  const logoFat=getLogoFatura();
 
-  const hojeStr = new Date().toISOString().split('T')[0];
-  const em7dias = new Date(); em7dias.setDate(em7dias.getDate()+7);
-  const em7Str  = em7dias.toISOString().split('T')[0];
-
-  let htmlOut='', totalGeralFaturavel=0, blsAtivos=0, blsVencendo=0;
+  // Preview logo section
+  const logoSection=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">LOGO DA FATURA</span>
+    ${logoFat?`<img src="${logoFat}" style="height:36px;width:auto;border-radius:4px;border:1px solid var(--border);" alt="logo">`:
+    `<span style="font-size:12px;color:var(--muted);">Nenhuma logo configurada</span>`}
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer;font-size:11px;">
+      📁 ${logoFat?'ALTERAR':'ADICIONAR'} LOGO
+      <input type="file" accept="image/*" style="display:none" onchange="salvarLogoFatura(this.files[0])">
+    </label>
+    ${logoFat?`<button class="btn btn-danger btn-sm" style="font-size:11px;" onclick="removerLogoFatura()">✕ REMOVER</button>`:''}
+  </div>`;
 
   bls.sort().forEach(bl=>{
-    const dbCoils = coilsDB.filter(c=>c.bl===bl);
-    const cliente = dbCoils[0]?.cliente||'—';
-    const navio   = dbCoils[0]?.navio||'—';
-    const viagem  = dbCoils[0]?.viagem||'—';
-    const produto = dbCoils[0]?.produto||'—';
+    const dbCoils=coilsDB.filter(c=>c.bl===bl);
+    const cliente=dbCoils[0]?.cliente||'—';
+    const navio  =dbCoils[0]?.navio||'—';
+    const viagem =dbCoils[0]?.viagem||'—';
+    const produto=dbCoils[0]?.produto||'—';
+    const totalCoils=dbCoils.length;
+    const descCoils=dbCoils.filter(c=>records.find(r=>r.coil===c.coil)).length;
+    const expCoils =dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+    const emEstoque=descCoils-expCoils;
+    const incompleta=descCoils<totalCoils;
 
-    const descCoils = dbCoils.filter(c=>records.find(r=>r.coil===c.coil)).length;
-    const expCoils  = dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
-    const emEstoque = descCoils - expCoils;
-    const totalCoils= dbCoils.length;
+    let blStatus=incompleta?'incompleta':emEstoque>0?'estoque':'zerada';
+    if(fs&&blStatus!==fs) return;
 
-    // Descarga incompleta
-    const incompleta = descCoils < totalCoils;
+    const fat=incompleta?null:calcPeriodosBL(bl,periodoDias);
+    const periodos=fat?fat.periodos:[];
+    const tarifaBL=getTarifaBL(bl,tarifa);
 
-    // Determinar status do BL
-    let blStatus;
-    if(incompleta)    blStatus='incompleta';
-    else if(emEstoque>0) blStatus='estoque';
-    else               blStatus='zerada';
-
-    // Aplicar filtro de status
-    if(fs && blStatus!==fs) return;
-
-    // Calcular período
-    const fat = incompleta ? null : calcPeriodoBL(bl, periodoDias);
-    const periodos = fat ? fat.periodos : [];
-
-    // Badge de status
+    // Status badge
     let statusBadge;
-    if(incompleta){
-      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(240,165,0,.12);color:var(--accent);border:1px solid rgba(240,165,0,.3);font-family:'JetBrains Mono',monospace;">⏳ DESCARGA INCOMPLETA — ${descCoils}/${totalCoils} bobinas</span>`;
-    } else if(blStatus==='zerada'){
-      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA</span>`;
-    } else {
-      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`;
-      blsAtivos++;
-    }
+    if(incompleta) statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(240,165,0,.12);color:var(--accent);border:1px solid rgba(240,165,0,.3);font-family:'JetBrains Mono',monospace;">⏳ DESCARGA INCOMPLETA — ${descCoils}/${totalCoils}</span>`;
+    else if(blStatus==='zerada') statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA</span>`;
+    else { statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`; blsAtivos++; }
 
-    // Build period row
+    // Periods rows
     let periodsHTML='', totalBL=0;
-    const tarifaBL = getTarifaBL(bl, tarifa); // tarifa específica do BL ou global
     if(!fat){
       periodsHTML=`<tr><td colspan="8" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Aguardando conclusão da descarga para iniciar cobrança.</td></tr>`;
     } else if(!periodos.length){
-      periodsHTML=`<tr><td colspan="8" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Toda a carga foi expedida — sem armazenagem ativa.</td></tr>`;
+      periodsHTML=`<tr><td colspan="8" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Toda a carga expedida — sem armazenagem ativa.</td></tr>`;
     } else {
       periodos.forEach(p=>{
-        const ton   = p.pesoBruto/1000;
-        const valor = tarifaBL>0 ? ton*tarifaBL : null;
-        const dtIni = p.dataIni.split('-').reverse().join('/');
-        const dtFim = p.dataFim.split('-').reverse().join('/');
-
+        const ton=p.pesoBruto/1000;
+        const valor=tarifaBL>0?ton*tarifaBL:null;
+        const dtIni=p.dataIni.split('-').reverse().join('/');
+        const dtFim=p.dataFim.split('-').reverse().join('/');
         let statusPer='', rowBg='';
-        if(p.vencido){
-          statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">● VENCIDO</span>`;
-          rowBg='background:rgba(224,92,26,.05);';
-          if(valor) totalGeralFaturavel+=valor;
+        if(p.encerrado){
+          statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">● COBRADO</span>`;
+          rowBg='background:rgba(224,92,26,.04);';
         } else if(p.dataFim<=em7Str){
           statusPer=`<span style="color:var(--warning);font-size:11px;font-weight:700;">⚠ VENCE EM BREVE</span>`;
-          rowBg='background:rgba(240,165,0,.05);';
+          rowBg='background:rgba(240,165,0,.04);';
           blsVencendo++;
-          if(valor) totalGeralFaturavel+=valor;
         } else {
-          statusPer=`<span style="color:var(--success);font-size:11px;font-weight:700;">✓ A VENCER</span>`;
-          if(valor) totalGeralFaturavel+=valor;
+          statusPer=`<span style="color:var(--success);font-size:11px;font-weight:700;">✓ PERÍODO ATUAL</span>`;
+          rowBg='background:rgba(34,197,94,.03);';
         }
+        if(valor) totalBL+=valor, totalGeral+=valor;
+        const lockBadge=p.congelado
+          ?`<span style="font-size:9px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">🔒</span>`
+          :`<span style="font-size:9px;background:rgba(34,197,94,.08);color:var(--success);border:1px solid rgba(34,197,94,.2);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">●</span>`;
+        const state=getFatState(bl,p.num);
+        const handling=p.num===1?getHandlingBL(bl):null;
+        const handlingVal=handling!=null?handling:0;
+        const handlingHtml=p.num===1?`
+          <div style="display:flex;align-items:center;gap:.35rem;margin-top:3px;">
+            <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">HANDLING R$:</span>
+            <input type="number" min="0" step="0.01" value="${handlingVal>0?handlingVal.toFixed(2):''}" placeholder="0,00"
+              onchange="setHandlingBL('${bl}',parseFloat(this.value.replace(',','.'))||0);renderFaturamento();"
+              style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:4px;font-size:12px;font-weight:700;text-align:right;outline:none;"
+              title="Valor de Handling cobrado no 1º período">
+          </div>`:'';
+        const totalPeriodo=(valor||0)+(p.num===1?handlingVal:0);
 
-        if(valor) totalBL+=valor;
-
-        // Congelado badge
-        const congeladoBadge = p.congelado
-          ? `<span style="font-size:9px;background:rgba(59,130,246,.12);color:#60a5fa;border:1px solid rgba(59,130,246,.3);border-radius:3px;padding:1px 5px;margin-left:4px;font-family:'JetBrains Mono',monospace;">🔒 CONGELADO</span>`
-          : `<span style="font-size:9px;background:rgba(34,197,94,.08);color:var(--success);border:1px solid rgba(34,197,94,.2);border-radius:3px;padding:1px 5px;margin-left:4px;font-family:'JetBrains Mono',monospace;">● AO VIVO</span>`;
+        // Enviado flag
+        const enviadoBadge=state.enviado
+          ?`<span style="font-size:10px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);border-radius:3px;padding:1px 6px;font-family:'JetBrains Mono',monospace;display:block;margin-top:2px;">✓ ENV ${state.dataEnvio||''} · NF: ${state.nf||'—'}</span>`
+          :'';
 
         periodsHTML+=`<tr style="${rowBg}">
-          <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${congeladoBadge}</td>
-          <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${dtIni} → ${dtFim}</td>
-          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg</td>
-          <td style="padding:.5rem .75rem;font-size:12px;">${ton.toFixed(3)} t</td>
-          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}</td>
+          <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${lockBadge}${enviadoBadge}</td>
+          <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;"><strong style="color:var(--info);">${dtIni}</strong> → ${dtFim}</td>
+          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg<br><span style="font-size:10px;color:var(--muted);">${ton.toFixed(3)} t</span></td>
+          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">
+            ${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}
+            ${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+ R$ ${handlingVal.toFixed(2).replace('.',',')} handling</span>`:''}
+            ${totalPeriodo>0&&p.num===1&&handlingVal>0?`<br><strong>= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</strong>`:''}
+            ${handlingHtml}
+          </td>
           <td style="padding:.5rem .75rem;">${statusPer}</td>
-          <td style="padding:.5rem .75rem;">
+          <td style="padding:.5rem .75rem;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
             <button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;">📄 FATURA</button>
+            ${state.enviado
+              ?`<button class="btn btn-secondary btn-sm" onclick="desmarcarEnviado('${bl}',${p.num})" style="font-size:10px;white-space:nowrap;">↩ Reabrir</button>`
+              :`<button class="btn btn-success btn-sm" onclick="confirmarEnvio('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;background:var(--success);color:#000;">✓ ENVIADO</button>`
+            }
           </td>
         </tr>`;
       });
     }
 
     htmlOut+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden;">
-      <div style="background:var(--surface2);border-bottom:1px solid var(--border);padding:.85rem 1.2rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:15px;color:var(--accent);">BL: ${bl}</div>
+      <div style="background:var(--surface2);border-bottom:1px solid var(--border);padding:.75rem 1.2rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--accent);">BL: ${bl}</div>
         <div style="font-size:13px;color:var(--text);font-weight:600;">${cliente}</div>
-        <div style="font-size:12px;color:var(--muted);">🚢 ${navio} · Viagem: ${viagem}</div>
+        <div style="font-size:12px;color:var(--muted);">🚢 ${navio}${viagem&&viagem!=='—'?' · '+viagem:''}</div>
         <div style="font-size:12px;color:var(--muted);">${produto}</div>
         ${statusBadge}
-        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:${tarifaBL!==tarifa?'var(--warning)':'var(--muted)'};" title="Tarifa aplicada a este BL">
-          💲 R$ ${tarifaBL.toFixed(2).replace('.',',')} /t${tarifaBL!==tarifa?' ★':''}
+        <!-- TARIFA INLINE EDITÁVEL -->
+        <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto;">
+          <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">R$/t:</span>
+          <input type="number" min="0" step="0.01"
+            value="${tarifaBL>0?tarifaBL.toFixed(2):''}"
+            placeholder="0,00"
+            onchange="setTarifaBL('${bl}',parseFloat(this.value.replace(',','.'))||0);renderFaturamento();"
+            style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:5px;font-size:13px;font-weight:700;text-align:right;outline:none;"
+            title="Tarifa por tonelada para este BL">
+          ${totalBL>0?`<span style="font-weight:700;font-size:13px;color:var(--success);margin-left:.5rem;">= R$ ${totalBL.toFixed(2).replace('.',',')}</span>`:''}
         </div>
-        ${totalBL>0?`<div style="margin-left:auto;font-weight:700;font-size:14px;color:var(--success);">R$ ${totalBL.toFixed(2).replace('.',',')}</div>`:''}
       </div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="background:var(--bg);">
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">PERÍODO</th>
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">DATAS</th>
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">PESO COBRADO</th>
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">TONELADAS</th>
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">VALOR (R$)</th>
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">STATUS</th>
-            <th style="padding:.45rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">AÇÃO</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">PERÍODO</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">DATAS (cobrança → encerramento)</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">PESO / TONELADAS</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">VALOR (Armazenagem + Handling)</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">STATUS</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">AÇÕES</th>
           </tr></thead>
           <tbody>${periodsHTML}</tbody>
         </table>
@@ -4718,70 +4985,103 @@ function renderFaturamento(){
     </div>`;
   });
 
-  // Home badges
   const hfb=document.getElementById('home-fat-bls');    if(hfb) hfb.textContent=blsAtivos;
   const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsVencendo;
 
-  // Total header
-  const totalHeader = totalGeralFaturavel>0
-    ? `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:1rem;display:flex;gap:2rem;align-items:center;flex-wrap:wrap;">
-        <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);">TOTAL FATURÁVEL (tarifa: R$ ${tarifa.toFixed(2).replace('.',',')} / t · período: ${periodoDias} dias)</span>
-        <span style="font-size:22px;font-weight:900;color:var(--success);">R$ ${totalGeralFaturavel.toFixed(2).replace('.',',')}</span>
-      </div>` : '';
+  const totalHeader=totalGeral>0
+    ?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:1rem;display:flex;gap:2rem;align-items:center;flex-wrap:wrap;">
+        <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);">TOTAL FATURÁVEL — período ${periodoDias} dias</span>
+        <span style="font-size:22px;font-weight:900;color:var(--success);">R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
+      </div>`:' ';
 
-  container.innerHTML = htmlOut
-    ? totalHeader + htmlOut
+  container.innerHTML=htmlOut
+    ? logoSection+totalHeader+htmlOut
     : `<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado para os filtros selecionados.</div>`;
 }
 
+// ── Confirmar envio de faturamento ───────────────────
+function confirmarEnvio(bl, num){
+  const nf=prompt(`Confirmar envio do faturamento\nBL: ${bl} — ${num}º Período\n\nDigite o número da NF ou referência:`, '');
+  if(nf===null) return; // cancelado
+  const state={
+    enviado:true,
+    nf: nf.trim()||'—',
+    dataEnvio: new Date().toLocaleDateString('pt-BR'),
+    usuario: session?.nome||'Sistema'
+  };
+  setFatState(bl,num,state);
+  registrarAudit('faturamento',
+    `Faturamento enviado — BL: ${bl} · ${num}º Período · NF: ${state.nf}`,
+    { bl, num, nf:state.nf, usuario:state.usuario }
+  );
+  renderFaturamento();
+  showToast(`✓ Faturamento do ${num}º período do BL ${bl} marcado como enviado. NF: ${state.nf}`,'#22c55e','#000');
+}
+
+function desmarcarEnviado(bl, num){
+  if(!confirm(`Reabrir o ${num}º período do BL ${bl}?\nIsso removerá o registro de envio.`)) return;
+  setFatState(bl,num,{});
+  registrarAudit('faturamento',`Faturamento reaberto — BL: ${bl} · ${num}º Período`,{bl,num});
+  renderFaturamento();
+  showToast(`Período reaberto.`,'#f59e0b','#000');
+}
+
 function emitirFatura(bl, periodoNum){
-  const tarifa     = parseFloat(document.getElementById('fat-tarifa')?.value||0);
-  const tarifaBL   = getTarifaBL(bl, tarifa);
-  const periodoDias= parseInt(document.getElementById('fat-periodo-dias')?.value||15);
-  const fat        = calcPeriodoBL(bl, periodoDias);
-  if(!fat || !fat.periodos.length) return;
-  const p = fat.periodos.find(x=>x.num===periodoNum);
+  const tarifa    =parseFloat(document.getElementById('fat-tarifa')?.value||0);
+  const tarifaBL  =getTarifaBL(bl,tarifa);
+  const periodoDias=parseInt(document.getElementById('fat-periodo-dias')?.value||15);
+  const fat=calcPeriodosBL(bl,periodoDias);
+  if(!fat||!fat.periodos.length) return;
+  const p=fat.periodos.find(x=>x.num===periodoNum);
   if(!p) return;
 
-  const dbCoils = coilsDB.filter(c=>c.bl===bl);
-  const cliente = dbCoils[0]?.cliente||'—';
-  const navio   = dbCoils[0]?.navio||'—';
-  const viagem  = dbCoils[0]?.viagem||'—';
-  const produto = dbCoils[0]?.produto||'—';
-  const toneladas = p.pesoBruto/1000;
-  const valor     = tarifaBL>0 ? toneladas*tarifaBL : null;
-  const dtIniFmt  = p.dataIni.split('-').reverse().join('/');
-  const dtFimFmt  = p.dataFim.split('-').reverse().join('/');
-  const fatNum    = `FAT-${bl.replace(/[^A-Z0-9]/gi,'').substring(0,8).toUpperCase()}-${String(periodoNum).padStart(2,'0')}`;
+  const dbCoils=coilsDB.filter(c=>c.bl===bl);
+  const cliente=dbCoils[0]?.cliente||'—';
+  const navio  =dbCoils[0]?.navio||'—';
+  const viagem =dbCoils[0]?.viagem||'—';
+  const produto=dbCoils[0]?.produto||'—';
+  const toneladas=p.pesoBruto/1000;
+  const valor=tarifaBL>0?toneladas*tarifaBL:null;
+  const handling=periodoNum===1?(getHandlingBL(bl)||0):0;
+  const totalFatura=(valor||0)+handling;
+  const state=getFatState(bl,periodoNum);
+  const dtIniFmt=p.dataIni.split('-').reverse().join('/');
+  const dtFimFmt=p.dataFim.split('-').reverse().join('/');
+  const fatNum=`FAT-${bl.replace(/[^A-Z0-9]/gi,'').substring(0,8).toUpperCase()}-${String(periodoNum).padStart(2,'0')}`;
 
-  // Bobinas em estoque neste período
-  const bobinasEmEstoque = dbCoils.filter(c=>{
+  const bobinasNoPeriodo=dbCoils.filter(c=>{
     const rec=records.find(r=>r.coil===c.coil);
-    if(!rec||rec.data>p.dataFim) return false;
+    if(!rec||rec.data>p.dataIni) return false;
     const exp=expedicoes.find(e=>e.coil===c.coil);
-    return !(exp&&exp.data<=p.dataFim);
+    return !(exp&&exp.data<p.dataIni);
   });
 
-  const w=window.open('','_blank','width=700,height=900');
+  const logoFat=getLogoFatura();
+  const logoHtml=logoFat
+    ?`<img src="${logoFat}" style="height:50px;width:auto;margin-bottom:8px;" alt="logo">`
+    :'';
+
+  const w=window.open('','_blank','width=720,height=900');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fatura ${fatNum}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
     body{font-family:Arial,sans-serif;font-size:13px;color:#111;background:#fff;padding:30px;}
     .no-print{margin-bottom:16px;display:flex;gap:8px;}
     .no-print button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;}
+    .logo-header{text-align:center;margin-bottom:12px;}
     h1{font-size:22px;font-weight:900;letter-spacing:2px;color:#1e3a5f;}
-    .sub{font-size:11px;color:#888;margin-bottom:20px;}
+    .sub{font-size:11px;color:#888;margin-bottom:16px;}
     .fatura-num{font-size:14px;font-weight:700;font-family:monospace;background:#f0a500;padding:4px 12px;border-radius:4px;color:#000;display:inline-block;margin-bottom:16px;}
     .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;background:#f7f9fc;border:1px solid #dde3ee;border-radius:8px;padding:16px;}
     .info-item label{font-size:9px;font-weight:700;color:#888;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:3px;}
     .info-item span{font-weight:700;font-size:14px;}
+    .cobranca-box{background:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;}
+    .cobranca-label{font-size:11px;color:#2e7d32;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+    .cobranca-val{font-size:28px;font-weight:900;color:#1b5e20;}
     table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;}
     th{background:#1e3a5f;color:#fff;padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;}
     td{padding:7px 12px;border-bottom:1px solid #eee;}
     tr:last-child td{border-bottom:none;}
-    .total-box{background:#1e3a5f;color:#fff;padding:16px 20px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
-    .total-label{font-size:11px;opacity:.8;letter-spacing:1px;text-transform:uppercase;}
-    .total-val{font-size:26px;font-weight:900;}
     .sign-area{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px;}
     .sign-line{border-top:1px solid #999;padding-top:5px;text-align:center;font-size:10px;color:#777;}
     .footer{margin-top:20px;text-align:center;font-size:10px;color:#aaa;}
@@ -4791,64 +5091,54 @@ function emitirFatura(bl, periodoNum){
     <button onclick="window.print()" style="background:#1e3a5f;color:#fff;">🖨 IMPRIMIR</button>
     <button onclick="window.close()" style="background:#eee;color:#333;">✕ FECHAR</button>
   </div>
-
+  <div class="logo-header">${logoHtml}</div>
   <h1>STEELPORT · 4SIDES</h1>
-  <div class="sub">WAREHOUSE SYSTEMS — FATURA DE ARMAZENAGEM</div>
+  <div class="sub">FATURA DE ARMAZENAGEM</div>
   <div class="fatura-num">${fatNum}</div>
-
   <div class="info-grid">
     <div class="info-item"><label>Cliente</label><span>${cliente}</span></div>
     <div class="info-item"><label>BL</label><span style="font-family:monospace">${bl}</span></div>
     <div class="info-item"><label>Navio</label><span>${navio}</span></div>
     <div class="info-item"><label>Viagem</label><span>${viagem}</span></div>
     <div class="info-item"><label>Produto</label><span>${produto}</span></div>
-    <div class="info-item"><label>Período de cobrança</label><span>${dtIniFmt} → ${dtFimFmt}</span></div>
-    <div class="info-item"><label>Referência</label><span>${periodoNum}º Período (${periodoDias} dias)</span></div>
-    <div class="info-item"><label>Emissão</label><span>${new Date().toLocaleDateString('pt-BR')}</span></div>
+    <div class="info-item"><label>Data de cobrança</label><span style="color:#1565c0;">${dtIniFmt}</span></div>
+    <div class="info-item"><label>Período</label><span>${dtIniFmt} → ${dtFimFmt}</span></div>
+    <div class="info-item"><label>${periodoNum}º Período (${periodoDias} dias)</label><span>Emissão: ${new Date().toLocaleDateString('pt-BR')}</span></div>
     <div class="info-item"><label>Tarifa</label><span>R$ ${tarifaBL.toFixed(2).replace('.',',')} / t</span></div>
   </div>
-
   <table>
     <thead><tr><th>#</th><th>Coil Number</th><th>P. Bruto (kg)</th></tr></thead>
     <tbody>
-      ${bobinasEmEstoque.map((c,i)=>`<tr>
+      ${bobinasNoPeriodo.map((c,i)=>`<tr>
         <td>${i+1}</td>
         <td style="font-family:monospace;font-weight:700">${c.coil}</td>
         <td>${c.pesob?fmtKg(c.pesob)+' kg':'—'}</td>
       </tr>`).join('')}
     </tbody>
   </table>
-
-  <div class="total-box">
+  <div class="cobranca-box">
     <div>
-      <div class="total-label">Peso total cobrado</div>
-      <div style="font-size:16px;font-weight:700;margin-top:2px;">${fmtKg(p.pesoBruto)} kg · ${toneladas.toFixed(3)} t</div>
+      <div class="cobranca-label">Peso total em estoque na data de cobrança</div>
+      <div style="font-size:16px;font-weight:700;margin-top:2px;color:#2e7d32;">${fmtKg(p.pesoBruto)} kg · ${toneladas.toFixed(3)} t</div>
+      ${valor!=null?`<div style="font-size:13px;margin-top:4px;color:#2e7d32;">Armazenagem: R$ ${valor.toFixed(2).replace('.',',')}</div>`:''}
+      ${handling>0?`<div style="font-size:13px;margin-top:2px;color:#1565c0;">Handling: R$ ${handling.toFixed(2).replace('.',',')}</div>`:''}
+      ${state.enviado?`<div style="font-size:11px;margin-top:6px;color:#555;">✓ Enviado em ${state.dataEnvio||'—'} por ${state.usuario||'—'}</div>`:''}
+      ${state.nf&&state.nf!=='—'?`<div style="font-size:13px;margin-top:2px;font-weight:700;">NF: ${state.nf}</div>`:''}
     </div>
     <div style="text-align:right;">
-      <div class="total-label">Valor total</div>
-      <div class="total-val">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}</div>
+      <div class="cobranca-label">Valor total a cobrar</div>
+      <div class="cobranca-val">${totalFatura>0?'R$ '+totalFatura.toFixed(2).replace('.',','):'—'}</div>
     </div>
   </div>
-
   <div class="sign-area">
     <div class="sign-line">Responsável pelo Armazém</div>
     <div class="sign-line">Responsável pelo Cliente</div>
   </div>
-
   <div class="footer">STEELPORT · 4SIDES WAREHOUSE SYSTEMS · Emitido em ${new Date().toLocaleString('pt-BR')}</div>
   <script>setTimeout(()=>window.print(),400);<\/script>
   </body></html>`);
   w.document.close();
 }
-
-// ══════════════════════════════════════════
-// AUDITORIA / HISTÓRICO / ROLLBACK
-// ══════════════════════════════════════════
-const HIST_MAX = 200;
-let auditLog = JSON.parse(localStorage.getItem('sp_audit')||'[]');
-let rollbackTarget = null;
-
-function saveAudit(){ try{ localStorage.setItem('sp_audit', JSON.stringify(auditLog.slice(0,HIST_MAX))); }catch(e){} }
 
 function registrarAudit(tipo, descricao, snapshot){
   const entry = {
@@ -4885,13 +5175,14 @@ function renderHistorico(){
   }
 
   const tipoColors={
-    descarga:   'rgba(34,197,94,.15)',
-    expedicao:  'rgba(168,85,247,.15)',
-    edicao:     'rgba(59,130,246,.15)',
-    exclusao:   'rgba(224,92,26,.15)',
-    importacao: 'rgba(240,165,0,.15)',
+    descarga:    'rgba(34,197,94,.15)',
+    expedicao:   'rgba(168,85,247,.15)',
+    edicao:      'rgba(59,130,246,.15)',
+    exclusao:    'rgba(224,92,26,.15)',
+    importacao:  'rgba(240,165,0,.15)',
+    faturamento: 'rgba(34,197,94,.08)',
   };
-  const tipoIcons={descarga:'📥',expedicao:'📤',edicao:'✏',exclusao:'🗑',importacao:'📊'};
+  const tipoIcons={descarga:'📥',expedicao:'📤',edicao:'✏',exclusao:'🗑',importacao:'📊',faturamento:'💰'};
 
   cont.innerHTML=list.map((e,i)=>{
     const dt   = new Date(e.ts).toLocaleString('pt-BR');
@@ -5489,6 +5780,7 @@ alter table users add column if not exists email text;</pre>
           <option value="edicao">Edição</option>
           <option value="exclusao">Exclusão</option>
           <option value="importacao">Importação</option>
+          <option value="faturamento">💰 Faturamento</option>
         </select>
         <button class="btn btn-danger btn-sm" onclick="limparHistorico()">🗑 LIMPAR HISTÓRICO</button>
       </div>
