@@ -3300,20 +3300,26 @@ function parseWeight(v){
 
   // Se é número JS (Excel já converteu internamente)
   if(typeof v==='number'){
-    // Excel lê "8,100" (formato americano milhar) como 8.1
-    // Detecta: número com parte decimal que, multiplicado por 1000, dá inteiro
-    // Ex: 8.1 → 8100, 12.5 → 12500, 3.0 → 3000, 15.75 → 15750
-    // Mas NÃO queremos converter 8.5 que poderia ser 8.5 kg (improvável, mas possível)
-    // Regra: se a parte decimal × 1000 resultar em número inteiro → é milhar americano
     const frac = v - Math.floor(v);
+
     if(frac > 0){
+      // Número decimal: Excel leu "8,100" como 8.1 → multiplica por 1000
+      // Regra: decimal × 1000 resulta em inteiro limpo → é separador de milhar americano
       const asKg = Math.round(v * 1000);
-      // Verifica se a conversão é "limpa" (sem resíduo de ponto flutuante)
       if(Math.abs(asKg - v*1000) < 0.01){
         return asKg;
       }
+    } else {
+      // Número inteiro:
+      // Excel lê "8,000" (americano) como inteiro 8 — separador de milhar some
+      // Bobinas de aço pesam entre ~3.000 e ~65.000 kg
+      // Se o valor inteiro for < 500, MUITO provavelmente é toneladas (veio de "X,000")
+      // Se for >= 500, provavelmente já está em kg (ex: 8100, 25300)
+      if(v > 0 && v < 500){
+        return v * 1000; // 8 → 8000, 25 → 25000
+      }
     }
-    return v; // número inteiro → já em kg
+    return v; // >= 500 → já em kg
   }
 
   const s = String(v).trim();
@@ -3886,7 +3892,7 @@ function renderReport(){
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
         const vArm=tarifaBL>0?ton*tarifaBL:0;
-        const vHand=p.num===1?(getHandlingBL(bl)||0):0;
+        const _hTarifa=(getHandlingBL(bl)||0);const _hTon=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa*_hTon:0;
         const total=vArm+vHand;
         const state=getFatState(bl,p.num);
         groupRows.push([
@@ -3973,7 +3979,7 @@ function exportReportXLSX(){
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
         const vArm=tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
-        const vHand=p.num===1?parseFloat((getHandlingBL(bl)||0)):0;
+        const _hTarifa2=(getHandlingBL(bl)||0);const _hTon2=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa2*_hTon2:0;
         const total=parseFloat((vArm+vHand).toFixed(2));
         const state=getFatState(bl,p.num);
         rows.push([
@@ -4078,7 +4084,7 @@ function exportReportPDF(){
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
         const vArm=tarifaBL>0?ton*tarifaBL:0;
-        const vHand=p.num===1?(getHandlingBL(bl)||0):0;
+        const _hTarifa=(getHandlingBL(bl)||0);const _hTon=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa*_hTon:0;
         const total=vArm+vHand;
         const state=getFatState(bl,p.num);
         totalArm+=vArm; totalHand+=vHand; totalGeral+=total;
@@ -4863,6 +4869,7 @@ function renderFaturamento(){
     const navio  =dbCoils[0]?.navio||'—';
     const viagem =dbCoils[0]?.viagem||'—';
     const produto=dbCoils[0]?.produto||'—';
+    const cliInfo=getClienteInfo(cliente);
     const totalCoils=dbCoils.length;
     const descCoils=dbCoils.filter(c=>records.find(r=>r.coil===c.coil)).length;
     const expCoils =dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
@@ -4912,39 +4919,51 @@ function renderFaturamento(){
           :`<span style="font-size:9px;background:rgba(34,197,94,.08);color:var(--success);border:1px solid rgba(34,197,94,.2);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">●</span>`;
         const state=getFatState(bl,p.num);
         const handling=p.num===1?getHandlingBL(bl):null;
-        const handlingVal=handling!=null?handling:0;
+        const handlingTarifa=handling!=null?handling:0;
+        // Handling = tarifa × tonelagem total do BL (todas as bobinas)
+        const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||0),0)/1000;
+        const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
         const handlingHtml=p.num===1?`
           <div style="display:flex;align-items:center;gap:.35rem;margin-top:3px;">
-            <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">HANDLING R$:</span>
-            <input type="number" min="0" step="0.01" value="${handlingVal>0?handlingVal.toFixed(2):''}" placeholder="0,00"
+            <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">HANDLING R$/t:</span>
+            <input type="number" min="0" step="0.01" value="${handlingTarifa>0?handlingTarifa.toFixed(2):''}" placeholder="0,00"
               onchange="setHandlingBL('${bl}',parseFloat(this.value.replace(',','.'))||0);renderFaturamento();"
-              style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:4px;font-size:12px;font-weight:700;text-align:right;outline:none;"
-              title="Valor de Handling cobrado no 1º período">
+              style="width:70px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:4px;font-size:12px;font-weight:700;text-align:right;outline:none;"
+              title="Tarifa de Handling por tonelada">
+            ${handlingTarifa>0?`<span style="font-size:10px;color:#60a5fa;font-family:'JetBrains Mono',monospace;">×${tonelagemTotalBL.toFixed(2)}t = R$${handlingVal.toFixed(2).replace('.',',')}</span>`:''}
           </div>`:'';
         const totalPeriodo=(valor||0)+(p.num===1?handlingVal:0);
 
-        // Enviado flag
-        const enviadoBadge=state.enviado
-          ?`<span style="font-size:10px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);border-radius:3px;padding:1px 6px;font-family:'JetBrains Mono',monospace;display:block;margin-top:2px;">✓ ENV ${state.dataEnvio||''} · NF: ${state.nf||'—'}</span>`
-          :'';
+        // Enviado checkbox + NF display inline na linha
+        const checkId = `fat-chk-${bl.replace(/[^a-z0-9]/gi,'_')}_${p.num}`;
+        const enviadoCell = `
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
+              <input type="checkbox" id="${checkId}"
+                ${state.enviado?'checked':''}
+                onchange="toggleEnviado(this,'${bl}',${p.num})"
+                style="width:16px;height:16px;accent-color:var(--success);cursor:pointer;">
+              <span style="font-size:11px;font-weight:700;color:${state.enviado?'var(--success)':'var(--muted)'};">
+                ${state.enviado?'✓ ENVIADO':'Não enviado'}
+              </span>
+            </label>
+            ${state.enviado&&state.nf&&state.nf!=='—'
+              ?`<div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:3px;padding:1px 5px;white-space:nowrap;">
+                  NF: <strong>${state.nf}</strong>
+                </div>`:''}
+            ${state.enviado&&state.dataEnvio
+              ?`<div style="font-size:9px;color:var(--muted);">${state.dataEnvio}${state.usuario?' · '+state.usuario:''}</div>`:''}
+          </div>`;
 
         periodsHTML+=`<tr style="${rowBg}">
-          <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${lockBadge}${enviadoBadge}</td>
+          <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${lockBadge}</td>
           <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;"><strong style="color:var(--info);">${dtIni}</strong> → ${dtFim}</td>
-          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg<br><span style="font-size:10px;color:var(--muted);">${ton.toFixed(3)} t</span></td>
-          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">
-            ${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}
-            ${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+ R$ ${handlingVal.toFixed(2).replace('.',',')} handling</span>`:''}
-            ${totalPeriodo>0&&p.num===1&&handlingVal>0?`<br><strong>= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</strong>`:''}
-            ${handlingHtml}
-          </td>
+          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg<br><span style="font-size:10px;color:var(--muted);">${(p.pesoBruto/1000).toFixed(3)} t${handlingHtml}</span></td>
+          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+R$ ${handlingVal.toFixed(2).replace('.',',')} hdl</span>`:''}${totalPeriodo>valor?`<br><span style="font-size:11px;font-weight:900;color:var(--text);">= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}</td>
           <td style="padding:.5rem .75rem;">${statusPer}</td>
-          <td style="padding:.5rem .75rem;display:flex;flex-direction:column;gap:4px;align-items:flex-start;">
+          <td style="padding:.5rem .75rem;">${enviadoCell}</td>
+          <td style="padding:.5rem .75rem;">
             <button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;">📄 FATURA</button>
-            ${state.enviado
-              ?`<button class="btn btn-secondary btn-sm" onclick="desmarcarEnviado('${bl}',${p.num})" style="font-size:10px;white-space:nowrap;">↩ Reabrir</button>`
-              :`<button class="btn btn-success btn-sm" onclick="confirmarEnvio('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;background:var(--success);color:#000;">✓ ENVIADO</button>`
-            }
           </td>
         </tr>`;
       });
@@ -4957,6 +4976,9 @@ function renderFaturamento(){
         <div style="font-size:12px;color:var(--muted);">🚢 ${navio}${viagem&&viagem!=='—'?' · '+viagem:''}</div>
         <div style="font-size:12px;color:var(--muted);">${produto}</div>
         ${statusBadge}
+        ${cliInfo?.cnpj?`<div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CNPJ: ${cliInfo.cnpj}</div>`:''}
+        ${cliInfo?.email?`<a href="mailto:${cliInfo.email}" style="font-size:11px;color:var(--info);text-decoration:none;">✉ ${cliInfo.email}</a>`:''}
+        ${cliInfo?.contato?`<div style="font-size:11px;color:var(--muted);">👤 ${cliInfo.contato}</div>`:''}
         <!-- TARIFA INLINE EDITÁVEL -->
         <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto;">
           <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">R$/t:</span>
@@ -4975,9 +4997,10 @@ function renderFaturamento(){
             <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">PERÍODO</th>
             <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">DATAS (cobrança → encerramento)</th>
             <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">PESO / TONELADAS</th>
-            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">VALOR (Armazenagem + Handling)</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">VALOR</th>
             <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">STATUS</th>
-            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">AÇÕES</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">ENVIADO / NF</th>
+            <th style="padding:.4rem .75rem;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);text-align:left;">FATURA</th>
           </tr></thead>
           <tbody>${periodsHTML}</tbody>
         </table>
@@ -5000,30 +5023,49 @@ function renderFaturamento(){
 }
 
 // ── Confirmar envio de faturamento ───────────────────
-function confirmarEnvio(bl, num){
-  const nf=prompt(`Confirmar envio do faturamento\nBL: ${bl} — ${num}º Período\n\nDigite o número da NF ou referência:`, '');
-  if(nf===null) return; // cancelado
-  const state={
-    enviado:true,
-    nf: nf.trim()||'—',
-    dataEnvio: new Date().toLocaleDateString('pt-BR'),
-    usuario: session?.nome||'Sistema'
-  };
-  setFatState(bl,num,state);
-  registrarAudit('faturamento',
-    `Faturamento enviado — BL: ${bl} · ${num}º Período · NF: ${state.nf}`,
-    { bl, num, nf:state.nf, usuario:state.usuario }
-  );
+function toggleEnviado(checkbox, bl, num){
+  if(checkbox.checked){
+    // Marcar como enviado — pede NF
+    const nf = prompt(`Faturamento BL: ${bl} — ${num}º Período\n\nInforme o número da NF ou referência:`, '');
+    if(nf === null){
+      // Cancelou — desmarca o checkbox
+      checkbox.checked = false;
+      return;
+    }
+    const state = {
+      enviado:   true,
+      nf:        nf.trim()||'—',
+      dataEnvio: new Date().toLocaleDateString('pt-BR'),
+      usuario:   session?.nome||'Sistema'
+    };
+    setFatState(bl, num, state);
+    registrarAudit('faturamento',
+      `Faturamento enviado — BL: ${bl} · ${num}º Período · NF: ${state.nf}`,
+      { bl, num, nf:state.nf, usuario:state.usuario }
+    );
+    showToast(`✓ BL ${bl} · ${num}º período marcado como enviado · NF: ${state.nf}`,'#22c55e','#000');
+  } else {
+    // Desmarcar — pede confirmação
+    if(!confirm(`Desmarcar o envio do ${num}º período do BL ${bl}?\n\nIsso removerá o registro de NF e data de envio.`)){
+      checkbox.checked = true; // reverte
+      return;
+    }
+    setFatState(bl, num, {});
+    registrarAudit('faturamento', `Faturamento reaberto — BL: ${bl} · ${num}º Período`, { bl, num });
+    showToast(`Período ${num} do BL ${bl} reaberto.`,'#f59e0b','#000');
+  }
   renderFaturamento();
-  showToast(`✓ Faturamento do ${num}º período do BL ${bl} marcado como enviado. NF: ${state.nf}`,'#22c55e','#000');
+}
+
+function confirmarEnvio(bl, num){
+  // Compatibilidade — redireciona para toggleEnviado via checkbox
+  const chk = document.getElementById(`fat-chk-${bl.replace(/[^a-z0-9]/gi,'_')}_${num}`);
+  if(chk){ chk.checked=true; toggleEnviado(chk,bl,num); }
 }
 
 function desmarcarEnviado(bl, num){
-  if(!confirm(`Reabrir o ${num}º período do BL ${bl}?\nIsso removerá o registro de envio.`)) return;
-  setFatState(bl,num,{});
-  registrarAudit('faturamento',`Faturamento reaberto — BL: ${bl} · ${num}º Período`,{bl,num});
-  renderFaturamento();
-  showToast(`Período reaberto.`,'#f59e0b','#000');
+  const chk = document.getElementById(`fat-chk-${bl.replace(/[^a-z0-9]/gi,'_')}_${num}`);
+  if(chk){ chk.checked=false; toggleEnviado(chk,bl,num); }
 }
 
 function emitirFatura(bl, periodoNum){
@@ -5040,9 +5082,13 @@ function emitirFatura(bl, periodoNum){
   const navio  =dbCoils[0]?.navio||'—';
   const viagem =dbCoils[0]?.viagem||'—';
   const produto=dbCoils[0]?.produto||'—';
+  const cliInfo=getClienteInfo(cliente);
   const toneladas=p.pesoBruto/1000;
   const valor=tarifaBL>0?toneladas*tarifaBL:null;
-  const handling=periodoNum===1?(getHandlingBL(bl)||0):0;
+  // Handling = tarifa de handling × tonelagem TOTAL do BL (todas as bobinas do banco)
+  const handlingTarifaBL = getHandlingBL(bl)||0;
+  const tonelagemTotalBL = dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||0),0)/1000;
+  const handling = periodoNum===1 ? handlingTarifaBL*tonelagemTotalBL : 0;
   const totalFatura=(valor||0)+handling;
   const state=getFatState(bl,periodoNum);
   const dtIniFmt=p.dataIni.split('-').reverse().join('/');
@@ -5075,16 +5121,17 @@ function emitirFatura(bl, periodoNum){
     .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;background:#f7f9fc;border:1px solid #dde3ee;border-radius:8px;padding:16px;}
     .info-item label{font-size:9px;font-weight:700;color:#888;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:3px;}
     .info-item span{font-weight:700;font-size:14px;}
-    .cobranca-box{background:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;}
+    .cobranca-box{background:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
     .cobranca-label{font-size:11px;color:#2e7d32;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
     .cobranca-val{font-size:28px;font-weight:900;color:#1b5e20;}
+    .cobranca-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #c8e6c9;}
+    .cobranca-row:last-child{border-bottom:none;padding-top:10px;}
+    .cobranca-total{font-size:22px;font-weight:900;color:#1b5e20;}
     table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;}
     th{background:#1e3a5f;color:#fff;padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;}
     td{padding:7px 12px;border-bottom:1px solid #eee;}
     tr:last-child td{border-bottom:none;}
-    .sign-area{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:30px;}
-    .sign-line{border-top:1px solid #999;padding-top:5px;text-align:center;font-size:10px;color:#777;}
-    .footer{margin-top:20px;text-align:center;font-size:10px;color:#aaa;}
+    .footer{margin-top:20px;text-align:center;font-size:10px;color:#aaa;border-top:1px solid #eee;padding-top:12px;}
     @media print{.no-print{display:none!important;}body{padding:10px;}}
   </style></head><body>
   <div class="no-print">
@@ -5097,14 +5144,17 @@ function emitirFatura(bl, periodoNum){
   <div class="fatura-num">${fatNum}</div>
   <div class="info-grid">
     <div class="info-item"><label>Cliente</label><span>${cliente}</span></div>
+    ${cliInfo?.cnpj?`<div class="info-item"><label>CNPJ</label><span style="font-family:monospace">${cliInfo.cnpj}</span></div>`:'<div></div>'}
+    ${cliInfo?.email?`<div class="info-item"><label>E-mail</label><span style="font-size:12px;word-break:break-all;">${cliInfo.email}</span></div>`:'<div></div>'}
     <div class="info-item"><label>BL</label><span style="font-family:monospace">${bl}</span></div>
     <div class="info-item"><label>Navio</label><span>${navio}</span></div>
     <div class="info-item"><label>Viagem</label><span>${viagem}</span></div>
     <div class="info-item"><label>Produto</label><span>${produto}</span></div>
     <div class="info-item"><label>Data de cobrança</label><span style="color:#1565c0;">${dtIniFmt}</span></div>
     <div class="info-item"><label>Período</label><span>${dtIniFmt} → ${dtFimFmt}</span></div>
-    <div class="info-item"><label>${periodoNum}º Período (${periodoDias} dias)</label><span>Emissão: ${new Date().toLocaleDateString('pt-BR')}</span></div>
-    <div class="info-item"><label>Tarifa</label><span>R$ ${tarifaBL.toFixed(2).replace('.',',')} / t</span></div>
+    <div class="info-item"><label>Referência</label><span>${periodoNum}º Período (${periodoDias} dias)</span></div>
+    <div class="info-item"><label>Emissão</label><span>${new Date().toLocaleDateString('pt-BR')}</span></div>
+    ${cliInfo?.contato?`<div class="info-item"><label>Contato</label><span>${cliInfo.contato}</span></div>`:''}
   </div>
   <table>
     <thead><tr><th>#</th><th>Coil Number</th><th>P. Bruto (kg)</th></tr></thead>
@@ -5117,27 +5167,295 @@ function emitirFatura(bl, periodoNum){
     </tbody>
   </table>
   <div class="cobranca-box">
-    <div>
-      <div class="cobranca-label">Peso total em estoque na data de cobrança</div>
-      <div style="font-size:16px;font-weight:700;margin-top:2px;color:#2e7d32;">${fmtKg(p.pesoBruto)} kg · ${toneladas.toFixed(3)} t</div>
-      ${valor!=null?`<div style="font-size:13px;margin-top:4px;color:#2e7d32;">Armazenagem: R$ ${valor.toFixed(2).replace('.',',')}</div>`:''}
-      ${handling>0?`<div style="font-size:13px;margin-top:2px;color:#1565c0;">Handling: R$ ${handling.toFixed(2).replace('.',',')}</div>`:''}
-      ${state.enviado?`<div style="font-size:11px;margin-top:6px;color:#555;">✓ Enviado em ${state.dataEnvio||'—'} por ${state.usuario||'—'}</div>`:''}
-      ${state.nf&&state.nf!=='—'?`<div style="font-size:13px;margin-top:2px;font-weight:700;">NF: ${state.nf}</div>`:''}
+    <div class="cobranca-label" style="margin-bottom:8px;">Resumo de cobrança</div>
+    <div class="cobranca-row">
+      <div>
+        <div style="font-weight:700;font-size:13px;">Armazenagem</div>
+        <div style="font-size:12px;color:#555;">${fmtKg(p.pesoBruto)} kg · ${toneladas.toFixed(3)} t × R$ ${tarifaBL.toFixed(2).replace('.',',')} /t</div>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:#2e7d32;">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}</div>
     </div>
-    <div style="text-align:right;">
-      <div class="cobranca-label">Valor total a cobrar</div>
-      <div class="cobranca-val">${totalFatura>0?'R$ '+totalFatura.toFixed(2).replace('.',','):'—'}</div>
+    ${handling>0?`
+    <div class="cobranca-row">
+      <div>
+        <div style="font-weight:700;font-size:13px;">Handling</div>
+        <div style="font-size:12px;color:#555;">${tonelagemTotalBL.toFixed(3)} t (total BL) × R$ ${handlingTarifaBL.toFixed(2).replace('.',',')} /t</div>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:#1565c0;">R$ ${handling.toFixed(2).replace('.',',')}</div>
+    </div>`:''}
+    ${state.nf&&state.nf!=='—'?`
+    <div class="cobranca-row">
+      <div style="font-weight:700;font-size:13px;">NF</div>
+      <div style="font-size:14px;font-weight:700;">${state.nf}</div>
+    </div>`:''}
+    <div class="cobranca-row">
+      <div class="cobranca-label">Total a cobrar</div>
+      <div class="cobranca-total">R$ ${totalFatura>0?totalFatura.toFixed(2).replace('.',','):'—'}</div>
     </div>
-  </div>
-  <div class="sign-area">
-    <div class="sign-line">Responsável pelo Armazém</div>
-    <div class="sign-line">Responsável pelo Cliente</div>
   </div>
   <div class="footer">STEELPORT · 4SIDES WAREHOUSE SYSTEMS · Emitido em ${new Date().toLocaleString('pt-BR')}</div>
   <script>setTimeout(()=>window.print(),400);<\/script>
   </body></html>`);
   w.document.close();
+}
+
+// ── Exportação do Faturamento (dentro do próprio módulo) ──────────
+function _getFatBLsFiltrados(){
+  const tarifa    =parseFloat(document.getElementById('fat-tarifa')?.value||0);
+  const periodoDias=parseInt(document.getElementById('fat-periodo-dias')?.value||15);
+  const fc=document.getElementById('fat-filter-cliente')?.value||'';
+  const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fb=document.getElementById('fat-filter-bl')?.value||'';
+  const fs=document.getElementById('fat-filter-status')?.value||'';
+  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
+  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
+  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fb) bls=bls.filter(bl=>bl===fb);
+  // Apply status filter
+  if(fs) bls=bls.filter(bl=>{
+    const dbC=coilsDB.filter(c=>c.bl===bl);
+    const desc=dbC.filter(c=>records.find(r=>r.coil===c.coil)).length;
+    const exp=dbC.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+    if(fs==='incompleta') return desc<dbC.length;
+    if(fs==='estoque')    return desc===dbC.length&&desc>exp;
+    if(fs==='zerada')     return desc===dbC.length&&desc<=exp;
+    return true;
+  });
+  return {bls,tarifa,periodoDias};
+}
+
+function exportFaturamentoXLSX(){
+  const {bls,tarifa,periodoDias}=_getFatBLsFiltrados();
+  const wb=XLSX.utils.book_new();
+  const rows=[['BL','CLIENTE','CNPJ','E-MAIL','NAVIO','VIAGEM','PRODUTO','Nº PERÍODO','DATA COBRANÇA','PERÍODO (INI→FIM)',
+    'PESO (kg)','TONELADAS','TARIFA ARM. (R$/t)','ARMAZENAGEM (R$)','TARIFA HDL (R$/t)','TON. TOTAL BL','HANDLING (R$)','TOTAL (R$)',
+    'STATUS','NF','DATA ENVIO','ENVIADO POR']];
+  bls.sort().forEach(bl=>{
+    const dbCoils=coilsDB.filter(c=>c.bl===bl);
+    const fat=calcPeriodosBL(bl,periodoDias);
+    if(!fat||!fat.periodos.length) return;
+    const tarifaBL=getTarifaBL(bl,tarifa);
+    const tonelagemTotalBL=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;
+    const cliInfo=getClienteInfo(dbCoils[0]?.cliente||'');
+    fat.periodos.forEach(p=>{
+      const ton=p.pesoBruto/1000;
+      const vArm=tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+      const hTarifa=p.num===1?(getHandlingBL(bl)||0):0;
+      const vHand=p.num===1?parseFloat((hTarifa*tonelagemTotalBL).toFixed(2)):0;
+      const total=parseFloat((vArm+vHand).toFixed(2));
+      const state=getFatState(bl,p.num);
+      rows.push([
+        bl,dbCoils[0]?.cliente||'',cliInfo?.cnpj||'',cliInfo?.email||'',
+        dbCoils[0]?.navio||'',dbCoils[0]?.viagem||'',dbCoils[0]?.produto||'',
+        p.num, p.dataIni.split('-').reverse().join('/'),
+        p.dataIni.split('-').reverse().join('/')+' → '+p.dataFim.split('-').reverse().join('/'),
+        p.pesoBruto, parseFloat(ton.toFixed(3)),
+        tarifaBL||0, vArm||0,
+        hTarifa||0, parseFloat(tonelagemTotalBL.toFixed(3)), vHand||0, total||0,
+        state.enviado?'ENVIADO':p.encerrado?'PENDENTE':'EM ABERTO',
+        state.nf||'', state.dataEnvio||'', state.usuario||''
+      ]);
+    });
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols']=rows[0].map((_,i)=>({wch:[10,18,18,12,14,6,12,24,10,10,12,12,12,12,12,12,12,14,12,16][i]||12}));
+  XLSX.utils.book_append_sheet(wb,ws,'Faturamento');
+  XLSX.writeFile(wb,'4SIDES_STEELPORT_Faturamento_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  showToast('✓ Faturamento Excel exportado!','#22c55e','#000');
+}
+
+function exportFaturamentoPDF(){
+  const {jsPDF}=window.jspdf;
+  const {bls,tarifa,periodoDias}=_getFatBLsFiltrados();
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const pageW=doc.internal.pageSize.getWidth();
+  const now=new Date().toLocaleString('pt-BR');
+  doc.setFillColor(10,12,15); doc.rect(0,0,pageW,18,'F');
+  doc.setFillColor(240,165,0); doc.rect(0,16,pageW,2,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(240,165,0);
+  doc.text('4SIDES · STEELPORT',14,11);
+  doc.setFontSize(10); doc.setTextColor(180,180,180);
+  doc.text('RELATÓRIO DE FATURAMENTO',14,17);
+  doc.text('Gerado: '+now,pageW-14,11,{align:'right'});
+  doc.setTextColor(0,0,0);
+  const rows=[];
+  let totalArm=0,totalHand=0,totalGeral=0;
+  bls.sort().forEach(bl=>{
+    const dbCoils=coilsDB.filter(c=>c.bl===bl);
+    const fat=calcPeriodosBL(bl,periodoDias);
+    if(!fat||!fat.periodos.length) return;
+    const tarifaBL=getTarifaBL(bl,tarifa);
+    const tonelagemTotalBL=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;
+    fat.periodos.forEach(p=>{
+      const ton=p.pesoBruto/1000;
+      const vArm=tarifaBL>0?ton*tarifaBL:0;
+      const hTarifa=p.num===1?(getHandlingBL(bl)||0):0;
+      const vHand=p.num===1?hTarifa*tonelagemTotalBL:0;
+      const total=vArm+vHand;
+      totalArm+=vArm; totalHand+=vHand; totalGeral+=total;
+      const state=getFatState(bl,p.num);
+      rows.push([
+        bl, dbCoils[0]?.cliente||'—', dbCoils[0]?.navio||'—',
+        p.num+'º', p.dataIni.split('-').reverse().join('/'),
+        fmtKg(p.pesoBruto)+' kg',
+        'R$'+(vArm>0?vArm.toFixed(2):'0'),
+        vHand>0?'R$'+vHand.toFixed(2):'—',
+        total>0?'R$'+total.toFixed(2):'—',
+        state.enviado?'✓ ENV':p.encerrado?'⚠ PEND':'ABERTO',
+        state.nf||'—'
+      ]);
+    });
+  });
+  doc.autoTable({
+    startY:22,
+    head:[['BL','CLIENTE','NAVIO','PER.','DATA COB.','PESO','ARMAZ.','HANDLING','TOTAL','STATUS','NF']],
+    body:rows,
+    styles:{fontSize:7,cellPadding:2},
+    headStyles:{fillColor:[30,58,95],textColor:255,fontStyle:'bold'},
+    columnStyles:{0:{cellWidth:22},1:{cellWidth:30},2:{cellWidth:28},10:{cellWidth:16}},
+    didParseCell:d=>{
+      if(d.section==='body'){
+        const s=String(d.row.raw[9]||'');
+        if(s.includes('✓')) d.cell.styles.textColor=[34,139,34];
+        else if(s.includes('⚠')) d.cell.styles.textColor=[200,100,0];
+      }
+    }
+  });
+  const y=doc.lastAutoTable.finalY+7;
+  doc.setFontSize(9); doc.setFont('helvetica','bold'); doc.setTextColor(34,139,34);
+  doc.text(
+    `ARMAZENAGEM: R$ ${totalArm.toFixed(2).replace('.',',')}   HANDLING: R$ ${totalHand.toFixed(2).replace('.',',')}   TOTAL GERAL: R$ ${totalGeral.toFixed(2).replace('.',',')}`,
+    14, y
+  );
+  doc.save('4SIDES_STEELPORT_Faturamento_'+new Date().toISOString().split('T')[0]+'.pdf');
+  showToast('✓ Faturamento PDF exportado!','#22c55e','#000');
+}
+
+// ══════════════════════════════════════════════════════
+// CADASTRO DE CLIENTES (CNPJ / E-MAIL)
+// ══════════════════════════════════════════════════════
+
+let cadClientes = JSON.parse(localStorage.getItem('sp_clientes')||'[]');
+
+function saveCadClientes(){
+  localStorage.setItem('sp_clientes', JSON.stringify(cadClientes));
+}
+
+function getClienteInfo(nome){
+  return cadClientes.find(c=>c.nome===nome?.trim().toUpperCase())||null;
+}
+
+function formatCNPJ(el){
+  let v=el.value.replace(/\D/g,'');
+  if(v.length>14) v=v.slice(0,14);
+  v=v.replace(/^(\d{2})(\d)/,'$1.$2')
+     .replace(/^(\d{2})\.(\d{3})(\d)/,'$1.$2.$3')
+     .replace(/\.(\d{3})(\d)/,'.$1/$2')
+     .replace(/(\d{4})(\d)/,'$1-$2');
+  el.value=v;
+}
+
+function toggleSecaoCadClientes(){
+  const sec=document.getElementById('secao-cad-clientes');
+  const btn=document.getElementById('btn-toggle-cad-clientes');
+  if(sec.style.display==='none'){
+    sec.style.display='';
+    btn.textContent='▲ FECHAR';
+    renderCadClientesLista();
+  } else {
+    sec.style.display='none';
+    btn.textContent='+ CADASTRAR / EDITAR';
+  }
+}
+
+function renderCadClientesLista(){
+  const cont=document.getElementById('cad-clientes-lista');
+  if(!cont) return;
+  if(!cadClientes.length){
+    cont.innerHTML=`<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum cliente cadastrado.</div>`;
+    return;
+  }
+  cont.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--bg);">
+      <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">CLIENTE</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">CNPJ</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">E-MAIL</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">RESPONSÁVEL</th>
+      <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">TELEFONE</th>
+      <th style="padding:.5rem .75rem;"></th>
+    </tr></thead>
+    <tbody>
+      ${cadClientes.map((c,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="padding:.5rem .75rem;font-weight:700;color:var(--accent);">${c.nome}</td>
+        <td style="padding:.5rem .75rem;font-family:'JetBrains Mono',monospace;">${c.cnpj||'—'}</td>
+        <td style="padding:.5rem .75rem;">${c.email?`<a href="mailto:${c.email}" style="color:var(--info);">${c.email}</a>`:'—'}</td>
+        <td style="padding:.5rem .75rem;">${c.contato||'—'}</td>
+        <td style="padding:.5rem .75rem;">${c.tel||'—'}</td>
+        <td style="padding:.5rem .75rem;white-space:nowrap;">
+          <button class="btn btn-info btn-sm" style="font-size:11px;" onclick="editarCadCliente(${i})">✏</button>
+          <button class="btn btn-danger btn-sm" style="font-size:11px;" onclick="excluirCadCliente(${i})">✕</button>
+        </td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+let _editCadIdx = null;
+
+function salvarCadCliente(){
+  const nome   = document.getElementById('cad-cli-nome').value.trim().toUpperCase();
+  const cnpj   = document.getElementById('cad-cli-cnpj').value.trim();
+  const email  = document.getElementById('cad-cli-email').value.trim();
+  const contato= document.getElementById('cad-cli-contato').value.trim();
+  const tel    = document.getElementById('cad-cli-tel').value.trim();
+
+  if(!nome){ showToast('Informe o nome do cliente.','#e05c1a','#fff'); return; }
+
+  const obj = { nome, cnpj, email, contato, tel };
+
+  if(_editCadIdx !== null){
+    cadClientes[_editCadIdx] = obj;
+    _editCadIdx = null;
+  } else {
+    // Update existing or add new
+    const idx = cadClientes.findIndex(c=>c.nome===nome);
+    if(idx>=0) cadClientes[idx]=obj;
+    else cadClientes.push(obj);
+  }
+
+  cadClientes.sort((a,b)=>a.nome.localeCompare(b.nome));
+  saveCadClientes();
+  limparCadCliente();
+  renderCadClientesLista();
+  showToast(`✓ Cliente ${nome} salvo!`,'#22c55e','#000');
+}
+
+function limparCadCliente(){
+  ['cad-cli-nome','cad-cli-cnpj','cad-cli-email','cad-cli-contato','cad-cli-tel'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  _editCadIdx=null;
+}
+
+function editarCadCliente(i){
+  const c=cadClientes[i]; if(!c) return;
+  document.getElementById('cad-cli-nome').value   = c.nome||'';
+  document.getElementById('cad-cli-cnpj').value   = c.cnpj||'';
+  document.getElementById('cad-cli-email').value  = c.email||'';
+  document.getElementById('cad-cli-contato').value= c.contato||'';
+  document.getElementById('cad-cli-tel').value    = c.tel||'';
+  _editCadIdx=i;
+  document.getElementById('cad-cli-nome').scrollIntoView({behavior:'smooth'});
+  showToast(`Editando: ${c.nome}`,'#3b82f6','#fff');
+}
+
+function excluirCadCliente(i){
+  const c=cadClientes[i]; if(!c) return;
+  if(!confirm(`Excluir o cadastro de "${c.nome}"?`)) return;
+  cadClientes.splice(i,1);
+  saveCadClientes();
+  renderCadClientesLista();
+  showToast('Cliente removido.','#f59e0b','#000');
 }
 
 function registrarAudit(tipo, descricao, snapshot){
@@ -5700,6 +6018,55 @@ alter table users add column if not exists email text;</pre>
 <div id="screen-faturamento" class="screen">
   <div class="container">
 
+    <!-- CADASTRO DE CLIENTES -->
+    <div class="rpt-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">
+        <div class="rpt-section-title" style="margin-bottom:0;">🏢 CADASTRO DE CLIENTES</div>
+        <button class="btn btn-secondary btn-sm" onclick="toggleSecaoCadClientes()" id="btn-toggle-cad-clientes">+ CADASTRAR / EDITAR</button>
+      </div>
+
+      <!-- Formulário (colapsável) -->
+      <div id="secao-cad-clientes" style="display:none;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-bottom:1rem;">
+          <div class="form-group">
+            <label>Cliente (nome exato do sistema) *</label>
+            <input type="text" id="cad-cli-nome" placeholder="ex: USIMINAS"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;text-transform:uppercase;"
+              oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="form-group">
+            <label>CNPJ</label>
+            <input type="text" id="cad-cli-cnpj" placeholder="00.000.000/0000-00" maxlength="18"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;font-family:'JetBrains Mono',monospace;"
+              oninput="formatCNPJ(this)">
+          </div>
+          <div class="form-group">
+            <label>E-mail de contato</label>
+            <input type="email" id="cad-cli-email" placeholder="faturamento@empresa.com.br"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
+          </div>
+          <div class="form-group">
+            <label>Responsável / Contato</label>
+            <input type="text" id="cad-cli-contato" placeholder="Nome do responsável"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
+          </div>
+          <div class="form-group">
+            <label>Telefone</label>
+            <input type="text" id="cad-cli-tel" placeholder="(00) 00000-0000"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
+          </div>
+          <div class="form-group" style="display:flex;align-items:flex-end;">
+            <div style="display:flex;gap:.5rem;width:100%;">
+              <button class="btn btn-primary btn-sm" style="flex:1;" onclick="salvarCadCliente()">✓ SALVAR CLIENTE</button>
+              <button class="btn btn-secondary btn-sm" onclick="limparCadCliente()">LIMPAR</button>
+            </div>
+          </div>
+        </div>
+        <!-- Lista de clientes cadastrados -->
+        <div id="cad-clientes-lista" style="overflow-x:auto;"></div>
+      </div>
+    </div>
+
     <!-- CONFIGURAÇÃO DE TARIFA -->
     <div class="rpt-section">
       <div class="rpt-section-title">⚙ CONFIGURAÇÃO DE TARIFA</div>
@@ -5753,7 +6120,13 @@ alter table users add column if not exists email text;</pre>
 
     <!-- TABELA DE BLs -->
     <div class="rpt-section">
-      <div class="rpt-section-title">📋 BLs EM ARMAZENAGEM</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;">
+        <div class="rpt-section-title" style="margin-bottom:0;">📋 BLs EM ARMAZENAGEM</div>
+        <div style="display:flex;gap:.5rem;">
+          <button class="btn btn-secondary btn-sm" onclick="exportFaturamentoXLSX()">↓ EXCEL</button>
+          <button class="btn btn-info btn-sm" onclick="exportFaturamentoPDF()">↓ PDF</button>
+        </div>
+      </div>
       <div id="fat-container">
         <div class="empty-state"><span class="empty-icon">💰</span>Configure a tarifa e clique em Calcular.</div>
       </div>
