@@ -1569,6 +1569,88 @@ let coilsDB    = [];
 let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
 let activeFilter={d:'', e:''};
 
+// ── Ordenação e paginação ────────────────────────────
+const PAGE_SIZE = 100; // registros por página
+const tableState = {
+  d:    { col:'data', dir:-1, page:0 },  // descarga
+  e:    { col:'data', dir:-1, page:0 },  // expedicao
+  rpt:  { col:null,   dir:1,  page:0 },  // relatorio detalhe
+  hist: { col:'ts',   dir:-1, page:0 },  // historico
+};
+
+function sortAndPage(data, state){
+  let sorted = [...data];
+  if(state.col){
+    // Detect date format from first non-empty value
+    const sample = data.map(r=>r[state.col]).find(v=>v!=null&&v!=='');
+    const isDateStr = typeof sample==='string' && /^\d{4}-\d{2}-\d{2}/.test(sample);
+    const isNumeric = !isDateStr && typeof sample==='number';
+    const isNumStr  = !isDateStr && !isNumeric && !isNaN(parseFloat(sample)) &&
+                      !/^\d{4}-\d{2}/.test(String(sample||''));
+
+    sorted.sort((a,b)=>{
+      const va = a[state.col]??'';
+      const vb = b[state.col]??'';
+      // Date strings: YYYY-MM-DD or ISO — compare directly as string (lexicographic = chronological)
+      if(isDateStr){
+        const sa=String(va), sb=String(vb);
+        return (sa>sb?1:sa<sb?-1:0)*state.dir;
+      }
+      // Pure numbers or numeric strings (not dates)
+      if(isNumeric||isNumStr){
+        return (parseFloat(va)-parseFloat(vb))*state.dir;
+      }
+      // Default: string
+      return String(va).localeCompare(String(vb),'pt-BR',{numeric:false})*state.dir;
+    });
+  }
+  const total = sorted.length;
+  const pages = Math.max(1, Math.ceil(total/PAGE_SIZE));
+  if(state.page >= pages) state.page = pages-1;
+  const start = state.page * PAGE_SIZE;
+  const slice = sorted.slice(start, start+PAGE_SIZE);
+  return { slice, total, pages, page:state.page, start };
+}
+
+function renderPager(state, total, pages, onPageFn, containerId){
+  if(pages<=1) return '';
+  const p=state.page;
+  const btns=[];
+  // First, prev
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===0?'disabled':''} onclick="${onPageFn}(0)" style="font-size:11px;padding:2px 7px;">«</button>`);
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===0?'disabled':''} onclick="${onPageFn}(${p-1})" style="font-size:11px;padding:2px 7px;">‹</button>`);
+  // Page numbers (max 5 visible)
+  const lo=Math.max(0,p-2), hi=Math.min(pages-1,lo+4);
+  for(let i=lo;i<=hi;i++){
+    btns.push(`<button class="btn ${i===p?'btn-primary':'btn-secondary'} btn-sm" onclick="${onPageFn}(${i})" style="font-size:11px;padding:2px 7px;min-width:28px;">${i+1}</button>`);
+  }
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===pages-1?'disabled':''} onclick="${onPageFn}(${p+1})" style="font-size:11px;padding:2px 7px;">›</button>`);
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===pages-1?'disabled':''} onclick="${onPageFn}(${pages-1})" style="font-size:11px;padding:2px 7px;">»</button>`);
+  const showing_from=state.page*PAGE_SIZE+1, showing_to=Math.min((state.page+1)*PAGE_SIZE,total);
+  return `<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;padding:.5rem 0;font-size:12px;color:var(--muted);">
+    <span>${showing_from}–${showing_to} de ${total}</span>
+    ${btns.join('')}
+  </div>`;
+}
+
+function thSort(label, col, stateKey, refreshFn, extraStyle=''){
+  const st=tableState[stateKey];
+  const active=st.col===col;
+  const arrow=active?(st.dir>0?'▲':'▼'):'↕';
+  return `<th style="cursor:pointer;user-select:none;white-space:nowrap;${extraStyle}" onclick="${refreshFn}('${col}')" title="Ordenar por ${label}">
+    ${label} <span style="font-size:9px;opacity:${active?1:0.35}">${arrow}</span>
+  </th>`;
+}
+
+function setSort(stateKey, col, refreshFn){
+  const st=tableState[stateKey];
+  if(st.col===col) st.dir*=-1;
+  else { st.col=col; st.dir=1; }
+  st.page=0;
+  refreshFn();
+}
+function setPage(stateKey, page, refreshFn){ tableState[stateKey].page=page; refreshFn(); }
+
 // ══════════════════════════════════════════
 // CLOUD API — SUPABASE (REST direto, sem intermediário)
 // ══════════════════════════════════════════
@@ -2763,6 +2845,7 @@ function getFiltered(px){
 }
 
 function applyFilters(px){
+  tableState[px].page=0; // reset to first page on filter change
   renderTable(px);
   renderStats(px);
 }
@@ -2787,17 +2870,46 @@ function clearFilters(px){
   activeFilter[px]=''; applyFilters(px);
 }
 
+function sortTableMov(px, col){ setSort(px, col, ()=>renderTable(px)); }
+function pageTableMov(px, page){ setPage(px, page, ()=>renderTable(px)); }
+
 function renderTable(px){
   const isExp = px==='e';
   const tbody = document.getElementById(px+'-table-body');
-  const data  = getFiltered(px);
-  document.getElementById(px+'-count').textContent=data.length;
-  if(!data.length){
+  const raw   = getFiltered(px);
+  document.getElementById(px+'-count').textContent=raw.length;
+
+  if(!raw.length){
     tbody.innerHTML=`<tr><td colspan="14"><div class="empty-state"><span class="empty-icon">${isExp?'📤':'📦'}</span>Nenhum registro encontrado.</div></td></tr>`;
-    updateSelBar(px);
-    return;
+    updateSelBar(px); return;
   }
-  tbody.innerHTML=data.map(r=>`<tr data-id="${r.id}" data-px="${px}">
+
+  const st = tableState[px];
+  const {slice, total, pages, page, start} = sortAndPage(raw, st);
+
+  // Sortable header helper for this table
+  const th=(label,col,extra='')=>thSort(label,col,px,`sortTableMov.bind(null,'${px}')`,extra);
+
+  // Update thead with sortable headers
+  const theadEl = tbody.closest('table')?.querySelector('thead tr');
+  if(theadEl){
+    theadEl.innerHTML=`
+      <th class="cb-th"><input type="checkbox" class="cb-row" id="${px}-cb-all" onchange="toggleAllMov('${px}',this.checked)" title="Selecionar todos"></th>
+      ${th('COIL NUMBER','coil')}
+      ${th('DATA','data')}
+      ${th('PERÍODO','periodo')}
+      ${th('BL','bl','font-family:\'JetBrains Mono\',monospace')}
+      ${th('NAVIO','navio')}
+      ${th('VEÍCULO','veiculo')}
+      ${th('MOTORISTA','motorista')}
+      ${th('CLIENTE','cliente')}
+      ${th('P.BRUTO (kg)','pesob')}
+      ${th('P.LÍQUIDO (kg)','pesol')}
+      ${th('REG. POR','registradoPor')}
+      <th>AÇÕES</th>`;
+  }
+
+  tbody.innerHTML=slice.map(r=>`<tr data-id="${r.id}" data-px="${px}">
     <td style="padding:.5rem 1rem;"><input type="checkbox" class="cb-row mov-cb" data-id="${r.id}" data-px="${px}" onchange="onMovCbChange('${px}')"></td>
     <td><span class="coil-badge${isExp?' exp':''}">${r.coil}</span></td>
     <td>${formatDate(r.data)}</td>
@@ -2816,7 +2928,15 @@ function renderTable(px){
       <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
     </div></td></tr>`).join('');
 
-  // Restore checked state if any
+  // Pager — inject below table
+  const tableWrap = tbody.closest('div[style*="overflow-x"]') || tbody.closest('.panel');
+  let pagerEl = document.getElementById(px+'-pager');
+  if(!pagerEl){
+    pagerEl=document.createElement('div'); pagerEl.id=px+'-pager';
+    tableWrap?.after(pagerEl);
+  }
+  pagerEl.innerHTML=renderPager(st, total, pages, `(p)=>pageTableMov('${px}',p)`, px+'-pager');
+
   updateSelBar(px);
 }
 
@@ -3930,9 +4050,21 @@ function renderReport(){
   document.getElementById('rpt-detail-title').textContent=`🔩 DETALHE DAS MOVIMENTAÇÕES (${all.length} registros)`;
   const detContainer=document.getElementById('rpt-detail-table');
   if(!all.length){ detContainer.innerHTML=`<div class="empty-state"><span class="empty-icon">🔩</span>Nenhuma movimentação encontrada.</div>`; return; }
+
+  const st=tableState.rpt;
+  const {slice:rptSlice, total:rptTotal, pages:rptPages}=sortAndPage(all, st);
+
+  const rthSort=(label,col)=>`<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="setSort('rpt','${col}',renderReport)" title="Ordenar por ${label}">${label} <span style="font-size:9px;opacity:${st.col===col?1:0.35}">${st.col===col?(st.dir>0?'▲':'▼'):'↕'}</span></th>`;
+
   detContainer.innerHTML=`<table>
-    <thead><tr><th>TIPO</th><th>COIL NUMBER</th><th>DATA</th><th>PERÍODO</th><th>NAVIO</th><th>BL</th><th>CLIENTE</th><th>PRODUTO</th><th>ARMAZÉM</th><th>VEÍCULO</th><th>MOTORISTA</th><th>P.BRUTO (kg)</th><th>P.LÍQUIDO (kg)</th><th>OBS</th></tr></thead>
-    <tbody>${all.map((r,i)=>{
+    <thead><tr>
+      ${rthSort('TIPO','_tipo')}${rthSort('COIL NUMBER','coil')}${rthSort('DATA','data')}
+      ${rthSort('PERÍODO','periodo')}${rthSort('NAVIO','navio')}${rthSort('BL','bl')}
+      ${rthSort('CLIENTE','cliente')}${rthSort('PRODUTO','produto')}${rthSort('ARMAZÉM','armazem')}
+      ${rthSort('VEÍCULO','veiculo')}${rthSort('MOTORISTA','motorista')}
+      ${rthSort('P.BRUTO (kg)','pesob')}${rthSort('P.LÍQUIDO (kg)','pesol')}<th>OBS</th>
+    </tr></thead>
+    <tbody>${rptSlice.map((r,i)=>{
       const isExp=r._tipo==='EXPEDIÇÃO';
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
         <td><span style="font-size:11px;padding:2px 7px;border-radius:3px;font-family:'JetBrains Mono',monospace;${isExp?'background:rgba(168,85,247,.15);color:var(--exp);border:1px solid rgba(168,85,247,.3)':'background:rgba(34,197,94,.1);color:var(--success);border:1px solid rgba(34,197,94,.25)'}">${r._tipo}</span></td>
@@ -3950,7 +4082,8 @@ function renderReport(){
         <td style="font-size:12px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.obs||''}">${r.obs||'—'}</td>
       </tr>`;
     }).join('')}</tbody>
-  </table>`;
+  </table>
+  ${renderPager(st, rptTotal, rptPages, "(p)=>setPage('rpt',p,renderReport)", 'rpt-detail')}`;
 }
 
 function exportReportXLSX(){
@@ -4604,30 +4737,6 @@ function carregarTarifa(){
 }
 
 // Atualiza o select de BL com base nos filtros de cliente e navio selecionados
-function atualizarBLsFaturamento(){
-  const fc = document.getElementById('fat-filter-cliente')?.value||'';
-  const fn = document.getElementById('fat-filter-navio')?.value||'';
-  const fb = document.getElementById('fat-filter-bl');
-  if(!fb) return;
-  const vAtual = fb.value;
-  let blsFiltrados = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
-  if(fc) blsFiltrados = blsFiltrados.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) blsFiltrados = blsFiltrados.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  fb.innerHTML = '<option value="">Todos os BLs</option>' + blsFiltrados.map(b=>`<option>${b}</option>`).join('');
-  // Mantém seleção se ainda existe na nova lista
-  if(blsFiltrados.includes(vAtual)) fb.value=vAtual;
-}
-
-function buildFatSelects(){
-  carregarTarifa();
-  const cliSet=[...new Set(coilsDB.map(c=>c.cliente).filter(Boolean))].sort();
-  const navSet=[...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
-  const fc=document.getElementById('fat-filter-cliente');
-  const fn=document.getElementById('fat-filter-navio');
-  if(fc){ const v=fc.value; fc.innerHTML='<option value="">Todos os clientes</option>'+cliSet.map(c=>`<option>${c}</option>`).join(''); fc.value=v; }
-  if(fn){ const v=fn.value; fn.innerHTML='<option value="">Todos os navios</option>'+navSet.map(n=>`<option>${n}</option>`).join(''); fn.value=v; }
-  atualizarBLsFaturamento(); // popula BLs cascateado
-}
 
 // Calcula a data em que o BL finalizou a descarga (última bobina descarregada)
 function getDataFimDescarga(bl){
@@ -4693,11 +4802,15 @@ function salvarTarifaFiltrada(){
   if(!t) return;
   const fc=document.getElementById('fat-filter-cliente')?.value||'';
   const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fa=document.getElementById('fat-filter-armazem')?.value||'';
   const fb=document.getElementById('fat-filter-bl')?.value||'';
+  const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
   let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
   if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
   if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
   if(fb) bls=bls.filter(bl=>bl===fb);
+  if(fq) bls=bls.filter(bl=>bl.includes(fq));
   bls.forEach(bl=>setTarifaBL(bl,t));
   renderFaturamento();
 }
@@ -4714,12 +4827,14 @@ function carregarTarifa(){
 function atualizarBLsFaturamento(){
   const fc=document.getElementById('fat-filter-cliente')?.value||'';
   const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fa=document.getElementById('fat-filter-armazem')?.value||'';
   const fb=document.getElementById('fat-filter-bl');
   if(!fb) return;
   const vAtual=fb.value;
   let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
   if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
   if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
   fb.innerHTML='<option value="">Todos os BLs</option>'+bls.map(b=>`<option>${b}</option>`).join('');
   if(bls.includes(vAtual)) fb.value=vAtual;
 }
@@ -4727,10 +4842,13 @@ function buildFatSelects(){
   carregarTarifa();
   const cliSet=[...new Set(coilsDB.map(c=>c.cliente).filter(Boolean))].sort();
   const navSet=[...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
+  const armSet=[...new Set(coilsDB.map(c=>c.armazem).filter(Boolean))].sort();
   const fc=document.getElementById('fat-filter-cliente');
   const fn=document.getElementById('fat-filter-navio');
+  const fa=document.getElementById('fat-filter-armazem');
   if(fc){ const v=fc.value; fc.innerHTML='<option value="">Todos os clientes</option>'+cliSet.map(c=>`<option>${c}</option>`).join(''); fc.value=v; }
   if(fn){ const v=fn.value; fn.innerHTML='<option value="">Todos os navios</option>'+navSet.map(n=>`<option>${n}</option>`).join(''); fn.value=v; }
+  if(fa){ const v=fa.value; fa.innerHTML='<option value="">Todos os armazéns</option>'+armSet.map(a=>`<option>${a}</option>`).join(''); fa.value=v; }
   atualizarBLsFaturamento();
 }
 
@@ -4834,7 +4952,9 @@ function renderFaturamento(){
   const periodoDias=parseInt(document.getElementById('fat-periodo-dias')?.value||15);
   const fc=document.getElementById('fat-filter-cliente')?.value||'';
   const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fa=document.getElementById('fat-filter-armazem')?.value||'';
   const fb=document.getElementById('fat-filter-bl')?.value||'';
+  const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
   const fs=document.getElementById('fat-filter-status')?.value||'';
   const container=document.getElementById('fat-container');
   if(!container) return;
@@ -4842,7 +4962,9 @@ function renderFaturamento(){
   let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
   if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
   if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
   if(fb) bls=bls.filter(bl=>bl===fb);
+  if(fq) bls=bls.filter(bl=>bl.includes(fq));
   if(!bls.length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`; return; }
 
   const hojeStr=new Date().toISOString().split('T')[0];
@@ -5197,6 +5319,188 @@ function emitirFatura(bl, periodoNum){
   <script>setTimeout(()=>window.print(),400);<\/script>
   </body></html>`);
   w.document.close();
+
+  // ── Salvar no histórico de faturas ──────────────────
+  const fatRecord = {
+    id:              Date.now(),
+    fatNum,
+    bl,              periodoNum,
+    cliente,         navio,        viagem,    produto,
+    dtIni:           p.dataIni,    dtFim:     p.dataFim,
+    pesoBruto:       p.pesoBruto,  toneladas,
+    tarifaBL,        valor,
+    handlingTarifa:  handlingTarifaBL,
+    tonelagemTotal:  tonelagemTotalBL,
+    handling,        totalFatura,
+    nf:              state.nf||'',
+    emitidoEm:       new Date().toISOString(),
+    emitidoPor:      session?.nome||'Sistema',
+    cliCNPJ:         cliInfo?.cnpj||'',
+    cliEmail:        cliInfo?.email||'',
+    cliContato:      cliInfo?.contato||'',
+    bobinas:         bobinasNoPeriodo.map(c=>({coil:c.coil, pesob:c.pesob})),
+    logoFat,
+  };
+  saveFaturaHistorico(fatRecord);
+}
+
+// ══════════════════════════════════════════════════════
+// HISTÓRICO DE FATURAS EMITIDAS
+// ══════════════════════════════════════════════════════
+
+const FAT_HIST_MAX = 200;
+let faturaHistorico = [];
+try{ faturaHistorico = JSON.parse(localStorage.getItem('sp_fat_hist')||'[]'); }catch(e){ faturaHistorico=[]; }
+
+function saveFaturaHistorico(record){
+  faturaHistorico.unshift(record);
+  if(faturaHistorico.length > FAT_HIST_MAX) faturaHistorico.pop();
+  try{ localStorage.setItem('sp_fat_hist', JSON.stringify(faturaHistorico)); }catch(e){}
+}
+
+function abrirHistoricoFaturas(){
+  renderHistoricoFaturas();
+  document.getElementById('modal-fat-hist').classList.add('open');
+}
+
+function renderHistoricoFaturas(){
+  const q=(document.getElementById('fat-hist-search')?.value||'').toLowerCase();
+  const list=document.getElementById('fat-hist-list');
+  const badge=document.getElementById('fat-hist-badge');
+  if(!list) return;
+  if(badge) badge.textContent=`${faturaHistorico.length} fatura${faturaHistorico.length!==1?'s':''} emitida${faturaHistorico.length!==1?'s':''}`;
+
+  const filtered=faturaHistorico.filter(f=>{
+    if(!q) return true;
+    return [f.fatNum,f.bl,f.cliente,f.navio,f.nf,f.emitidoPor]
+      .some(v=>v&&v.toString().toLowerCase().includes(q));
+  });
+
+  if(!filtered.length){
+    list.innerHTML=`<div class="empty-state"><span class="empty-icon">📄</span>${faturaHistorico.length?'Nenhum resultado.':'Nenhuma fatura emitida ainda.'}</div>`;
+    return;
+  }
+
+  list.innerHTML=filtered.map((f,i)=>{
+    const dt=new Date(f.emitidoEm).toLocaleString('pt-BR');
+    const dtIni=f.dtIni.split('-').reverse().join('/');
+    const dtFim=f.dtFim.split('-').reverse().join('/');
+    return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:.6rem;display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.4rem;">
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:900;font-size:14px;color:var(--accent);">${f.fatNum}</span>
+          ${f.nf?`<span style="font-size:11px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 6px;font-family:'JetBrains Mono',monospace;">NF: ${f.nf}</span>`:''}
+          ${f.totalFatura>0?`<span style="font-size:12px;font-weight:700;color:var(--success);">R$ ${f.totalFatura.toFixed(2).replace('.',',')}</span>`:''}
+        </div>
+        <div style="font-size:13px;color:var(--text);font-weight:600;">${f.cliente}</div>
+        <div style="font-size:12px;color:var(--muted);">🚢 ${f.navio} · BL: <span style="font-family:'JetBrains Mono',monospace;">${f.bl}</span> · ${f.periodoNum}º período</div>
+        <div style="font-size:12px;color:var(--muted);">${dtIni} → ${dtFim} · ${fmtKg(f.pesoBruto)} kg · ${f.toneladas.toFixed(3)} t</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Emitido: ${dt} por ${f.emitidoPor}</div>
+      </div>
+      <button class="btn btn-info btn-sm" onclick="reemitirFatura(${f.id})" style="flex-shrink:0;white-space:nowrap;">📄 REEMITIR</button>
+    </div>`;
+  }).join('');
+}
+
+function reemitirFatura(id){
+  const f=faturaHistorico.find(x=>x.id===id);
+  if(!f) return;
+
+  const logoHtml=f.logoFat?`<img src="${f.logoFat}" style="height:50px;width:auto;margin-bottom:8px;" alt="logo">`:'';
+  const w=window.open('','_blank','width=720,height=900');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Fatura ${f.fatNum}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:Arial,sans-serif;font-size:13px;color:#111;background:#fff;padding:30px;}
+    .no-print{margin-bottom:16px;display:flex;gap:8px;}
+    .no-print button{padding:8px 18px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:700;}
+    .logo-header{text-align:center;margin-bottom:12px;}
+    h1{font-size:22px;font-weight:900;letter-spacing:2px;color:#1e3a5f;}
+    .sub{font-size:11px;color:#888;margin-bottom:16px;}
+    .fatura-num{font-size:14px;font-weight:700;font-family:monospace;background:#f0a500;padding:4px 12px;border-radius:4px;color:#000;display:inline-block;margin-bottom:16px;}
+    .reemissao-badge{font-size:10px;background:#fff3e0;border:1px solid #ffb74d;border-radius:4px;padding:2px 8px;color:#e65100;margin-left:10px;font-family:monospace;}
+    .info-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;background:#f7f9fc;border:1px solid #dde3ee;border-radius:8px;padding:16px;}
+    .info-item label{font-size:9px;font-weight:700;color:#888;letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:3px;}
+    .info-item span{font-weight:700;font-size:14px;}
+    .cobranca-box{background:#e8f5e9;border:2px solid #4caf50;border-radius:8px;padding:14px 18px;margin-bottom:20px;}
+    .cobranca-label{font-size:11px;color:#2e7d32;font-weight:700;letter-spacing:1px;text-transform:uppercase;}
+    .cobranca-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #c8e6c9;}
+    .cobranca-row:last-child{border-bottom:none;padding-top:10px;}
+    .cobranca-total{font-size:22px;font-weight:900;color:#1b5e20;}
+    table{width:100%;border-collapse:collapse;margin-bottom:20px;font-size:12px;}
+    th{background:#1e3a5f;color:#fff;padding:8px 12px;text-align:left;font-size:10px;letter-spacing:1px;text-transform:uppercase;}
+    td{padding:7px 12px;border-bottom:1px solid #eee;}
+    tr:last-child td{border-bottom:none;}
+    .footer{margin-top:20px;text-align:center;font-size:10px;color:#aaa;border-top:1px solid #eee;padding-top:12px;}
+    @media print{.no-print{display:none!important;}body{padding:10px;}}
+  </style></head><body>
+  <div class="no-print">
+    <button onclick="window.print()" style="background:#1e3a5f;color:#fff;">🖨 IMPRIMIR</button>
+    <button onclick="window.close()" style="background:#eee;color:#333;">✕ FECHAR</button>
+  </div>
+  <div class="logo-header">${logoHtml}</div>
+  <h1>STEELPORT · 4SIDES</h1>
+  <div class="sub">FATURA DE ARMAZENAGEM</div>
+  <div>
+    <span class="fatura-num">${f.fatNum}</span>
+    <span class="reemissao-badge">↩ REEMISSÃO — ${new Date().toLocaleDateString('pt-BR')}</span>
+  </div>
+  <br>
+  <div class="info-grid">
+    <div class="info-item"><label>Cliente</label><span>${f.cliente}</span></div>
+    ${f.cliCNPJ?`<div class="info-item"><label>CNPJ</label><span style="font-family:monospace">${f.cliCNPJ}</span></div>`:'<div></div>'}
+    ${f.cliEmail?`<div class="info-item"><label>E-mail</label><span style="font-size:12px;word-break:break-all;">${f.cliEmail}</span></div>`:'<div></div>'}
+    <div class="info-item"><label>BL</label><span style="font-family:monospace">${f.bl}</span></div>
+    <div class="info-item"><label>Navio</label><span>${f.navio}</span></div>
+    <div class="info-item"><label>Viagem</label><span>${f.viagem}</span></div>
+    <div class="info-item"><label>Produto</label><span>${f.produto}</span></div>
+    <div class="info-item"><label>Data de cobrança</label><span style="color:#1565c0;">${f.dtIni.split('-').reverse().join('/')}</span></div>
+    <div class="info-item"><label>Período</label><span>${f.dtIni.split('-').reverse().join('/')} → ${f.dtFim.split('-').reverse().join('/')}</span></div>
+    <div class="info-item"><label>Referência</label><span>${f.periodoNum}º Período</span></div>
+    <div class="info-item"><label>1ª Emissão</label><span>${new Date(f.emitidoEm).toLocaleDateString('pt-BR')} — ${f.emitidoPor}</span></div>
+    ${f.cliContato?`<div class="info-item"><label>Contato</label><span>${f.cliContato}</span></div>`:''}
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Coil Number</th><th>P. Bruto (kg)</th></tr></thead>
+    <tbody>
+      ${(f.bobinas||[]).map((c,i)=>`<tr>
+        <td>${i+1}</td>
+        <td style="font-family:monospace;font-weight:700">${c.coil}</td>
+        <td>${c.pesob?fmtKg(c.pesob)+' kg':'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>
+  <div class="cobranca-box">
+    <div class="cobranca-label" style="margin-bottom:8px;">Resumo de cobrança</div>
+    <div class="cobranca-row">
+      <div>
+        <div style="font-weight:700;font-size:13px;">Armazenagem</div>
+        <div style="font-size:12px;color:#555;">${fmtKg(f.pesoBruto)} kg · ${f.toneladas.toFixed(3)} t × R$ ${f.tarifaBL.toFixed(2).replace('.',',')} /t</div>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:#2e7d32;">${f.valor!=null?'R$ '+f.valor.toFixed(2).replace('.',','):'—'}</div>
+    </div>
+    ${f.handling>0?`
+    <div class="cobranca-row">
+      <div>
+        <div style="font-weight:700;font-size:13px;">Handling</div>
+        <div style="font-size:12px;color:#555;">${f.tonelagemTotal.toFixed(3)} t × R$ ${f.handlingTarifa.toFixed(2).replace('.',',')} /t</div>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:#1565c0;">R$ ${f.handling.toFixed(2).replace('.',',')}</div>
+    </div>`:''}
+    ${f.nf?`
+    <div class="cobranca-row">
+      <div style="font-weight:700;font-size:13px;">NF</div>
+      <div style="font-size:14px;font-weight:700;">${f.nf}</div>
+    </div>`:''}
+    <div class="cobranca-row">
+      <div class="cobranca-label">Total a cobrar</div>
+      <div class="cobranca-total">R$ ${f.totalFatura>0?f.totalFatura.toFixed(2).replace('.',','):'—'}</div>
+    </div>
+  </div>
+  <div class="footer">STEELPORT · 4SIDES WAREHOUSE SYSTEMS · Reemitido em ${new Date().toLocaleString('pt-BR')}</div>
+  <script>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 // ── Exportação do Faturamento (dentro do próprio módulo) ──────────
@@ -5205,13 +5509,16 @@ function _getFatBLsFiltrados(){
   const periodoDias=parseInt(document.getElementById('fat-periodo-dias')?.value||15);
   const fc=document.getElementById('fat-filter-cliente')?.value||'';
   const fn=document.getElementById('fat-filter-navio')?.value||'';
+  const fa=document.getElementById('fat-filter-armazem')?.value||'';
   const fb=document.getElementById('fat-filter-bl')?.value||'';
+  const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
   const fs=document.getElementById('fat-filter-status')?.value||'';
   let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
   if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
   if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
+  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
   if(fb) bls=bls.filter(bl=>bl===fb);
-  // Apply status filter
+  if(fq) bls=bls.filter(bl=>bl.includes(fq));
   if(fs) bls=bls.filter(bl=>{
     const dbC=coilsDB.filter(c=>c.bl===bl);
     const desc=dbC.filter(c=>records.find(r=>r.coil===c.coil)).length;
@@ -5222,6 +5529,15 @@ function _getFatBLsFiltrados(){
     return true;
   });
   return {bls,tarifa,periodoDias};
+}
+
+function limparFiltrosFaturamento(){
+  ['fat-filter-cliente','fat-filter-navio','fat-filter-armazem','fat-filter-bl','fat-filter-status'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  const sb=document.getElementById('fat-search-bl'); if(sb) sb.value='';
+  atualizarBLsFaturamento();
+  renderFaturamento();
 }
 
 function exportFaturamentoXLSX(){
@@ -5458,6 +5774,22 @@ function excluirCadCliente(i){
   showToast('Cliente removido.','#f59e0b','#000');
 }
 
+// ══════════════════════════════════════════
+// HISTÓRICO DE ALTERAÇÕES — AUDITLOG
+// ══════════════════════════════════════════
+const HIST_MAX = 200;
+let auditLog = [];
+let rollbackTarget = null;
+
+try {
+  const saved = localStorage.getItem('sp_audit');
+  if(saved) auditLog = JSON.parse(saved);
+} catch(e){ auditLog = []; }
+
+function saveAudit(){
+  try{ localStorage.setItem('sp_audit', JSON.stringify(auditLog.slice(0,HIST_MAX))); }catch(e){}
+}
+
 function registrarAudit(tipo, descricao, snapshot){
   const entry = {
     id:        Date.now(),
@@ -5492,17 +5824,28 @@ function renderHistorico(){
     return;
   }
 
+  const st=tableState.hist;
+  const {slice, total, pages}=sortAndPage(list, st);
+
   const tipoColors={
-    descarga:    'rgba(34,197,94,.15)',
-    expedicao:   'rgba(168,85,247,.15)',
-    edicao:      'rgba(59,130,246,.15)',
-    exclusao:    'rgba(224,92,26,.15)',
-    importacao:  'rgba(240,165,0,.15)',
-    faturamento: 'rgba(34,197,94,.08)',
+    descarga:'rgba(34,197,94,.15)', expedicao:'rgba(168,85,247,.15)',
+    edicao:'rgba(59,130,246,.15)', exclusao:'rgba(224,92,26,.15)',
+    importacao:'rgba(240,165,0,.15)', faturamento:'rgba(34,197,94,.08)',
   };
   const tipoIcons={descarga:'📥',expedicao:'📤',edicao:'✏',exclusao:'🗑',importacao:'📊',faturamento:'💰'};
 
-  cont.innerHTML=list.map((e,i)=>{
+  // Sort bar
+  const sortBar=`<div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.75rem;flex-wrap:wrap;font-size:12px;color:var(--muted);">
+    <span>Ordenar por:</span>
+    ${['ts','tipo','usuario','descricao'].map(col=>{
+      const active=st.col===col;
+      const labels={ts:'Data',tipo:'Tipo',usuario:'Usuário',descricao:'Descrição'};
+      return `<button class="btn ${active?'btn-primary':'btn-secondary'} btn-sm" style="font-size:11px;padding:2px 8px;"
+        onclick="setSort('hist','${col}',renderHistorico)">${labels[col]||col} ${active?(st.dir>0?'▲':'▼'):'↕'}</button>`;
+    }).join('')}
+  </div>`;
+
+  cont.innerHTML= sortBar + slice.map((e,i)=>{
     const dt   = new Date(e.ts).toLocaleString('pt-BR');
     const color= tipoColors[e.tipo]||'rgba(107,114,128,.1)';
     const icon = tipoIcons[e.tipo]||'•';
@@ -5521,7 +5864,7 @@ function renderHistorico(){
       </div>
       ${canRollback?`<button class="btn btn-warn btn-sm" style="flex-shrink:0;font-size:11px;" onclick="confirmarRollback(${e.id})">↩ Reverter</button>`:''}
     </div>`;
-  }).join('');
+  }).join('') + renderPager(st, total, pages, "(p)=>setPage('hist',p,renderHistorico)", 'hist');
 }
 
 function limparHistorico(){
@@ -6098,6 +6441,20 @@ alter table users add column if not exists email text;</pre>
           </select>
         </div>
         <div class="form-group" style="min-width:160px;">
+          <label>Filtrar por Armazém</label>
+          <select id="fat-filter-armazem" onchange="atualizarBLsFaturamento();renderFaturamento()"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
+            <option value="">Todos os armazéns</option>
+          </select>
+        </div>
+        <div class="form-group" style="min-width:180px;">
+          <label>Buscar BL</label>
+          <input type="text" id="fat-search-bl" placeholder="Digite o nº do BL..."
+            oninput="renderFaturamento()"
+            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;text-transform:uppercase;"
+            onkeyup="this.value=this.value.toUpperCase()">
+        </div>
+        <div class="form-group" style="min-width:160px;">
           <label>Filtrar por BL</label>
           <select id="fat-filter-bl" onchange="renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
@@ -6115,6 +6472,7 @@ alter table users add column if not exists email text;</pre>
           </select>
         </div>
         <button class="btn btn-primary btn-sm" onclick="renderFaturamento()">🔄 CALCULAR</button>
+        <button class="btn btn-secondary btn-sm" onclick="limparFiltrosFaturamento()">✕ LIMPAR</button>
       </div>
     </div>
 
@@ -6123,6 +6481,7 @@ alter table users add column if not exists email text;</pre>
       <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1rem;">
         <div class="rpt-section-title" style="margin-bottom:0;">📋 BLs EM ARMAZENAGEM</div>
         <div style="display:flex;gap:.5rem;">
+          <button class="btn btn-secondary btn-sm" onclick="abrirHistoricoFaturas()">🕐 HISTÓRICO DE FATURAS</button>
           <button class="btn btn-secondary btn-sm" onclick="exportFaturamentoXLSX()">↓ EXCEL</button>
           <button class="btn btn-info btn-sm" onclick="exportFaturamentoPDF()">↓ PDF</button>
         </div>
@@ -6222,6 +6581,27 @@ alter table users add column if not exists email text;</pre>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-rollback')">CANCELAR</button>
       <button class="btn btn-danger" onclick="executarRollback()">↩ REVERTER ESTA AÇÃO</button>
+    </div>
+  </div>
+</div>
+<!-- ═══════════════════ HISTÓRICO DE FATURAS ═══════════════════ -->
+<div class="modal-overlay" id="modal-fat-hist">
+  <div class="modal" style="max-width:780px;max-height:85vh;display:flex;flex-direction:column;">
+    <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <span>🕐 HISTÓRICO DE FATURAS EMITIDAS</span>
+      <span id="fat-hist-badge" style="font-size:13px;color:var(--muted);font-weight:400;"></span>
+    </div>
+    <div style="padding:.75rem 1.5rem;border-bottom:1px solid var(--border);flex-shrink:0;display:flex;gap:.75rem;align-items:center;">
+      <input type="text" id="fat-hist-search" placeholder="⌕  Buscar por nº fatura, BL, cliente, NF..."
+        oninput="renderHistoricoFaturas()"
+        style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.6rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
+      <button class="btn btn-danger btn-sm" onclick="if(confirm('Limpar todo o histórico de faturas?')){faturaHistorico=[];localStorage.removeItem('sp_fat_hist');renderHistoricoFaturas();}">🗑 LIMPAR</button>
+    </div>
+    <div id="fat-hist-list" style="flex:1;overflow-y:auto;padding:1rem 1.5rem;">
+      <div class="empty-state"><span class="empty-icon">📄</span>Nenhuma fatura emitida ainda.</div>
+    </div>
+    <div class="modal-actions" style="flex-shrink:0;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-fat-hist')">FECHAR</button>
     </div>
   </div>
 </div>
