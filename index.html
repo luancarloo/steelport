@@ -554,7 +554,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           <input type="text" id="dl-coil-add" class="lote-coil-input"
             placeholder="Digite o Nº ou últimos 5 dígitos e pressione Enter"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('d');}"
-            oninput="autocompleteCoil('d')"
+            oninput="this.value=normalizeCoilInput(this.value);autocompleteCoil('d')"
             onblur="setTimeout(()=>document.getElementById('dl-coil-suggestions')?.remove(),200)"
             autocomplete="off">
           <button class="btn btn-primary" onclick="addCoilLote('d')" style="white-space:nowrap;padding:.65rem 1.2rem;">+ ADICIONAR</button>
@@ -749,7 +749,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           <input type="text" id="el-coil-add" class="lote-coil-input"
             placeholder="Digite o Nº ou últimos 5 dígitos e pressione Enter"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('e');}"
-            oninput="autocompleteCoil('e')"
+            oninput="this.value=normalizeCoilInput(this.value);autocompleteCoil('e')"
             onblur="setTimeout(()=>document.getElementById('el-coil-suggestions')?.remove(),200)"
             autocomplete="off">
           <button class="btn btn-exp" onclick="addCoilLote('e')" style="white-space:nowrap;padding:.65rem 1.2rem;">+ ADICIONAR</button>
@@ -855,7 +855,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
               <button class="btn btn-secondary btn-sm" onclick="closeCoilForm()">✕ FECHAR</button>
             </div>
           </div>
-          <div class="form-group"><label>Nº Bobina *</label><input type="text" id="db-coil" placeholder="ex: BRZ-2024-00123"></div>
+          <div class="form-group"><label>Nº Bobina *</label><input type="text" id="db-coil" oninput="this.value=sanitizeCoil(this.value)" placeholder="ex: BRZ-2024-00123"></div>
           <div class="form-group"><label>Armazém</label><input type="text" id="db-armazem" placeholder="ex: ARM-01"></div>
           <div class="form-group"><label>BL</label><input type="text" id="db-bl" placeholder="ex: MAEU2024XXXXXX"></div>
           <div class="form-group"><label>Cliente</label><input type="text" id="db-cliente" placeholder="ex: Usiminas"></div>
@@ -1154,6 +1154,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           <label>Nº Bobina (Coil)</label>
           <div style="display:flex;gap:.4rem;">
             <input type="text" id="edit-coil"
+              oninput="this.value=normalizeCoilInput(this.value)"
               style="font-family:'JetBrains Mono',monospace;font-weight:700;text-transform:uppercase;flex:1;"
               oninput="this.value=this.value.toUpperCase()">
             <button type="button" class="btn btn-secondary btn-sm"
@@ -1982,7 +1983,7 @@ function refreshHome(){
 // COIL INPUT CHECK (duplicates + autofill)
 // ══════════════════════════════════════════
 function checkCoilInput(px){
-  const val = document.getElementById(px+'-coil').value.trim().toUpperCase();
+  const val = sanitizeCoil(document.getElementById(px+'-coil').value);
   const errEl = document.getElementById(px+'-error');
   const coilEl = document.getElementById(px+'-coil');
 
@@ -2079,7 +2080,7 @@ function validaPlaca(v){
 // EDITAR REGISTRO (descarga/expedição)
 // ══════════════════════════════════════════
 function editCoilAutofill(){
-  const coil = document.getElementById('edit-coil').value.trim().toUpperCase();
+  const coil = sanitizeCoil(document.getElementById('edit-coil').value);
   const hint = document.getElementById('edit-coil-hint');
   if(!coil){ hint.textContent=''; return; }
   const db = coilsDB.find(c=>c.coil===coil);
@@ -2154,7 +2155,7 @@ async function saveMovimento(){
   warnEl.style.display='none';
 
   // Apply edits
-  const editedCoil = document.getElementById('edit-coil').value.trim().toUpperCase();
+  const editedCoil = sanitizeCoil(document.getElementById('edit-coil').value);
   const updated = {
     ...src[idx],
     coil:      editedCoil || src[idx].coil,
@@ -2293,8 +2294,11 @@ let loteItems = { d: [], e: [] };
 
 function normalizeCoilInput(raw){
   // Remove caracteres especiais exceto letras, números e hífen
-  return raw.replace(/[^A-Z0-9\-]/gi,'').toUpperCase().trim();
+  return String(raw||'').replace(/[^A-Z0-9\-]/gi,'').toUpperCase().trim();
 }
+
+// Alias — usado na importação e outros pontos
+function sanitizeCoil(v){ return normalizeCoilInput(v); }
 
 function autocompleteCoil(px){
   const inputEl = document.getElementById(px+'l-coil-add');
@@ -2742,7 +2746,7 @@ function clearTicketHistory(){
 
 async function registrar(tipo){
   const px = tipo==='expedicao'?'e':'d';
-  const coil    = document.getElementById(px+'-coil').value.trim().toUpperCase();
+  const coil    = sanitizeCoil(document.getElementById(px+'-coil').value);
   const data    = document.getElementById(px+'-data').value;
   const periodo = document.getElementById(px+'-periodo').value;
   const veiculo = document.getElementById(px+'-veiculo').value.trim();
@@ -3097,7 +3101,7 @@ function deleteNavioAll(n){ const ct=coilsDB.filter(c=>c.navio===n).length; dele
 function openAddCoilForm(){ clearCoilForm(); document.getElementById('coil-form-wrap').style.display=''; document.getElementById('coil-form-wrap').scrollIntoView({behavior:'smooth'}); }
 function closeCoilForm(){ document.getElementById('coil-form-wrap').style.display='none'; clearCoilForm(); }
 async function saveCoilDB(){
-  const coil=document.getElementById('db-coil').value.trim().toUpperCase();
+  const coil=sanitizeCoil(document.getElementById('db-coil').value);
   if(!coil){ showToast('Informe o Nº da bobina.','#e05c1a','#fff'); return; }
   const entry={coil,armazem:document.getElementById('db-armazem').value.trim(),bl:document.getElementById('db-bl').value.trim(),cliente:document.getElementById('db-cliente').value.trim(),navio:document.getElementById('db-navio-coil').value.trim(),viagem:document.getElementById('db-viagem').value.trim(),produto:document.getElementById('db-produto').value.trim(),pesob:document.getElementById('db-pesob').value,pesol:document.getElementById('db-pesol').value};
   if(editCoilIdx!==null){ coilsDB[editCoilIdx]=entry; editCoilIdx=null; document.getElementById('db-edit-badge').style.display='none'; }
@@ -3499,6 +3503,11 @@ function parseWeight(v){
   return isNaN(n) ? '' : n;
 }
 
+function sanitizeCoil(v){
+  // Remove todos os caracteres especiais — mantém apenas letras, números e hífen
+  return String(v||'').trim().toUpperCase().replace(/[^A-Z0-9\-]/g,'');
+}
+
 function handleXLSFile(file){
   if(!file) return;
   if(!file.name.match(/\.(xlsx|xls)$/i)){ showToast('Use .xlsx ou .xls','#e05c1a','#fff'); return; }
@@ -3509,7 +3518,7 @@ function handleXLSFile(file){
       let hr=0; for(let i=0;i<Math.min(5,raw.length);i++){ const j=raw[i].join('|').toLowerCase(); if(j.includes('numero')||j.includes('bobina')||j.includes('coil')||j.includes('armazem')){ hr=i; break; } }
       const dr=raw.slice(hr+1).filter(r=>r.some(c=>c!==''));
       if(!dr.length){ showToast('Nenhum dado.','#e05c1a','#fff'); return; }
-      importRows=dr.map(r=>({coil:String(r[0]||'').trim().toUpperCase(),armazem:String(r[1]||'').trim(),bl:String(r[2]||'').trim(),cliente:String(r[3]||'').trim(),navio:String(r[4]||'').trim(),viagem:String(r[5]||'').trim(),produto:String(r[6]||'').trim(),pesob:parseWeight(r[7]),pesol:parseWeight(r[8])})).filter(r=>r.coil);
+      importRows=dr.map(r=>({coil:sanitizeCoil(r[0]),armazem:String(r[1]||'').trim(),bl:String(r[2]||'').trim(),cliente:String(r[3]||'').trim(),navio:String(r[4]||'').trim(),viagem:String(r[5]||'').trim(),produto:String(r[6]||'').trim(),pesob:parseWeight(r[7]),pesol:parseWeight(r[8])})).filter(r=>r.coil);
       if(!importRows.length){ showToast('Nenhuma bobina válida.','#e05c1a','#fff'); return; }
       document.getElementById('drop-zone').style.display='none';
       document.getElementById('import-preview').style.display='';
@@ -3648,7 +3657,7 @@ function handleXLSMovFile(file){
           let periodo=String(r[2]||'').trim();
           if(!MOV_PERIODOS.includes(periodo)) periodo='';
 
-          const coil = String(r[0]||'').trim().toUpperCase();
+          const coil = sanitizeCoil(r[0]);
 
           // Values from spreadsheet (may be empty)
           let bl       = String(r[5]||'').trim();
@@ -4740,11 +4749,12 @@ function carregarTarifa(){
 
 // Calcula a data em que o BL finalizou a descarga (última bobina descarregada)
 function getDataFimDescarga(bl){
-  const bobinas = coilsDB.filter(c=>c.bl===bl);
+  const _nbl2=String(bl||'').trim().toUpperCase();
+  const bobinas = coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===_nbl2);
   if(!bobinas.length) return null;
-  // Todos os coils deste BL que foram descarregados
+  // Todos os coils deste BL precisam estar descarregados
   const descarregados = bobinas.map(c=>records.find(r=>r.coil===c.coil)).filter(Boolean);
-  if(descarregados.length < bobinas.length) return null; // ainda há pendentes
+  if(descarregados.length < bobinas.length) return null; // descarga incompleta
   // Data mais recente = data em que o BL completou a descarga
   return descarregados.map(r=>r.data).sort().pop();
 }
@@ -4808,12 +4818,16 @@ function salvarTarifaFiltrada(){
   const fa=document.getElementById('fat-filter-armazem')?.value||'';
   const fb=document.getElementById('fat-filter-bl')?.value||'';
   const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
-  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
-  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
-  if(fb) bls=bls.filter(bl=>bl===fb);
-  if(fq) bls=bls.filter(bl=>bl.includes(fq));
+  const _normStr=s=>String(s||'').trim().toUpperCase();
+  let bls=[...new Set([...coilsDB.map(c=>c.bl),...records.map(r=>r.bl)].filter(Boolean))];
+  const _getBLNavio  =bl=>_normStr(coilsDB.find(c=>_normStr(c.bl)===_normStr(bl)&&c.navio)?.navio||records.find(r=>_normStr(r.bl)===_normStr(bl)&&r.navio)?.navio||expedicoes.find(r=>_normStr(r.bl)===_normStr(bl)&&r.navio)?.navio||'');
+  const _getBLCliente=bl=>_normStr(coilsDB.find(c=>_normStr(c.bl)===_normStr(bl)&&c.cliente)?.cliente||records.find(r=>_normStr(r.bl)===_normStr(bl)&&r.cliente)?.cliente||'');
+  const _getBLArmazem=bl=>_normStr(coilsDB.find(c=>_normStr(c.bl)===_normStr(bl)&&c.armazem)?.armazem||records.find(r=>_normStr(r.bl)===_normStr(bl)&&r.armazem)?.armazem||'');
+  if(fc) bls=bls.filter(bl=>_getBLCliente(bl)===_normStr(fc));
+  if(fn) bls=bls.filter(bl=>_getBLNavio(bl)===_normStr(fn));
+  if(fa) bls=bls.filter(bl=>_getBLArmazem(bl)===_normStr(fa));
+  if(fb) bls=bls.filter(bl=>_normStr(bl)===_normStr(fb));
+  if(fq) bls=bls.filter(bl=>_normStr(bl).includes(fq));
   bls.forEach(bl=>setTarifaBL(bl,t));
   renderFaturamento();
 }
@@ -4834,18 +4848,36 @@ function atualizarBLsFaturamento(){
   const fb=document.getElementById('fat-filter-bl');
   if(!fb) return;
   const vAtual=fb.value;
-  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
-  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
+
+  const normStr=s=>String(s||'').trim().toUpperCase();
+  let bls=[...new Set([...coilsDB.map(c=>c.bl),...records.map(r=>r.bl)].filter(Boolean))].sort();
+
+  const getBLNavio  =bl=>normStr(coilsDB.find(c=>normStr(c.bl)===normStr(bl)&&c.navio)?.navio||records.find(r=>normStr(r.bl)===normStr(bl)&&r.navio)?.navio||expedicoes.find(r=>normStr(r.bl)===normStr(bl)&&r.navio)?.navio||'');
+  const getBLCliente=bl=>normStr(coilsDB.find(c=>normStr(c.bl)===normStr(bl)&&c.cliente)?.cliente||records.find(r=>normStr(r.bl)===normStr(bl)&&r.cliente)?.cliente||'');
+  const getBLArmazem=bl=>normStr(coilsDB.find(c=>normStr(c.bl)===normStr(bl)&&c.armazem)?.armazem||records.find(r=>normStr(r.bl)===normStr(bl)&&r.armazem)?.armazem||'');
+
+  if(fc) bls=bls.filter(bl=>getBLCliente(bl)===normStr(fc));
+  if(fn) bls=bls.filter(bl=>getBLNavio(bl)===normStr(fn));
+  if(fa) bls=bls.filter(bl=>getBLArmazem(bl)===normStr(fa));
   fb.innerHTML='<option value="">Todos os BLs</option>'+bls.map(b=>`<option>${b}</option>`).join('');
-  if(bls.includes(vAtual)) fb.value=vAtual;
+  if(bls.some(b=>normStr(b)===normStr(vAtual))) fb.value=vAtual;
 }
 function buildFatSelects(){
   carregarTarifa();
-  const cliSet=[...new Set(coilsDB.map(c=>c.cliente).filter(Boolean))].sort();
-  const navSet=[...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
-  const armSet=[...new Set(coilsDB.map(c=>c.armazem).filter(Boolean))].sort();
+  const normStr=s=>String(s||'').trim().toUpperCase();
+
+  // Collect navios/clientes/armazens from ALL sources, normalized
+  const navMap={}, cliMap={}, armMap={};
+  [...coilsDB,...records,...expedicoes].forEach(r=>{
+    if(r.navio)   navMap[normStr(r.navio)]=r.navio.trim();
+    if(r.cliente) cliMap[normStr(r.cliente)]=r.cliente.trim();
+    if(r.armazem) armMap[normStr(r.armazem)]=r.armazem.trim();
+  });
+
+  const navSet=Object.values(navMap).sort();
+  const cliSet=Object.values(cliMap).sort();
+  const armSet=Object.values(armMap).sort();
+
   const fc=document.getElementById('fat-filter-cliente');
   const fn=document.getElementById('fat-filter-navio');
   const fa=document.getElementById('fat-filter-armazem');
@@ -4865,7 +4897,8 @@ function calcPeriodosBL(bl, periodoDias){
   const dataFimDesc=getDataFimDescarga(bl);
   if(!dataFimDesc) return null;
 
-  const bobinas=coilsDB.filter(c=>c.bl===bl);
+  const _nbl=String(bl||'').trim().toUpperCase();
+  const bobinas=coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===_nbl);
   const inicio=new Date(dataFimDesc+'T00:00:00');
   const hojeStr=new Date().toISOString().split('T')[0];
   const periodos=[];
@@ -4888,6 +4921,8 @@ function calcPeriodosBL(bl, periodoDias){
 
     // Peso congelado no iniStr (dia da cobrança)
     let pesoBruto=getCongeladoPeso(bl,num);
+    // Trata peso congelado 0 como nulo — força recalcular (pode ter sido congelado errado)
+    if(pesoBruto===0) pesoBruto=null;
     if(pesoBruto===null){
       // Calcula estoque no dia da cobrança (iniStr)
       pesoBruto=bobinas.reduce((acc,c)=>{
@@ -4895,13 +4930,15 @@ function calcPeriodosBL(bl, periodoDias){
         if(!rec||rec.data>iniStr) return acc; // não descarregada ainda
         const exp=expedicoes.find(e=>e.coil===c.coil);
         if(exp&&exp.data<iniStr) return acc; // já expedida antes da cobrança
-        return acc+(parseFloat(c.pesob)||0);
+        // Peso: usa coilsDB.pesob se disponível, senão records.pesob
+        const peso=parseFloat(c.pesob)||parseFloat(rec.pesob)||0;
+        return acc+peso;
       },0);
-      // Congela quando o período encerrou (próximo já iniciou)
-      if(encerrado) congelarPeso(bl,num,pesoBruto);
+      // Congela apenas se peso > 0 e período encerrou
+      if(encerrado && pesoBruto>0) congelarPeso(bl,num,pesoBruto);
     }
 
-    if(pesoBruto===0 && encerrado) break; // sem carga neste período encerrado
+    if(pesoBruto===0 && encerrado) continue; // sem carga neste período — pula mas não para
 
     periodos.push({
       num, dataIni:iniStr, dataFim:fimStr, pesoBruto, encerrado,
@@ -4964,12 +5001,24 @@ function renderFaturamento(){
   const container=document.getElementById('fat-container');
   if(!container) return;
 
-  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
-  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
-  if(fb) bls=bls.filter(bl=>bl===fb);
-  if(fq) bls=bls.filter(bl=>bl.includes(fq));
+  // BLs vêm do coilsDB E dos records (para cobrir casos onde coilsDB não tem navio preenchido)
+  // Normalização: remove espaços e converte maiúsculas para comparações
+  const normStr=s=>String(s||'').trim().toUpperCase();
+  // Constrói mapa BL normalizado → valor canônico (coilsDB tem prioridade)
+  const blMap={};
+  records.forEach(r=>{ if(r.bl) blMap[normStr(r.bl)]=r.bl.trim(); });
+  coilsDB.forEach(c=>{ if(c.bl) blMap[normStr(c.bl)]=c.bl.trim(); });
+  let bls=Object.values(blMap);
+
+  const _nav=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.navio)?.navio||records.find(r=>normStr(r.bl)===k&&r.navio)?.navio||expedicoes.find(r=>normStr(r.bl)===k&&r.navio)?.navio||'');
+  const _cli=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.cliente)?.cliente||records.find(r=>normStr(r.bl)===k&&r.cliente)?.cliente||'');
+  const _arm=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.armazem)?.armazem||records.find(r=>normStr(r.bl)===k&&r.armazem)?.armazem||'');
+
+  if(fc) bls=bls.filter(bl=>_cli(normStr(bl))===normStr(fc));
+  if(fn) bls=bls.filter(bl=>_nav(normStr(bl))===normStr(fn));
+  if(fa) bls=bls.filter(bl=>_arm(normStr(bl))===normStr(fa));
+  if(fb) bls=bls.filter(bl=>normStr(bl)===normStr(fb));
+  if(fq) bls=bls.filter(bl=>normStr(bl).includes(fq));
   if(!bls.length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`; return; }
 
   const hojeStr=new Date().toISOString().split('T')[0];
@@ -4991,9 +5040,11 @@ function renderFaturamento(){
   </div>`;
 
   bls.sort().forEach(bl=>{
-    const dbCoils=coilsDB.filter(c=>c.bl===bl);
-    const cliente=dbCoils[0]?.cliente||'—';
-    const navio  =dbCoils[0]?.navio||'—';
+    const blK=normStr(bl);
+    const dbCoils=coilsDB.filter(c=>normStr(c.bl)===blK);
+    const recBL=records.find(r=>normStr(r.bl)===blK);
+    const cliente=dbCoils[0]?.cliente||recBL?.cliente||'—';
+    const navio  =dbCoils[0]?.navio  ||recBL?.navio  ||'—';
     const viagem =dbCoils[0]?.viagem||'—';
     const produto=dbCoils[0]?.produto||'—';
     const cliInfo=getClienteInfo(cliente);
@@ -5024,6 +5075,13 @@ function renderFaturamento(){
       periodsHTML=`<tr><td colspan="8" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Toda a carga expedida — sem armazenagem ativa.</td></tr>`;
     } else {
       periodos.forEach(p=>{
+        const state=getFatState(bl,p.num);
+        const handling=p.num===1?getHandlingBL(bl):null;
+        const handlingTarifa=handling!=null?handling:0;
+        // Handling = tarifa × tonelagem total do BL (todas as bobinas)
+        const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||parseFloat(records.find(r=>r.coil===c.coil)?.pesob)||0),0)/1000;
+        const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
+
         const ton=p.pesoBruto/1000;
         const valor=tarifaBL>0?ton*tarifaBL:null;
         const dtIni=p.dataIni.split('-').reverse().join('/');
@@ -5049,12 +5107,6 @@ function renderFaturamento(){
         const lockBadge=p.congelado
           ?`<span style="font-size:9px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">🔒</span>`
           :`<span style="font-size:9px;background:rgba(34,197,94,.08);color:var(--success);border:1px solid rgba(34,197,94,.2);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">●</span>`;
-        const state=getFatState(bl,p.num);
-        const handling=p.num===1?getHandlingBL(bl):null;
-        const handlingTarifa=handling!=null?handling:0;
-        // Handling = tarifa × tonelagem total do BL (todas as bobinas)
-        const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||0),0)/1000;
-        const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
         const handlingHtml=p.num===1?`
           <div style="display:flex;align-items:center;gap:.35rem;margin-top:3px;">
             <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">HANDLING R$/t:</span>
@@ -5523,10 +5575,14 @@ function _getFatBLsFiltrados(){
   const fb=document.getElementById('fat-filter-bl')?.value||'';
   const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
   const fs=document.getElementById('fat-filter-status')?.value||'';
-  let bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
-  if(fc) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  if(fa) bls=bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.armazem===fa));
+  let bls=[...new Set([...coilsDB.map(c=>c.bl),...records.map(r=>r.bl)].filter(Boolean))];
+  const _normStr2=s=>String(s||'').trim().toUpperCase();
+  const _getBLNavio  =bl=>_normStr2(coilsDB.find(c=>_normStr2(c.bl)===_normStr2(bl)&&c.navio)?.navio||records.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.navio)?.navio||expedicoes.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.navio)?.navio||'');
+  const _getBLCliente=bl=>_normStr2(coilsDB.find(c=>_normStr2(c.bl)===_normStr2(bl)&&c.cliente)?.cliente||records.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.cliente)?.cliente||'');
+  const _getBLArmazem=bl=>_normStr2(coilsDB.find(c=>_normStr2(c.bl)===_normStr2(bl)&&c.armazem)?.armazem||records.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.armazem)?.armazem||'');
+  if(fc) bls=bls.filter(bl=>_getBLCliente(bl)===_normStr2(fc));
+  if(fn) bls=bls.filter(bl=>_getBLNavio(bl)===_normStr2(fn));
+  if(fa) bls=bls.filter(bl=>_getBLArmazem(bl)===_normStr2(fa));
   if(fb) bls=bls.filter(bl=>bl===fb);
   if(fq) bls=bls.filter(bl=>bl.includes(fq));
   if(fs) bls=bls.filter(bl=>{
@@ -6104,6 +6160,58 @@ function renderDashFat(){
       </tr>`;
     }).join('')}</tbody>
   </table>`;
+}
+
+function diagFaturamento(){
+  const target=(prompt('BL para diagnosticar:','JW1TJSF060')||'').trim().toUpperCase();
+  if(!target) return;
+
+  const normStr=s=>String(s||'').trim().toUpperCase();
+
+  // Exact and fuzzy matches in each table
+  const coilsExact=coilsDB.filter(c=>normStr(c.bl)===target);
+  const coilsFuzzy=coilsDB.filter(c=>normStr(c.bl).includes(target)||target.includes(normStr(c.bl)));
+  const recsExact =records.filter(r=>normStr(r.bl)===target);
+  const recsFuzzy =records.filter(r=>normStr(r.bl).includes(target)||target.includes(normStr(r.bl)));
+
+  // All distinct BL values in coilsDB that are similar
+  const similarBLs=[...new Set([
+    ...coilsDB.map(c=>c.bl),
+    ...records.map(r=>r.bl)
+  ].filter(Boolean))].filter(bl=>normStr(bl).includes(target.substring(0,6)));
+
+  // Descarga completeness
+  const bobinas=coilsDB.filter(c=>normStr(c.bl)===target);
+  const desc=bobinas.filter(c=>records.find(r=>normStr(r.coil)===normStr(c.coil)));
+  const dataFim=getDataFimDescarga(target);
+  // Also try with original case
+  const dataFimOrig=bobinas.length ? getDataFimDescarga(bobinas[0]?.bl) : null;
+
+  const msg=
+`=== DIAGNÓSTICO BL: ${target} ===
+
+coilsDB (exato): ${coilsExact.length} bobinas
+  BLs similares: ${similarBLs.map(b=>`"${b}"`).join(', ')||'nenhum'}
+  
+records (exato): ${recsExact.length} registros
+  navio nos records: ${[...new Set(recsExact.map(r=>r.navio).filter(Boolean))].join(', ')||'(vazio)'}
+  navio fuzzy: ${[...new Set(recsFuzzy.map(r=>r.navio).filter(Boolean))].join(', ')||'(vazio)'}
+
+Descarga: ${desc.length}/${bobinas.length} bobinas
+Peso coilsDB[0].pesob: ${bobinas[0]?.pesob||'(vazio)'}
+Peso records[0].pesob: ${recsExact[0]?.pesob||'(vazio)'}
+getCongeladoPeso período 1: ${getCongeladoPeso(target,1)}
+getCongeladoPeso período 2: ${getCongeladoPeso(target,2)}
+getDataFimDescarga("${target}"): ${dataFim||'null'}
+getDataFimDescarga("${bobinas[0]?.bl||''}"): ${dataFimOrig||'null'}
+
+BL exato no coilsDB: "${coilsExact[0]?.bl||'não encontrado'}"
+BL exato no records: "${recsExact[0]?.bl||'não encontrado'}"`;
+
+  alert(msg);
+  console.log(msg);
+  console.log('coilsExact:', coilsExact);
+  console.log('recsExact:', recsExact);
 }
 
 function registrarAudit(tipo, descricao, snapshot){
@@ -6757,6 +6865,9 @@ alter table users add column if not exists email text;</pre>
         <div class="rpt-section-title" style="margin-bottom:0;">⚙ CONFIGURAÇÃO DE TARIFA</div>
         <button class="btn btn-primary btn-sm" onclick="autoSyncFatConfig().then(()=>showToast('✓ Sincronizado!','#22c55e','#000'))" title="Envia dados locais para o Supabase e baixa dados de outros usuários">
           🔄 SINCRONIZAR COM SUPABASE
+        </button>
+        <button class="btn btn-secondary btn-sm" onclick="diagFaturamento()" title="Diagnóstico — mostra dados do navio/BL nos dados carregados">
+          🔍 DIAGNÓSTICO
         </button>
       </div>
       <div style="display:flex;gap:1.2rem;align-items:flex-end;flex-wrap:wrap;">
