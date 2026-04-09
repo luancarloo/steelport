@@ -444,6 +444,18 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         </div>
       </div>
 
+      <!-- DASHBOARD FATURAMENTO -->
+      <div class="module-card" id="card-dash-fat" onclick="openModule('dash-fat')" style="border-color:rgba(251,191,36,.2);display:none;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(251,191,36,.07),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">📊</div>
+        <h2 style="color:#fbbf24;">DASHBOARD FAT.</h2>
+        <p>Visão geral do faturamento: vencidos, a vencer, cobrados e totais por cliente.</p>
+        <div class="module-stats">
+          <div class="mini-stat" style="background:rgba(224,92,26,.08);border-color:rgba(224,92,26,.2);">Vencidos: <span id="home-dashfat-venc" style="color:var(--danger);">0</span></div>
+          <div class="mini-stat" style="background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.2);">A vencer: <span id="home-dashfat-prox" style="color:#fbbf24;">0</span></div>
+        </div>
+      </div>
+
       <!-- CONFIG API (admin only) -->
       <!-- HISTÓRICO / ROLLBACK (admin only) -->
       <div class="module-card" id="card-historico" style="display:none;border-color:rgba(251,146,60,.2);" onclick="openModule('historico')">
@@ -1352,6 +1364,7 @@ function applySessionUI(){
   const usrCard  = document.getElementById('card-usuarios');
   const cfgCard  = document.getElementById('card-api-cfg');
   const fatCard  = document.getElementById('card-faturamento');
+  const dashFatCard = document.getElementById('card-dash-fat');
   const histCard = document.getElementById('card-historico');
   const bkpCard  = document.getElementById('card-backup');
 
@@ -1360,6 +1373,7 @@ function applySessionUI(){
     if(usrCard)  usrCard.style.display='';
     if(cfgCard)  cfgCard.style.display='';
     if(fatCard)  fatCard.style.display='';
+    if(dashFatCard) dashFatCard.style.display='';
     if(histCard) histCard.style.display='';
     if(bkpCard)  bkpCard.style.display='';
     const badge = document.getElementById('api-status-badge');
@@ -1374,6 +1388,7 @@ function applySessionUI(){
     if(usrCard)  usrCard.style.display='none';
     if(cfgCard)  cfgCard.style.display='none';
     if(fatCard)  fatCard.style.display='none';
+    if(dashFatCard) dashFatCard.style.display='none';
     if(histCard) histCard.style.display='none';
     if(bkpCard)  bkpCard.style.display='none';
   } else {
@@ -1385,6 +1400,7 @@ function applySessionUI(){
     if(usrCard)  usrCard.style.display ='none';
     if(cfgCard)  cfgCard.style.display ='none';
     if(fatCard)  fatCard.style.display =(perms.faturamento===true)?'':'none';
+    if(dashFatCard) dashFatCard.style.display=(perms.faturamento===true)?'':'none';
     if(histCard) histCard.style.display='none';
     if(bkpCard)  bkpCard.style.display='none';
   }
@@ -1749,12 +1765,13 @@ function hideLoading(){ document.getElementById('loading-overlay').style.display
 async function loadAllData(){
   showLoading('Carregando dados do Supabase...');
   try{
-    const [rec,exp,coils,usrs,navs]=await Promise.all([
+    const [rec,exp,coils,usrs,navs,fatCfg]=await Promise.all([
       supaAll('records?select=*&order=id.asc'),
       supaAll('expedicoes?select=*&order=id.asc'),
       supaAll('coilsdb?select=*&order=coil.asc'),
       supa('users?select=*'),
-      supa('navios?select=nome')
+      supa('navios?select=nome'),
+      supa('fat_config?select=*').catch(()=>[])
     ]);
     records    = (rec  ||[]).map(normalizeRecord);
     expedicoes = (exp  ||[]).map(normalizeRecord);
@@ -1763,6 +1780,8 @@ async function loadAllData(){
     users      = (usrs ||[]).map(normalizeUser);
     if(!users.length) users=[DEFAULT_ADMIN];
     saveUsers();
+    // Load shared fat_config
+    if(fatCfg && fatCfg.length) applyFatConfig(fatCfg);
     hideLoading(); return true;
   }catch(err){
     hideLoading();
@@ -1892,6 +1911,7 @@ function openModule(mod){
   if(mod==='usuarios')   { togglePermFields(); renderUsersList(); buildArmSelect(); }
   if(mod==='mapeamento') { applyMapOverrides(); buildMapFilters(); renderMapa(); }
   if(mod==='faturamento'){ buildFatSelects(); renderFaturamento(); }
+  if(mod==='dash-fat')   { renderDashFat(); }
   if(mod==='historico')  { renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
 }
@@ -4698,29 +4718,7 @@ function exportMapaExcel(){
 // FATURAMENTO — ARMAZENAGEM POR BL/CLIENTE
 // ══════════════════════════════════════════
 
-function salvarTarifa(){
-  const t=document.getElementById('fat-tarifa')?.value;
-  const p=document.getElementById('fat-periodo-dias')?.value;
-  if(t) localStorage.setItem('sp_fat_tarifa', t);
-  if(p) localStorage.setItem('sp_fat_periodo', p);
-}
 
-// Salva a tarifa global E uma tarifa específica para cada BL visível no filtro atual
-function salvarTarifaFiltrada(){
-  salvarTarifa();
-  const t = parseFloat(document.getElementById('fat-tarifa')?.value||0);
-  if(!t) return;
-  // Pega os BLs atualmente filtrados (cliente + navio + bl)
-  const fc = document.getElementById('fat-filter-cliente')?.value||'';
-  const fn = document.getElementById('fat-filter-navio')?.value||'';
-  const fb = document.getElementById('fat-filter-bl')?.value||'';
-  let bls = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))];
-  if(fc) bls = bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.cliente===fc));
-  if(fn) bls = bls.filter(bl=>coilsDB.find(c=>c.bl===bl&&c.navio===fn));
-  if(fb) bls = bls.filter(bl=>bl===fb);
-  bls.forEach(bl=>localStorage.setItem(`sp_fat_tarifa_bl_${bl}`, String(t)));
-  renderFaturamento();
-}
 
 function getTarifaBL(bl, tarifaGlobal){
   const v = localStorage.getItem(`sp_fat_tarifa_bl_${bl}`);
@@ -4768,13 +4766,15 @@ function getFatState(bl,num){
   try{ return JSON.parse(localStorage.getItem(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
 }
 function setFatState(bl,num,state){
-  localStorage.setItem(getFatStateKey(bl,num), JSON.stringify(state));
+  const v=JSON.stringify(state);
+  localStorage.setItem(getFatStateKey(bl,num), v);
+  fatConfigSet('state_'+bl+'_'+num, v);
 }
 function getHandlingBL(bl){
   const v=localStorage.getItem(getHandlingKey(bl));
   return v!==null ? parseFloat(v) : null;
 }
-function setHandlingBL(bl,v){ localStorage.setItem(getHandlingKey(bl), String(v)); }
+function setHandlingBL(bl,v){ localStorage.setItem(getHandlingKey(bl), String(v)); fatConfigSet('handling_'+bl, String(v)); }
 
 function getCongeladoPeso(bl,num){
   const v=localStorage.getItem(getFatKey(bl,num));
@@ -4782,12 +4782,13 @@ function getCongeladoPeso(bl,num){
 }
 function congelarPeso(bl,num,kg){
   localStorage.setItem(getFatKey(bl,num), String(kg));
+  fatConfigSet('peso_'+bl+'_'+num, String(kg));
 }
 function getTarifaBL(bl, global){
   const v=localStorage.getItem(getTarifaKey(bl));
   return v!==null ? parseFloat(v) : global;
 }
-function setTarifaBL(bl, v){ localStorage.setItem(getTarifaKey(bl), String(v)); }
+function setTarifaBL(bl, v){ localStorage.setItem(getTarifaKey(bl), String(v)); fatConfigSet('tarifa_bl_'+bl, String(v)); }
 
 // ── Tarifa global e por BL filtrado ──────────────────
 function salvarTarifa(){
@@ -4932,7 +4933,8 @@ function salvarLogoFatura(file){
   const r=new FileReader();
   r.onload=e=>{
     localStorage.setItem(getFatLogoKey(), e.target.result);
-    showToast('✓ Logo da fatura salva!','#22c55e','#000');
+    fatConfigSet('logo', e.target.result);
+    showToast('✓ Logo da fatura salva e sincronizada!','#22c55e','#000');
     renderFaturamento();
   };
   r.readAsDataURL(file);
@@ -4942,6 +4944,7 @@ function getLogoFatura(){
 }
 function removerLogoFatura(){
   localStorage.removeItem(getFatLogoKey());
+  fatConfigSet('logo','');
   showToast('Logo removida.','#f59e0b','#000');
   renderFaturamento();
 }
@@ -5025,8 +5028,13 @@ function renderFaturamento(){
         const dtFim=p.dataFim.split('-').reverse().join('/');
         let statusPer='', rowBg='';
         if(p.encerrado){
-          statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">● COBRADO</span>`;
-          rowBg='background:rgba(224,92,26,.04);';
+          if(state.enviado){
+            statusPer=`<span style="color:var(--success);font-size:11px;font-weight:700;">✓ COBRADO</span>`;
+            rowBg='background:rgba(34,197,94,.04);';
+          } else {
+            statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">⚠ VENCIDO</span>`;
+            rowBg='background:rgba(224,92,26,.06);';
+          }
         } else if(p.dataFim<=em7Str){
           statusPer=`<span style="color:var(--warning);font-size:11px;font-weight:700;">⚠ VENCE EM BREVE</span>`;
           rowBg='background:rgba(240,165,0,.04);';
@@ -5648,13 +5656,82 @@ function exportFaturamentoPDF(){
 }
 
 // ══════════════════════════════════════════════════════
-// CADASTRO DE CLIENTES (CNPJ / E-MAIL)
+// FAT_CONFIG — Dados compartilhados do Faturamento
+// Tabela Supabase: fat_config (chave TEXT PK, valor TEXT)
+// SQL: CREATE TABLE fat_config (chave text primary key, valor text);
 // ══════════════════════════════════════════════════════
+
+function applyFatConfig(rows){
+  // rows = [{chave, valor}]
+  const map={};
+  rows.forEach(r=>{ map[r.chave]=r.valor; });
+
+  // Tarifas globais
+  if(map.tarifa)        localStorage.setItem('sp_fat_tarifa',    map.tarifa);
+  if(map.periodo_dias)  localStorage.setItem('sp_fat_periodo',   map.periodo_dias);
+
+  // Logo
+  if(map.logo)          localStorage.setItem('sp_fat_logo',      map.logo);
+
+  // Clientes cadastrados
+  if(map.clientes){
+    try{
+      cadClientes=JSON.parse(map.clientes);
+      localStorage.setItem('sp_clientes', map.clientes);
+    }catch(e){}
+  }
+
+  // Tarifas por BL (sp_fat_tarifa_bl_XXXXX)
+  Object.entries(map).forEach(([k,v])=>{
+    if(k.startsWith('tarifa_bl_')) localStorage.setItem('sp_fat_'+k, v);
+    if(k.startsWith('handling_'))  localStorage.setItem('sp_fat_'+k, v);
+    if(k.startsWith('state_'))     localStorage.setItem('sp_fat_'+k, v);
+    if(k.startsWith('peso_'))      localStorage.setItem('sp_fat_'+k, v);
+  });
+}
+
+async function fatConfigSet(chave, valor){
+  localStorage.setItem('sp_fat_'+chave.replace(/^sp_fat_/,''), valor);
+  if(!SUPA_URL||!SUPA_KEY) return;
+  try{
+    await supaUpsert('fat_config', {chave, valor}, 'chave');
+  }catch(e){ /* silently fail — local always works */ }
+}
+
+async function fatConfigSync(){
+  // Sync all relevant localStorage keys to Supabase fat_config
+  if(!SUPA_URL||!SUPA_KEY) return;
+  const rows=[];
+  const push=(k,v)=>{ if(v) rows.push({chave:k, valor:v}); };
+
+  push('tarifa',      localStorage.getItem('sp_fat_tarifa'));
+  push('periodo_dias',localStorage.getItem('sp_fat_periodo'));
+  push('logo',        localStorage.getItem('sp_fat_logo'));
+  push('clientes',    localStorage.getItem('sp_clientes'));
+
+  // All per-BL keys
+  for(let i=0;i<localStorage.length;i++){
+    const key=localStorage.key(i);
+    if(!key) continue;
+    const rel=key.replace('sp_fat_','');
+    if(key.startsWith('sp_fat_tarifa_bl_')||
+       key.startsWith('sp_fat_handling_')||
+       key.startsWith('sp_fat_state_')||
+       key.startsWith('sp_fat_peso_')){
+      push(rel, localStorage.getItem(key));
+    }
+  }
+  if(!rows.length) return;
+  try{
+    await supaUpsertBulk('fat_config', rows, 'chave', 200);
+  }catch(e){}
+}
 
 let cadClientes = JSON.parse(localStorage.getItem('sp_clientes')||'[]');
 
 function saveCadClientes(){
   localStorage.setItem('sp_clientes', JSON.stringify(cadClientes));
+  fatConfigSet('clientes', JSON.stringify(cadClientes));
 }
 
 function getClienteInfo(nome){
@@ -5788,6 +5865,185 @@ try {
 
 function saveAudit(){
   try{ localStorage.setItem('sp_audit', JSON.stringify(auditLog.slice(0,HIST_MAX))); }catch(e){}
+}
+
+// ══════════════════════════════════════════════════════
+// DASHBOARD DE FATURAMENTO
+// ══════════════════════════════════════════════════════
+function renderDashFat(){
+  const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
+  const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
+  const hojeStr=new Date().toISOString().split('T')[0];
+  const em15=new Date(); em15.setDate(em15.getDate()+15);
+  const em15Str=em15.toISOString().split('T')[0];
+
+  const bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+
+  let totalVencidos=0, totalProximos=0, totalCobrados=0, totalAberto=0;
+  let valorVencidos=0, valorProximos=0, valorCobrados=0, valorAberto=0;
+  const vencidosRows=[], proximosRows=[], clienteMap={};
+
+  bls.forEach(bl=>{
+    const dbCoils=coilsDB.filter(c=>c.bl===bl);
+    const cliente=dbCoils[0]?.cliente||'—';
+    const navio=dbCoils[0]?.navio||'—';
+    const fat=calcPeriodosBL(bl,periodoDias);
+    if(!fat||!fat.periodos.length) return;
+    const tarifaBL=getTarifaBL(bl,tarifaGlobal);
+    const tonelagemTotal=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;
+
+    fat.periodos.forEach(p=>{
+      const state=getFatState(bl,p.num);
+      const ton=p.pesoBruto/1000;
+      const vArm=tarifaBL>0?ton*tarifaBL:0;
+      const hTar=p.num===1?(getHandlingBL(bl)||0):0;
+      const vHand=p.num===1?hTar*tonelagemTotal:0;
+      const total=vArm+vHand;
+      const dtIni=p.dataIni.split('-').reverse().join('/');
+      const dtFim=p.dataFim.split('-').reverse().join('/');
+
+      if(!clienteMap[cliente]) clienteMap[cliente]={vencido:0,proximo:0,cobrado:0,aberto:0,
+        valVencido:0,valProximo:0,valCobrado:0,valAberto:0};
+      const cm=clienteMap[cliente];
+
+      if(p.encerrado){
+        if(state.enviado){
+          totalCobrados++; valorCobrados+=total; cm.cobrado++; cm.valCobrado+=total;
+        } else {
+          totalVencidos++; valorVencidos+=total; cm.vencido++; cm.valVencido+=total;
+          vencidosRows.push({bl,cliente,navio,num:p.num,dtIni,dtFim,total,nf:state.nf||''});
+        }
+      } else if(p.dataFim<=em15Str){
+        totalProximos++; valorProximos+=total; cm.proximo++; cm.valProximo+=total;
+        proximosRows.push({bl,cliente,navio,num:p.num,dtIni,dtFim,total,diasRestantes:
+          Math.ceil((new Date(p.dataFim)-new Date(hojeStr))/(1000*86400))});
+      } else {
+        totalAberto++; valorAberto+=total; cm.aberto++; cm.valAberto+=total;
+      }
+    });
+  });
+
+  // Update home badges
+  const hv=document.getElementById('home-dashfat-venc'); if(hv) hv.textContent=totalVencidos;
+  const hp=document.getElementById('home-dashfat-prox'); if(hp) hp.textContent=totalProximos;
+
+  // KPI cards
+  const fmt=v=>v>0?'R$ '+v.toFixed(2).replace('.',','):'R$ 0,00';
+  document.getElementById('dashfat-kpis').innerHTML=`
+    <div class="rpt-summary-card" style="border-left:3px solid var(--danger);">
+      <div class="rpt-sum-label">⚠ VENCIDOS</div>
+      <div class="rpt-sum-value" style="color:var(--danger);">${totalVencidos}</div>
+      <div class="rpt-sum-unit">${fmt(valorVencidos)}</div>
+    </div>
+    <div class="rpt-summary-card" style="border-left:3px solid #fbbf24;">
+      <div class="rpt-sum-label">🔔 VENCEM EM 15 DIAS</div>
+      <div class="rpt-sum-value" style="color:#fbbf24;">${totalProximos}</div>
+      <div class="rpt-sum-unit">${fmt(valorProximos)}</div>
+    </div>
+    <div class="rpt-summary-card" style="border-left:3px solid var(--success);">
+      <div class="rpt-sum-label">✓ COBRADOS</div>
+      <div class="rpt-sum-value" style="color:var(--success);">${totalCobrados}</div>
+      <div class="rpt-sum-unit">${fmt(valorCobrados)}</div>
+    </div>
+    <div class="rpt-summary-card" style="border-left:3px solid var(--info);">
+      <div class="rpt-sum-label">📋 EM ABERTO</div>
+      <div class="rpt-sum-value" style="color:var(--info);">${totalAberto}</div>
+      <div class="rpt-sum-unit">${fmt(valorAberto)}</div>
+    </div>
+    <div class="rpt-summary-card" style="border-left:3px solid var(--accent);">
+      <div class="rpt-sum-label">💰 TOTAL GERAL</div>
+      <div class="rpt-sum-value" style="color:var(--accent);">${totalVencidos+totalProximos+totalCobrados+totalAberto}</div>
+      <div class="rpt-sum-unit">${fmt(valorVencidos+valorProximos+valorCobrados+valorAberto)}</div>
+    </div>`;
+
+  // Vencidos table
+  const vsec=document.getElementById('dashfat-vencidos-sec');
+  const vdiv=document.getElementById('dashfat-vencidos');
+  if(vencidosRows.length){
+    vsec.style.display='';
+    vdiv.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:var(--bg);">
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">BL</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CLIENTE</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">NAVIO</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">PERÍODO</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">DATAS</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">VALOR</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">AÇÃO</th>
+      </tr></thead>
+      <tbody>${vencidosRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="padding:.5rem .75rem;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);">${r.bl}</td>
+        <td style="padding:.5rem .75rem;">${r.cliente}</td>
+        <td style="padding:.5rem .75rem;">${r.navio}</td>
+        <td style="padding:.5rem .75rem;">${r.num}º</td>
+        <td style="padding:.5rem .75rem;">${r.dtIni} → ${r.dtFim}</td>
+        <td style="padding:.5rem .75rem;font-weight:700;color:var(--danger);">${fmt(r.total)}</td>
+        <td style="padding:.5rem .75rem;">
+          <button class="btn btn-info btn-sm" style="font-size:11px;" onclick="emitirFatura('${r.bl}',${r.num})">📄 FATURA</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } else { vsec.style.display='none'; }
+
+  // Próximos table
+  const psec=document.getElementById('dashfat-proximos-sec');
+  const pdiv=document.getElementById('dashfat-proximos');
+  if(proximosRows.length){
+    psec.style.display='';
+    pdiv.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:var(--bg);">
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">BL</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CLIENTE</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">NAVIO</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">PERÍODO</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">DATAS</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">DIAS</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">VALOR</th>
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">AÇÃO</th>
+      </tr></thead>
+      <tbody>${proximosRows.sort((a,b)=>a.diasRestantes-b.diasRestantes).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="padding:.5rem .75rem;font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);">${r.bl}</td>
+        <td style="padding:.5rem .75rem;">${r.cliente}</td>
+        <td style="padding:.5rem .75rem;">${r.navio}</td>
+        <td style="padding:.5rem .75rem;">${r.num}º</td>
+        <td style="padding:.5rem .75rem;">${r.dtIni} → ${r.dtFim}</td>
+        <td style="padding:.5rem .75rem;font-weight:700;color:${r.diasRestantes<=3?'var(--danger)':'#fbbf24'};">${r.diasRestantes<=0?'HOJE':r.diasRestantes+'d'}</td>
+        <td style="padding:.5rem .75rem;font-weight:700;color:#fbbf24;">${fmt(r.total)}</td>
+        <td style="padding:.5rem .75rem;">
+          <button class="btn btn-info btn-sm" style="font-size:11px;" onclick="emitirFatura('${r.bl}',${r.num})">📄 FATURA</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+  } else { psec.style.display='none'; }
+
+  // Resumo por cliente
+  const cliDiv=document.getElementById('dashfat-clientes');
+  const cliEntries=Object.entries(clienteMap).sort((a,b)=>(b[1].valVencido+b[1].valProximo)-(a[1].valVencido+a[1].valProximo));
+  if(!cliEntries.length){
+    cliDiv.innerHTML=`<div class="empty-state"><span class="empty-icon">👥</span>Nenhum dado de faturamento disponível.</div>`;
+    return;
+  }
+  cliDiv.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
+    <thead><tr style="background:var(--bg);">
+      <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CLIENTE</th>
+      <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--danger);">VENCIDOS</th>
+      <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:#fbbf24;">A VENCER</th>
+      <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--success);">COBRADOS</th>
+      <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);">EM ABERTO</th>
+      <th style="padding:.5rem .75rem;text-align:right;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">TOTAL PENDENTE</th>
+    </tr></thead>
+    <tbody>${cliEntries.map(([cli,d],i)=>{
+      const pendente=d.valVencido+d.valProximo;
+      return `<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="padding:.5rem .75rem;font-weight:700;">${cli}</td>
+        <td style="padding:.5rem .75rem;text-align:center;">${d.vencido>0?`<span style="color:var(--danger);font-weight:700;">${d.vencido} · ${fmt(d.valVencido)}</span>`:'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:center;">${d.proximo>0?`<span style="color:#fbbf24;font-weight:700;">${d.proximo} · ${fmt(d.valProximo)}</span>`:'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:center;">${d.cobrado>0?`<span style="color:var(--success);">${d.cobrado} · ${fmt(d.valCobrado)}</span>`:'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:center;">${d.aberto>0?`<span style="color:var(--info);">${d.aberto}</span>`:'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:right;font-weight:700;color:${pendente>0?'var(--danger)':'var(--muted)'};">${pendente>0?fmt(pendente):'—'}</td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
 }
 
 function registrarAudit(tipo, descricao, snapshot){
@@ -6358,6 +6614,31 @@ alter table users add column if not exists email text;</pre>
 <!-- ═══════════════════════════════════════════════════
      SCREEN: FATURAMENTO
 ═══════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: DASHBOARD FATURAMENTO
+═══════════════════════════════════════════════════ -->
+<div id="screen-dash-fat" class="screen">
+  <div class="container">
+    <!-- KPI CARDS -->
+    <div class="rpt-summary-grid" id="dashfat-kpis" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-bottom:1.5rem;"></div>
+    <!-- VENCIDOS -->
+    <div class="rpt-section" id="dashfat-vencidos-sec" style="display:none;">
+      <div class="rpt-section-title" style="color:var(--danger);">⚠ PERÍODOS VENCIDOS (não cobrados)</div>
+      <div id="dashfat-vencidos"></div>
+    </div>
+    <!-- PRÓXIMOS A VENCER -->
+    <div class="rpt-section" id="dashfat-proximos-sec" style="display:none;">
+      <div class="rpt-section-title" style="color:#fbbf24;">🔔 VENCEM EM 15 DIAS</div>
+      <div id="dashfat-proximos"></div>
+    </div>
+    <!-- RESUMO POR CLIENTE -->
+    <div class="rpt-section">
+      <div class="rpt-section-title">👥 RESUMO POR CLIENTE</div>
+      <div id="dashfat-clientes"></div>
+    </div>
+  </div>
+</div>
+
 <div id="screen-faturamento" class="screen">
   <div class="container">
 
