@@ -1321,8 +1321,10 @@ async function doLogin(){
   loadAllData().then(()=>{
     refreshHome();
     buildFilterSelects('d'); buildFilterSelects('e');
-    // Check if daily backup is needed
+    // Backup automático diário
     setTimeout(checkBackupAutomatico, 3000);
+    // Sync faturamento: push dados locais → pull dados do Supabase
+    setTimeout(autoSyncFatConfig, 4000);
   }).catch(err=>{ showToast('⚠ Erro ao carregar dados: '+err.message,'#f59e0b','#000'); });
 }
 
@@ -4794,8 +4796,8 @@ function setTarifaBL(bl, v){ localStorage.setItem(getTarifaKey(bl), String(v)); 
 function salvarTarifa(){
   const t=document.getElementById('fat-tarifa')?.value;
   const p=document.getElementById('fat-periodo-dias')?.value;
-  if(t) localStorage.setItem('sp_fat_tarifa', t);
-  if(p) localStorage.setItem('sp_fat_periodo', p);
+  if(t){ localStorage.setItem('sp_fat_tarifa', t); fatConfigSet('tarifa',t); }
+  if(p){ localStorage.setItem('sp_fat_periodo', p); fatConfigSet('periodo_dias',p); }
 }
 function salvarTarifaFiltrada(){
   salvarTarifa();
@@ -5691,40 +5693,98 @@ function applyFatConfig(rows){
 }
 
 async function fatConfigSet(chave, valor){
-  localStorage.setItem('sp_fat_'+chave.replace(/^sp_fat_/,''), valor);
+  // Save locally first (always works)
+  if(valor!==undefined && valor!==null)
+    localStorage.setItem('sp_fat_'+chave.replace(/^sp_fat_/,''), String(valor));
+  // Sync to Supabase if configured
   if(!SUPA_URL||!SUPA_KEY) return;
   try{
-    await supaUpsert('fat_config', {chave, valor}, 'chave');
-  }catch(e){ /* silently fail — local always works */ }
+    await supaUpsert('fat_config', {chave, valor:String(valor??'')}, 'chave');
+  }catch(e){
+    // Don't spam toasts for background syncs — just log
+    console.warn('[fat_config] sync failed for', chave, e.message);
+  }
 }
 
 async function fatConfigSync(){
-  // Sync all relevant localStorage keys to Supabase fat_config
-  if(!SUPA_URL||!SUPA_KEY) return;
+  // Full sync: push ALL local faturamento data to Supabase
+  if(!SUPA_URL||!SUPA_KEY){
+    showToast('Supabase não configurado.','#e05c1a','#fff');
+    return;
+  }
+  showLoading('Sincronizando dados de faturamento...');
   const rows=[];
-  const push=(k,v)=>{ if(v) rows.push({chave:k, valor:v}); };
+  const push=(k,v)=>{ if(v!=null&&v!=='') rows.push({chave:k, valor:String(v)}); };
 
-  push('tarifa',      localStorage.getItem('sp_fat_tarifa'));
-  push('periodo_dias',localStorage.getItem('sp_fat_periodo'));
-  push('logo',        localStorage.getItem('sp_fat_logo'));
-  push('clientes',    localStorage.getItem('sp_clientes'));
+  push('tarifa',       localStorage.getItem('sp_fat_tarifa'));
+  push('periodo_dias', localStorage.getItem('sp_fat_periodo'));
+  push('logo',         localStorage.getItem('sp_fat_logo'));
+  push('clientes',     localStorage.getItem('sp_clientes'));
 
-  // All per-BL keys
+  // Scan all localStorage keys for fat_ prefixed data
   for(let i=0;i<localStorage.length;i++){
     const key=localStorage.key(i);
     if(!key) continue;
-    const rel=key.replace('sp_fat_','');
-    if(key.startsWith('sp_fat_tarifa_bl_')||
-       key.startsWith('sp_fat_handling_')||
-       key.startsWith('sp_fat_state_')||
-       key.startsWith('sp_fat_peso_')){
-      push(rel, localStorage.getItem(key));
-    }
+    const v=localStorage.getItem(key);
+    if(!v) continue;
+    if(key.startsWith('sp_fat_tarifa_bl_')){ push(key.replace('sp_fat_',''), v); }
+    else if(key.startsWith('sp_fat_handling_')){ push(key.replace('sp_fat_',''), v); }
+    else if(key.startsWith('sp_fat_state_')){   push(key.replace('sp_fat_',''), v); }
+    else if(key.startsWith('sp_fat_peso_')){    push(key.replace('sp_fat_',''), v); }
   }
-  if(!rows.length) return;
+
+  if(!rows.length){ hideLoading(); showToast('Nenhum dado para sincronizar.','#f59e0b','#000'); return; }
+
   try{
     await supaUpsertBulk('fat_config', rows, 'chave', 200);
-  }catch(e){}
+    hideLoading();
+    showToast(`✓ ${rows.length} configurações sincronizadas com sucesso!`,'#22c55e','#000');
+  }catch(e){
+    hideLoading();
+    showToast('⚠ Erro ao sincronizar: '+e.message,'#e05c1a','#fff');
+  }
+}
+
+async function autoSyncFatConfig(){
+  if(!SUPA_URL||!SUPA_KEY) return;
+
+  // 1. PUSH — envia dados locais para Supabase (merge, não sobrescreve remoto com vazio)
+  const rows=[];
+  const push=(k,v)=>{ if(v!=null&&v!=='') rows.push({chave:k, valor:String(v)}); };
+
+  push('tarifa',       localStorage.getItem('sp_fat_tarifa'));
+  push('periodo_dias', localStorage.getItem('sp_fat_periodo'));
+  push('logo',         localStorage.getItem('sp_fat_logo'));
+  push('clientes',     localStorage.getItem('sp_clientes'));
+
+  for(let i=0;i<localStorage.length;i++){
+    const key=localStorage.key(i);
+    if(!key) continue;
+    const v=localStorage.getItem(key);
+    if(!v) continue;
+    if(key.startsWith('sp_fat_tarifa_bl_') ||
+       key.startsWith('sp_fat_handling_')  ||
+       key.startsWith('sp_fat_state_')     ||
+       key.startsWith('sp_fat_peso_')){
+      push(key.replace('sp_fat_',''), v);
+    }
+  }
+
+  try{
+    if(rows.length) await supaUpsertBulk('fat_config', rows, 'chave', 200);
+  }catch(e){ console.warn('[autoSync] push fat_config failed:', e.message); }
+
+  // 2. PULL — busca dados do Supabase e aplica localmente (sempre a versão mais completa)
+  try{
+    const remote = await supaAll('fat_config?select=*');
+    if(remote && remote.length){
+      applyFatConfig(remote);
+      const fatScreen=document.getElementById('screen-faturamento');
+      if(fatScreen && fatScreen.classList.contains('active')) renderFaturamento();
+      const dashScreen=document.getElementById('screen-dash-fat');
+      if(dashScreen && dashScreen.classList.contains('active')) renderDashFat();
+    }
+  }catch(e){ console.warn('[autoSync] pull fat_config failed:', e.message); }
 }
 
 let cadClientes = JSON.parse(localStorage.getItem('sp_clientes')||'[]');
@@ -6693,7 +6753,12 @@ alter table users add column if not exists email text;</pre>
 
     <!-- CONFIGURAÇÃO DE TARIFA -->
     <div class="rpt-section">
-      <div class="rpt-section-title">⚙ CONFIGURAÇÃO DE TARIFA</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:1rem;">
+        <div class="rpt-section-title" style="margin-bottom:0;">⚙ CONFIGURAÇÃO DE TARIFA</div>
+        <button class="btn btn-primary btn-sm" onclick="autoSyncFatConfig().then(()=>showToast('✓ Sincronizado!','#22c55e','#000'))" title="Envia dados locais para o Supabase e baixa dados de outros usuários">
+          🔄 SINCRONIZAR COM SUPABASE
+        </button>
+      </div>
       <div style="display:flex;gap:1.2rem;align-items:flex-end;flex-wrap:wrap;">
         <div class="form-group" style="min-width:200px;">
           <label>Valor por Tonelada (R$)</label>
