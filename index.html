@@ -349,6 +349,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
       <div><div class="user-name" id="user-name-hdr">—</div><div class="user-role" id="user-role-hdr">—</div></div>
     </div>
     <button class="btn-logout" id="btn-logout" style="display:none;" onclick="doLogout()">SAIR</button>
+    <button class="btn-logout" id="btn-change-pass" style="display:none;" onclick="abrirAlterarSenha()" title="Alterar minha senha">🔑</button>
     <button class="btn-home" id="btn-sync" style="display:none;" onclick="syncData()" title="Sincronizar dados">⟳ SYNC</button>
     <button class="btn-home" id="btn-theme" onclick="toggleTheme()" title="Alternar tema" style="font-size:16px;padding:.4rem .75rem;">🌙</button>
   </div>
@@ -1346,6 +1347,7 @@ function doLogout(){
   document.getElementById('btn-back').style.display='none';
   document.getElementById('user-badge').style.display='none';
   document.getElementById('btn-logout').style.display='none';
+  document.getElementById('btn-change-pass').style.display='none';
 }
 
 function applySessionUI(){
@@ -1357,6 +1359,7 @@ function applySessionUI(){
   // Header
   document.getElementById('user-badge').style.display='flex';
   document.getElementById('btn-logout').style.display='';
+  document.getElementById('btn-change-pass').style.display='';
   document.getElementById('user-avatar-hdr').textContent=session.nome.charAt(0).toUpperCase();
   document.getElementById('user-avatar-hdr').className='user-avatar '+(isAdmin?'admin':isViewer?'operator':'operator');
   document.getElementById('user-name-hdr').textContent=session.nome;
@@ -1423,6 +1426,7 @@ function canAccess(mod){
   if(mod==='relatorios') return (perms.relatorios === true);
   if(mod==='database')   return (perms.consultaDB === true);
   if(mod==='faturamento')return (perms.faturamento === true);
+  if(mod==='dash-fat')   return (perms.faturamento === true);
   return false;
 }
 
@@ -5037,7 +5041,7 @@ function renderFaturamento(){
   const hojeStr=new Date().toISOString().split('T')[0];
   const em7dias=new Date(); em7dias.setDate(em7dias.getDate()+7);
   const em7Str=em7dias.toISOString().split('T')[0];
-  let htmlOut='', totalGeral=0, blsAtivos=0, blsVencendo=0;
+  let htmlOut='', totalGeral=0, totalHandlingGeral=0, blsAtivos=0, blsVencendo=0;
   const logoFat=getLogoFatura();
 
   // Preview logo section
@@ -5116,6 +5120,7 @@ function renderFaturamento(){
           rowBg='background:rgba(34,197,94,.03);';
         }
         if(valor) totalBL+=valor, totalGeral+=valor;
+        if(p.num===1&&handlingVal>0){ totalBL+=handlingVal; totalGeral+=handlingVal; totalHandlingGeral+=handlingVal; }
         const lockBadge=p.congelado
           ?`<span style="font-size:9px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">🔒</span>`
           :`<span style="font-size:9px;background:rgba(34,197,94,.08);color:var(--success);border:1px solid rgba(34,197,94,.2);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">●</span>`;
@@ -5213,10 +5218,18 @@ function renderFaturamento(){
   const hfb=document.getElementById('home-fat-bls');    if(hfb) hfb.textContent=blsAtivos;
   const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsVencendo;
 
+  const totalArmazGeral=totalGeral-totalHandlingGeral;
   const totalHeader=totalGeral>0
     ?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:1rem;display:flex;gap:2rem;align-items:center;flex-wrap:wrap;">
         <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);">TOTAL FATURÁVEL — período ${periodoDias} dias</span>
-        <span style="font-size:22px;font-weight:900;color:var(--success);">R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
+        <div style="display:flex;flex-direction:column;gap:2px;">
+          <span style="font-size:22px;font-weight:900;color:var(--success);">R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
+          <div style="display:flex;gap:1rem;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);">
+            <span>Armazenagem: <strong style="color:var(--success);">R$ ${totalArmazGeral.toFixed(2).replace('.',',')}</strong></span>
+            ${totalHandlingGeral>0?`<span>Handling: <strong style="color:#60a5fa;">R$ ${totalHandlingGeral.toFixed(2).replace('.',',')}</strong></span>`:''}
+          </div>
+        </div>
+        <span style="font-size:12px;color:var(--muted);">${blsAtivos} BL(s) em estoque${blsVencendo>0?` · <span style="color:var(--warning);">${blsVencendo} vencendo</span>`:''}</span>
       </div>`:' ';
 
   container.innerHTML=htmlOut
@@ -5999,6 +6012,10 @@ try {
 
 function saveAudit(){
   try{ localStorage.setItem('sp_audit', JSON.stringify(auditLog.slice(0,HIST_MAX))); }catch(e){}
+  // Sync to Supabase silently so admin can consolidate
+  if(SUPA_URL&&SUPA_KEY&&session){
+    fatConfigSet('audit_'+session.user, JSON.stringify(auditLog.slice(0,HIST_MAX)));
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -6229,6 +6246,83 @@ BL exato no records: "${recsExact[0]?.bl||'não encontrado'}"`;
   console.log(msg);
   console.log('coilsExact:', coilsExact);
   console.log('recsExact:', recsExact);
+}
+
+// ══════════════════════════════════════════════════════
+// ALTERAR SENHA DO USUÁRIO LOGADO
+// ══════════════════════════════════════════════════════
+function abrirAlterarSenha(){
+  ['cp-atual','cp-nova','cp-confirma'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const msg=document.getElementById('cp-msg'); if(msg){ msg.style.display='none'; msg.textContent=''; }
+  document.getElementById('modal-change-pass').classList.add('open');
+}
+
+async function confirmarAlterarSenha(){
+  const atual   = document.getElementById('cp-atual').value;
+  const nova    = document.getElementById('cp-nova').value.trim();
+  const confirma= document.getElementById('cp-confirma').value.trim();
+  const msg     = document.getElementById('cp-msg');
+
+  const showMsg=(txt,ok)=>{
+    msg.style.display='';
+    msg.style.color=ok?'var(--success)':'var(--danger)';
+    msg.textContent=txt;
+  };
+
+  if(!atual||!nova||!confirma){ showMsg('Preencha todos os campos.',false); return; }
+  if(nova.length<4){ showMsg('A nova senha deve ter pelo menos 4 caracteres.',false); return; }
+  if(nova!==confirma){ showMsg('As senhas não coincidem.',false); return; }
+
+  // Verify current password
+  const u=users.find(u=>u.user===session.user);
+  if(!u){ showMsg('Usuário não encontrado.',false); return; }
+  if(u.pass!==atual){ showMsg('Senha atual incorreta.',false); return; }
+
+  // Update
+  u.pass=nova;
+  try{
+    await supaUpsert('users', {id:u.id, pass:nova}, 'id');
+    saveUsers();
+    showMsg('✓ Senha alterada com sucesso!',true);
+    setTimeout(()=>closeModal('modal-change-pass'), 1500);
+  }catch(e){
+    showMsg('⚠ Erro ao salvar: '+e.message, false);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// CONSOLIDAR HISTÓRICO — admin puxa logs de todos os usuários
+// ══════════════════════════════════════════════════════
+async function syncAuditLog(){
+  if(!SUPA_URL||!SUPA_KEY){ showToast('Supabase não configurado.','#e05c1a','#fff'); return; }
+  showLoading('Consolidando histórico de todos os usuários...');
+  try{
+    // Push local audit to Supabase
+    await fatConfigSet('audit_'+session.user, JSON.stringify(auditLog.slice(0,HIST_MAX)));
+
+    // Pull all users' audit logs
+    const remote=await supaAll('fat_config?select=*&chave=like.audit_%');
+    if(remote&&remote.length){
+      let allEntries=[];
+      remote.forEach(r=>{
+        try{
+          const entries=JSON.parse(r.valor||'[]');
+          allEntries.push(...entries);
+        }catch(e){}
+      });
+      // Merge, deduplicate by id, sort by ts desc
+      const byId={};
+      [...auditLog,...allEntries].forEach(e=>{ if(e.id) byId[e.id]=e; });
+      auditLog=Object.values(byId).sort((a,b)=>b.ts>a.ts?1:b.ts<a.ts?-1:0).slice(0,HIST_MAX);
+      saveAudit();
+    }
+    hideLoading();
+    renderHistorico();
+    showToast('✓ Histórico consolidado!','#22c55e','#000');
+  }catch(e){
+    hideLoading();
+    showToast('⚠ Erro: '+e.message,'#e05c1a','#fff');
+  }
 }
 
 function registrarAudit(tipo, descricao, snapshot){
@@ -6887,19 +6981,12 @@ alter table users add column if not exists email text;</pre>
           🔍 DIAGNÓSTICO
         </button>
       </div>
+      <!-- Inputs ocultos — usados pelo JS, não visíveis ao usuário -->
+      <div style="display:none;">
+        <input type="number" id="fat-tarifa" value="0" min="0" step="0.01" oninput="salvarTarifaFiltrada()">
+        <input type="number" id="fat-periodo-dias" value="15" min="1" max="90" oninput="salvarTarifa()">
+      </div>
       <div style="display:flex;gap:1.2rem;align-items:flex-end;flex-wrap:wrap;">
-        <div class="form-group" style="min-width:200px;">
-          <label>Valor por Tonelada (R$)</label>
-          <input type="number" id="fat-tarifa" placeholder="ex: 15.00" min="0" step="0.01"
-            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-weight:700;width:100%;outline:none;"
-            oninput="salvarTarifaFiltrada()">
-        </div>
-        <div class="form-group" style="min-width:160px;">
-          <label>Período de cobrança (dias)</label>
-          <input type="number" id="fat-periodo-dias" value="15" min="1" max="90"
-            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-weight:700;width:100%;outline:none;"
-            oninput="salvarTarifa()">
-        </div>
         <div class="form-group" style="min-width:160px;">
           <label>Filtrar por Cliente</label>
           <select id="fat-filter-cliente" onchange="atualizarBLsFaturamento();renderFaturamento()"
@@ -6945,7 +7032,6 @@ alter table users add column if not exists email text;</pre>
             <option value="zerada">✓ Carga Zerada</option>
           </select>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="renderFaturamento()">🔄 CALCULAR</button>
         <button class="btn btn-secondary btn-sm" onclick="limparFiltrosFaturamento()">✕ LIMPAR</button>
       </div>
     </div>
@@ -6988,6 +7074,7 @@ alter table users add column if not exists email text;</pre>
           <option value="importacao">Importação</option>
           <option value="faturamento">💰 Faturamento</option>
         </select>
+        <button class="btn btn-primary btn-sm admin-only" onclick="syncAuditLog()" title="Consolida histórico de todos os usuários do Supabase">🔄 CONSOLIDAR</button>
         <button class="btn btn-danger btn-sm" onclick="limparHistorico()">🗑 LIMPAR HISTÓRICO</button>
       </div>
       <div id="hist-container">
@@ -7076,6 +7163,37 @@ alter table users add column if not exists email text;</pre>
     </div>
     <div class="modal-actions" style="flex-shrink:0;">
       <button class="btn btn-secondary" onclick="closeModal('modal-fat-hist')">FECHAR</button>
+    </div>
+  </div>
+</div>
+<!-- ═══════════════════════════════════════════════════
+     MODAL: ALTERAR SENHA
+═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-change-pass">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-title">🔑 ALTERAR SENHA</div>
+    <div class="modal-body">
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Senha Atual</label>
+        <input type="password" id="cp-atual" placeholder="Digite sua senha atual"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;outline:none;">
+      </div>
+      <div class="form-group" style="margin-bottom:1rem;">
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Nova Senha</label>
+        <input type="password" id="cp-nova" placeholder="Digite a nova senha"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;outline:none;">
+      </div>
+      <div class="form-group">
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Confirmar Nova Senha</label>
+        <input type="password" id="cp-confirma" placeholder="Confirme a nova senha"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;outline:none;"
+          onkeydown="if(event.key==='Enter') confirmarAlterarSenha()">
+      </div>
+      <div id="cp-msg" style="margin-top:.75rem;font-size:13px;display:none;"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-change-pass')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="confirmarAlterarSenha()">✓ ALTERAR SENHA</button>
     </div>
   </div>
 </div>
