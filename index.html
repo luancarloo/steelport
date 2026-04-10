@@ -1326,6 +1326,9 @@ async function doLogin(){
     setTimeout(checkBackupAutomatico, 3000);
     // Sync faturamento: push dados locais → pull dados do Supabase
     setTimeout(autoSyncFatConfig, 4000);
+    // Sync automático a cada 5 minutos
+    if(window._fatSyncInterval) clearInterval(window._fatSyncInterval);
+    window._fatSyncInterval = setInterval(autoSyncFatConfig, 5*60*1000);
   }).catch(err=>{ showToast('⚠ Erro ao carregar dados: '+err.message,'#f59e0b','#000'); });
 }
 
@@ -1913,8 +1916,8 @@ function openModule(mod){
   if(mod==='relatorios') { buildRptSelects(); renderRptSummary(); renderReport(); }
   if(mod==='usuarios')   { togglePermFields(); renderUsersList(); buildArmSelect(); }
   if(mod==='mapeamento') { applyMapOverrides(); buildMapFilters(); renderMapa(); }
-  if(mod==='faturamento'){ buildFatSelects(); renderFaturamento(); }
-  if(mod==='dash-fat')   { renderDashFat(); }
+  if(mod==='faturamento'){ autoSyncFatConfig().then(()=>{ buildFatSelects(); renderFaturamento(); }); }
+  if(mod==='dash-fat')   { autoSyncFatConfig().then(()=>renderDashFat()); }
   if(mod==='historico')  { renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
 }
@@ -3774,12 +3777,21 @@ async function confirmImportMov(){
     let toInsert=[];
 
     if(mode==='replace'){
-      // Clear local array
-      if(importMovTipo==='expedicao') expedicoes.length=0;
-      else records.length=0;
+      // Substitui apenas os coils presentes na planilha (não apaga tudo)
+      const coilsToReplace=new Set(importMovRows.map(r=>r.coil));
+      // Remove da memória local apenas os que serão substituídos
+      if(importMovTipo==='expedicao'){
+        for(let i=expedicoes.length-1;i>=0;i--)
+          if(coilsToReplace.has(expedicoes[i].coil)) expedicoes.splice(i,1);
+      } else {
+        for(let i=records.length-1;i>=0;i--)
+          if(coilsToReplace.has(records[i].coil)) records.splice(i,1);
+      }
       toInsert=importMovRows;
-      // Delete all from Supabase then reinsert
-      await supaDelete(table,'id=gt.0');
+      // Deleta do Supabase apenas os coils da planilha
+      for(const coil of coilsToReplace){
+        await supa(`${table}?coil=eq.${encodeURIComponent(coil)}`,{method:'DELETE'});
+      }
     } else {
       // Merge: skip coils that already exist
       const existingCoils=new Set(src.map(r=>r.coil));
@@ -4938,7 +4950,8 @@ function calcPeriodosBL(bl, periodoDias){
       if(encerrado && pesoBruto>0) congelarPeso(bl,num,pesoBruto);
     }
 
-    if(pesoBruto===0 && encerrado) continue; // sem carga neste período — pula mas não para
+    if(pesoBruto===0 && encerrado) continue; // sem carga neste período encerrado — pula
+    if(pesoBruto===0 && !encerrado) break;   // estoque zerado no período atual — para aqui
 
     periodos.push({
       num, dataIni:iniStr, dataFim:fimStr, pesoBruto, encerrado,
@@ -5087,14 +5100,13 @@ function renderFaturamento(){
         const dtIni=p.dataIni.split('-').reverse().join('/');
         const dtFim=p.dataFim.split('-').reverse().join('/');
         let statusPer='', rowBg='';
-        if(p.encerrado){
-          if(state.enviado){
-            statusPer=`<span style="color:var(--success);font-size:11px;font-weight:700;">✓ COBRADO</span>`;
-            rowBg='background:rgba(34,197,94,.04);';
-          } else {
-            statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">⚠ VENCIDO</span>`;
-            rowBg='background:rgba(224,92,26,.06);';
-          }
+        if(state.enviado){
+          // Já faturado — independe do período estar encerrado ou ativo
+          statusPer=`<span style="color:var(--success);font-size:11px;font-weight:700;">✓ ENVIADO</span>`;
+          rowBg='background:rgba(34,197,94,.04);';
+        } else if(p.encerrado){
+          statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">⚠ VENCIDO</span>`;
+          rowBg='background:rgba(224,92,26,.06);';
         } else if(p.dataFim<=em7Str){
           statusPer=`<span style="color:var(--warning);font-size:11px;font-weight:700;">⚠ VENCE EM BREVE</span>`;
           rowBg='background:rgba(240,165,0,.04);';
@@ -5147,7 +5159,13 @@ function renderFaturamento(){
           <td style="padding:.5rem .75rem;">${statusPer}</td>
           <td style="padding:.5rem .75rem;">${enviadoCell}</td>
           <td style="padding:.5rem .75rem;">
-            <button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;">📄 FATURA</button>
+            ${state.enviado
+              ?`<div style="display:flex;flex-direction:column;gap:2px;">
+                  <button class="btn btn-success btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;background:var(--success);color:#000;">✓ FATURADO</button>
+                  ${totalPeriodo>0?`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--success);font-weight:700;">R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}
+                </div>`
+              :`<button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;">📄 FATURA</button>`
+            }
           </td>
         </tr>`;
       });
@@ -6022,14 +6040,13 @@ function renderDashFat(){
         valVencido:0,valProximo:0,valCobrado:0,valAberto:0};
       const cm=clienteMap[cliente];
 
-      if(p.encerrado){
-        if(state.enviado){
+      if(state.enviado){
+          // Já faturado — conta como cobrado independente do status do período
           totalCobrados++; valorCobrados+=total; cm.cobrado++; cm.valCobrado+=total;
-        } else {
+        } else if(p.encerrado){
           totalVencidos++; valorVencidos+=total; cm.vencido++; cm.valVencido+=total;
           vencidosRows.push({bl,cliente,navio,num:p.num,dtIni,dtFim,total,nf:state.nf||''});
-        }
-      } else if(p.dataFim<=em15Str){
+        } else if(p.dataFim<=em15Str){
         totalProximos++; valorProximos+=total; cm.proximo++; cm.valProximo+=total;
         proximosRows.push({bl,cliente,navio,num:p.num,dtIni,dtFim,total,diasRestantes:
           Math.ceil((new Date(p.dataFim)-new Date(hojeStr))/(1000*86400))});
