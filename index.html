@@ -1746,6 +1746,40 @@ async function supaUpsert(table, rows, onConflict='id'){
   });
 }
 
+// INSERT puro sem ON CONFLICT — para tabelas sem constraint única composta
+async function supaInsert(table, rows){
+  if(!Array.isArray(rows)) rows=[rows];
+  if(!rows.length) return;
+  return supa(table, {
+    method:'POST', headers:{'Prefer':'return=minimal'}, body:JSON.stringify(rows)
+  });
+}
+
+// INSERT sequencial — um registro por vez para suportar mesmo coil em navios diferentes
+// (evita conflito de PK quando múltiplos registros com mesmo coil chegam no mesmo batch)
+async function supaInsertBulk(table, rows, batchSize=1, onProgress){
+  if(!rows.length) return;
+  let done=0;
+  for(const row of rows){
+    try{
+      await supaInsert(table, [row]);
+    }catch(e){
+      // Se falhar (ex: coil já existe com mesmo navio/BL), tenta PATCH
+      const coil=encodeURIComponent(row.coil||'');
+      const navio=encodeURIComponent(row.navio||'');
+      const bl=encodeURIComponent(row.bl||'');
+      try{
+        const {registradoPor,_dbFound,_autoFilled,...safe}=row;
+        await supa(`${table}?coil=eq.${coil}&navio=eq.${navio}&bl=eq.${bl}`,{
+          method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify(safe)
+        });
+      }catch(e2){ console.warn(`[import] falhou coil=${row.coil} navio=${row.navio}:`, e2.message); }
+    }
+    done++;
+    if(onProgress) onProgress(done, rows.length);
+  }
+}
+
 async function supaDelete(table, filter){
   return supa(table+'?'+filter, {method:'DELETE', headers:{'Prefer':'return=minimal'}});
 }
@@ -1845,7 +1879,7 @@ async function syncData(){
 async function apiPost(body){
   if(body.action==='addRecord')    return supaUpsert('records',    body.data,'id');
   if(body.action==='addExpedicao') return supaUpsert('expedicoes', body.data,'id');
-  if(body.action==='saveCoil'){    return supaUpsert('coilsdb',    body.data,'coil'); }
+  if(body.action==='saveCoil'){    return supaUpsert('coilsdb',    body.data,'coil,navio,bl'); }
   if(body.action==='addNavio')     return supaUpsert('navios',     {nome:body.nome},'nome');
   if(body.action==='saveUser'){    const {armazens, ...ud}={...body.data}; if(typeof ud.perms==='object') ud.perms=JSON.stringify(ud.perms); return supaUpsert('users',ud,'id'); }
   if(body.action==='importCoils')  return; // tratado diretamente em confirmImport
@@ -3547,26 +3581,86 @@ async function confirmImport(){
   closeModal('modal-import');
   showLoading(`Preparando importação de ${importRows.length} bobinas...`);
   try {
+    // Chave de unicidade: coil + navio + bl
+    // Mesmo coil number em navio ou BL diferente = bobina diferente
+    const dupeMap = {};
+    const deduped = Object.values(
+      importRows.reduce((map, row) => {
+        const key = (row.coil||'') + '|' + (row.navio||'') + '|' + (row.bl||'');
+        if(map[key]){
+          // Registra qual foi descartado para exibir ao usuário
+          if(!dupeMap[key]) dupeMap[key] = [map[key].coil];
+          dupeMap[key].push(row.coil);
+        }
+        map[key] = row; // mantém o último (dados mais recentes da planilha)
+        return map;
+      }, {})
+    );
+    const dupes = importRows.length - deduped.length;
+    if(dupes > 0){
+      const dupeList = Object.entries(dupeMap)
+        .map(([k,v]) => v.join(' / '))
+        .slice(0, 5)
+        .join(', ');
+      const extra = Object.keys(dupeMap).length > 5 ? ` (+${Object.keys(dupeMap).length-5} mais)` : '';
+      showToast(
+        `ℹ ${dupes} duplicata(s) na planilha — mesmo coil+navio+BL após normalização: ${dupeList}${extra}. Mantido o último registro de cada.`,
+        '#f59e0b','#000'
+      );
+    }
+
     if(mode === 'replace'){
-      // Apaga tudo e reinsere
       showLoading('Limpando banco anterior...');
       await supaDelete('coilsdb', 'coil=neq.___none___');
       coilsDB = [];
+      // INSERT puro após limpar tudo
+      await supaInsertBulk('coilsdb', deduped, 200, (done, total)=>{
+        showLoading(`Importando bobinas: ${done}/${total} (${Math.round(done/total*100)}%)...`);
+      });
+    } else {
+      // Modo mesclar: para cada bobina da planilha
+      // verifica se já existe exata (coil+navio+bl) no banco
+      // — se existe: atualiza via PATCH (sem ON CONFLICT)
+      // — se não existe: insere nova linha
+      showLoading('Analisando registros...');
+      const existingKey = c => (c.coil||'')+'|'+(c.navio||'')+'|'+(c.bl||'');
+      const existingMap = {};
+      coilsDB.forEach(c => { existingMap[existingKey(c)] = c; });
+
+      const toUpdate = deduped.filter(r => existingMap[existingKey(r)]);
+      const toNew    = deduped.filter(r => !existingMap[existingKey(r)]);
+
+      let done=0, total=deduped.length;
+      const prog=()=>{ done++; showLoading(`Importando: ${done}/${total} (${Math.round(done/total*100)}%)...`); };
+
+      // PATCH para atualizar existentes — filtra pelo coil+navio+bl exato
+      for(const row of toUpdate){
+        const filter=`coil=eq.${encodeURIComponent(row.coil)}&navio=eq.${encodeURIComponent(row.navio||'')}&bl=eq.${encodeURIComponent(row.bl||'')}`;
+        const {registradoPor,_dbFound,_autoFilled,...safe}=row;
+        try{
+          await supa(`coilsdb?${filter}`,{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify(safe)});
+        }catch(e){ console.warn('patch failed',row.coil,e.message); }
+        prog();
+      }
+
+      // INSERT para novos registros (coil+navio+bl ainda não existe)
+      if(toNew.length){
+        await supaInsertBulk('coilsdb', toNew, 200, (d,t)=>{
+          showLoading(`Inserindo novos: ${done+d}/${total} (${Math.round((done+d)/total*100)}%)...`);
+        });
+      }
     }
-    // Envia em lotes de 200 em paralelo (5 lotes ao mesmo tempo)
-    await supaUpsertBulk('coilsdb', importRows, 'coil', 200, (done, total)=>{
-      const pct = Math.round((done/total)*100);
-      showLoading(`Importando bobinas: ${done}/${total} (${pct}%)`);
-    });
-    // Atualiza memória local
-    importRows.forEach(row=>{
-      const idx = coilsDB.findIndex(c=>c.coil===row.coil);
+
+    // Atualiza memória local com chave coil+navio+bl
+    const lKey = r => (r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'');
+    deduped.forEach(row=>{
+      const idx = coilsDB.findIndex(c=>lKey(c)===lKey(row));
       if(idx>=0) coilsDB[idx]=row; else coilsDB.push(row);
     });
-    if(mode==='replace') coilsDB=[...importRows];
+    if(mode==='replace') coilsDB=[...deduped];
     hideLoading();
     buildDBNavSelect(); renderCoilsGrouped(); refreshHome();
-    showToast(`✓ ${importRows.length} bobinas importadas com sucesso!`, '#22c55e', '#000');
+    showToast(`✓ ${deduped.length} bobinas importadas com sucesso!`, '#22c55e', '#000');
   } catch(err){
     hideLoading();
     showToast('⚠ Erro na importação: '+err.message, '#e05c1a', '#fff');
@@ -3778,29 +3872,46 @@ async function confirmImportMov(){
   showLoading(`Importando ${importMovRows.length} registros...`);
 
   try{
+    // Deduplicar por coil+navio+bl — mesma bobina em navio/BL diferentes é registro distinto
+    const dedupedMov = Object.values(
+      importMovRows.reduce((map, row) => {
+        const key = (row.coil||'') + '|' + (row.navio||'') + '|' + (row.bl||'');
+        map[key] = row;
+        return map;
+      }, {})
+    );
+    const dupesMov = importMovRows.length - dedupedMov.length;
+    if(dupesMov > 0) showToast(`ℹ ${dupesMov} linha(s) duplicada(s) ignoradas.`, '#f59e0b', '#000');
+
     let toInsert=[];
 
     if(mode==='replace'){
       // Substitui apenas os coils presentes na planilha (não apaga tudo)
-      const coilsToReplace=new Set(importMovRows.map(r=>r.coil));
-      // Remove da memória local apenas os que serão substituídos
+      // Remove/substitui apenas os registros com mesmo coil+navio+bl
+      const keysToReplace=new Set(dedupedMov.map(r=>(r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'')));
       if(importMovTipo==='expedicao'){
-        for(let i=expedicoes.length-1;i>=0;i--)
-          if(coilsToReplace.has(expedicoes[i].coil)) expedicoes.splice(i,1);
+        for(let i=expedicoes.length-1;i>=0;i--){
+          const key=(expedicoes[i].coil||'')+'|'+(expedicoes[i].navio||'')+'|'+(expedicoes[i].bl||'');
+          if(keysToReplace.has(key)) expedicoes.splice(i,1);
+        }
       } else {
-        for(let i=records.length-1;i>=0;i--)
-          if(coilsToReplace.has(records[i].coil)) records.splice(i,1);
+        for(let i=records.length-1;i>=0;i--){
+          const key=(records[i].coil||'')+'|'+(records[i].navio||'')+'|'+(records[i].bl||'');
+          if(keysToReplace.has(key)) records.splice(i,1);
+        }
       }
-      toInsert=importMovRows;
-      // Deleta do Supabase apenas os coils da planilha
-      for(const coil of coilsToReplace){
-        await supa(`${table}?coil=eq.${encodeURIComponent(coil)}`,{method:'DELETE'});
+      toInsert=dedupedMov;
+      // Deleta do Supabase apenas os registros coil+navio+bl da planilha
+      for(const row of dedupedMov){
+        const f=`coil=eq.${encodeURIComponent(row.coil)}&navio=eq.${encodeURIComponent(row.navio||'')}&bl=eq.${encodeURIComponent(row.bl||'')}`;
+        await supa(`${table}?${f}`,{method:'DELETE'});
       }
     } else {
       // Merge: skip coils that already exist
-      const existingCoils=new Set(src.map(r=>r.coil));
-      const dupes=importMovRows.filter(r=>existingCoils.has(r.coil));
-      toInsert=importMovRows.filter(r=>!existingCoils.has(r.coil));
+      // Verificar existência por coil+navio+bl — mesmo coil em navio/BL diferente é novo registro
+      const existingKeys=new Set(src.map(r=>(r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'')));
+      const dupes=dedupedMov.filter(r=>existingKeys.has((r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'')));
+      toInsert=dedupedMov.filter(r=>!existingKeys.has((r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'')));
       if(dupes.length) showToast(`ℹ ${dupes.length} registros já existentes foram ignorados.`,'#f59e0b','#000');
     }
 
@@ -4608,7 +4719,7 @@ async function salvarMapEdit(){
     c._mapObs  = obs;
     // Sync armazem to Supabase
     try{
-      await supaUpsert('coilsdb', {coil:c.coil, armazem}, 'coil');
+      await supaUpsert('coilsdb', {coil:c.coil, navio:c.navio||'', bl:c.bl||'', armazem}, 'coil,navio,bl');
     } catch(e){
       showToast('⚠ Posição salva localmente, sync falhou.','#f59e0b','#000');
     }
@@ -4640,8 +4751,8 @@ async function moverPilhaInteira(){
   // Sync to Supabase in batch
   try{
     await supaUpsertBulk('coilsdb',
-      pilha.map(x=>({coil:x.coil, armazem:novoArm})),
-      'coil', 50
+      pilha.map(x=>({coil:x.coil, navio:x.navio||'', bl:x.bl||'', armazem:novoArm})),
+      'coil,navio,bl', 50
     );
     showToast(`✓ ${pilha.length} bobinas do BL ${bl} movidas para ${novoArm}!`,'#22c55e','#000');
   } catch(e){
@@ -6653,25 +6764,36 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('c
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
           <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.4rem;">PASSO 3 — Criar as tabelas via SQL</div>
           <p style="font-size:14px;color:var(--text);">No menu lateral, clique em <strong>SQL Editor</strong>, cole o SQL abaixo e clique <strong>Run</strong>:</p>
-          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-size:11px;color:var(--success);overflow-x:auto;margin-top:.5rem;line-height:1.6;">create table if not exists coilsdb (coil text primary key, armazem text, bl text, cliente text, navio text, viagem text, produto text, pesob text, pesol text);
+          <pre style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:.75rem;font-size:11px;color:var(--success);overflow-x:auto;margin-top:.5rem;line-height:1.6;">-- NOVA INSTALAÇÃO (use este SQL se estiver criando do zero)
+create table if not exists coilsdb (coil text not null, navio text not null default '', bl text not null default '', armazem text, cliente text, viagem text, produto text, pesob text, pesol text, primary key (coil, navio, bl));
 create table if not exists records (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
 create table if not exists expedicoes (id bigint primary key, coil text, data text, periodo text, bl text, navio text, veiculo text, motorista text, cliente text, viagem text, produto text, pesob text, pesol text, armazem text, obs text, "registradoEm" text, "registradoPor" text);
 create table if not exists users (id text primary key, nome text, "user" text, pass text, role text, perms text, email text);
 create table if not exists navios (nome text primary key);
+create table if not exists fat_config (chave text primary key, valor text);
 alter table coilsdb enable row level security;
 alter table records enable row level security;
 alter table expedicoes enable row level security;
 alter table users enable row level security;
 alter table navios enable row level security;
+alter table fat_config enable row level security;
 create policy "allow all" on coilsdb for all using (true) with check (true);
 create policy "allow all" on records for all using (true) with check (true);
 create policy "allow all" on expedicoes for all using (true) with check (true);
 create policy "allow all" on users for all using (true) with check (true);
 create policy "allow all" on navios for all using (true) with check (true);
+create policy "allow all" on fat_config for all using (true) with check (true);
 -- Se as tabelas já existem, rode estas linhas para adicionar as novas colunas:
 alter table records add column if not exists "registradoPor" text;
 alter table expedicoes add column if not exists "registradoPor" text;
-alter table users add column if not exists email text;</pre>
+alter table users add column if not exists email text;
+
+-- ⚠ MIGRAÇÃO — rode apenas se coilsdb já existe com PK antiga (coil):
+-- (permite mesmo coil number em navios/BLs diferentes)
+-- ALTER TABLE coilsdb DROP CONSTRAINT coilsdb_pkey;
+-- ALTER TABLE coilsdb ADD PRIMARY KEY (coil, navio, bl);
+-- UPDATE coilsdb SET navio='' WHERE navio IS NULL;
+-- UPDATE coilsdb SET bl='' WHERE bl IS NULL;</pre>
         </div>
 
         <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:1rem;">
