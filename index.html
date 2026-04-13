@@ -1641,17 +1641,18 @@ function sortAndPage(data, state){
 function renderPager(state, total, pages, onPageFn, containerId){
   if(pages<=1) return '';
   const p=state.page;
+  // onPageFn is a string like "(p)=>setPage('d',p,fn)" — extract to make valid onclick
+  // Convert to a named call: wrap with an IIFE-safe pattern
+  const call = n => `(${onPageFn})(${n})`;
   const btns=[];
-  // First, prev
-  btns.push(`<button class="btn btn-secondary btn-sm" ${p===0?'disabled':''} onclick="${onPageFn}(0)" style="font-size:11px;padding:2px 7px;">«</button>`);
-  btns.push(`<button class="btn btn-secondary btn-sm" ${p===0?'disabled':''} onclick="${onPageFn}(${p-1})" style="font-size:11px;padding:2px 7px;">‹</button>`);
-  // Page numbers (max 5 visible)
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===0?'disabled':''} onclick="${call(0)}" style="font-size:11px;padding:2px 7px;">«</button>`);
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===0?'disabled':''} onclick="${call(p-1)}" style="font-size:11px;padding:2px 7px;">‹</button>`);
   const lo=Math.max(0,p-2), hi=Math.min(pages-1,lo+4);
   for(let i=lo;i<=hi;i++){
-    btns.push(`<button class="btn ${i===p?'btn-primary':'btn-secondary'} btn-sm" onclick="${onPageFn}(${i})" style="font-size:11px;padding:2px 7px;min-width:28px;">${i+1}</button>`);
+    btns.push(`<button class="btn ${i===p?'btn-primary':'btn-secondary'} btn-sm" onclick="${call(i)}" style="font-size:11px;padding:2px 7px;min-width:28px;">${i+1}</button>`);
   }
-  btns.push(`<button class="btn btn-secondary btn-sm" ${p===pages-1?'disabled':''} onclick="${onPageFn}(${p+1})" style="font-size:11px;padding:2px 7px;">›</button>`);
-  btns.push(`<button class="btn btn-secondary btn-sm" ${p===pages-1?'disabled':''} onclick="${onPageFn}(${pages-1})" style="font-size:11px;padding:2px 7px;">»</button>`);
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===pages-1?'disabled':''} onclick="${call(p+1)}" style="font-size:11px;padding:2px 7px;">›</button>`);
+  btns.push(`<button class="btn btn-secondary btn-sm" ${p===pages-1?'disabled':''} onclick="${call(pages-1)}" style="font-size:11px;padding:2px 7px;">»</button>`);
   const showing_from=state.page*PAGE_SIZE+1, showing_to=Math.min((state.page+1)*PAGE_SIZE,total);
   return `<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;padding:.5rem 0;font-size:12px;color:var(--muted);">
     <span>${showing_from}–${showing_to} de ${total}</span>
@@ -5196,7 +5197,7 @@ function renderFaturamento(){
   const hojeStr=new Date().toISOString().split('T')[0];
   const em7dias=new Date(); em7dias.setDate(em7dias.getDate()+7);
   const em7Str=em7dias.toISOString().split('T')[0];
-  let htmlOut='', totalGeral=0, totalHandlingGeral=0, blsAtivos=0, blsVencendo=0;
+  let htmlOut='', totalGeral=0, totalHandlingGeral=0, blsAtivos=0, blsPendentes=0;
   const logoFat=getLogoFatura();
 
   // Preview logo section
@@ -5227,11 +5228,24 @@ function renderFaturamento(){
     const incompleta=descCoils<totalCoils;
 
     let blStatus=incompleta?'incompleta':emEstoque>0?'estoque':'zerada';
-    if(fs&&blStatus!==fs) return;
+
+    // Filtros de status de carga (incompleta/estoque/zerada) — aplicar antes de calcular períodos
+    if(fs==='estoque'||fs==='incompleta'||fs==='zerada'){
+      if(blStatus!==fs) return;
+    }
 
     const fat=incompleta?null:calcPeriodosBL(bl,periodoDias);
     const periodos=fat?fat.periodos:[];
     const tarifaBL=getTarifaBL(bl,tarifa);
+
+    // Filtros de status de faturamento (vencido/cobrado) — aplicar após calcular períodos
+    if(fs==='vencido'||fs==='cobrado'){
+      if(!periodos.length) return;
+      const temVencido=periodos.some(p=>!getFatState(bl,p.num).enviado);
+      const temCobrado=periodos.some(p=>getFatState(bl,p.num).enviado);
+      if(fs==='vencido' && !temVencido) return;
+      if(fs==='cobrado' && !temCobrado) return;
+    }
 
     // Status badge
     let statusBadge;
@@ -5267,7 +5281,7 @@ function renderFaturamento(){
           // O primeiro dia do período já é a data de cobrança — qualquer período não enviado está vencido
           statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">⚠ VENCIDO</span>`;
           rowBg='background:rgba(224,92,26,.06);';
-          blsVencendo++;
+          blsPendentes++;
         }
         if(valor) totalBL+=valor, totalGeral+=valor;
         if(p.num===1&&handlingVal>0){ totalBL+=handlingVal; totalGeral+=handlingVal; totalHandlingGeral+=handlingVal; }
@@ -5366,7 +5380,7 @@ function renderFaturamento(){
   });
 
   const hfb=document.getElementById('home-fat-bls');    if(hfb) hfb.textContent=blsAtivos;
-  const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsVencendo;
+  const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsPendentes;
 
   const totalArmazGeral=totalGeral-totalHandlingGeral;
   const totalHeader=totalGeral>0
@@ -5379,7 +5393,7 @@ function renderFaturamento(){
             ${totalHandlingGeral>0?`<span>Handling: <strong style="color:#60a5fa;">R$ ${totalHandlingGeral.toFixed(2).replace('.',',')}</strong></span>`:''}
           </div>
         </div>
-        <span style="font-size:12px;color:var(--muted);">${blsAtivos} BL(s) em estoque${blsVencendo>0?` · <span style="color:var(--warning);">${blsVencendo} vencendo</span>`:''}</span>
+        <span style="font-size:12px;color:var(--muted);">${blsAtivos} BL(s) em estoque${blsPendentes>0?` · <span style="color:var(--danger);">${blsPendentes} com período(s) vencido(s)</span>`:''}</span>
       </div>`:' ';
 
   container.innerHTML=htmlOut
@@ -5773,6 +5787,12 @@ function _getFatBLsFiltrados(){
     if(fs==='incompleta') return desc<dbC.length;
     if(fs==='estoque')    return desc===dbC.length&&desc>exp;
     if(fs==='zerada')     return desc===dbC.length&&desc<=exp;
+    if(fs==='vencido'||fs==='cobrado'){
+      const fat=calcPeriodosBL(bl,periodoDias);
+      if(!fat||!fat.periodos.length) return false;
+      if(fs==='vencido') return fat.periodos.some(p=>!getFatState(bl,p.num).enviado);
+      if(fs==='cobrado') return fat.periodos.some(p=>getFatState(bl,p.num).enviado);
+    }
     return true;
   });
   return {bls,tarifa,periodoDias};
@@ -6179,7 +6199,7 @@ function renderDashFat(){
 
   let totalVencidos=0, totalCobrados=0;
   let valorVencidos=0, valorCobrados=0;
-  const vencidosRows=[], clienteMap={};
+  const vencidosRows=[], clienteMap={}, navioMap={};
 
   bls.forEach(bl=>{
     const dbCoils=coilsDB.filter(c=>c.bl===bl);
@@ -6202,12 +6222,14 @@ function renderDashFat(){
 
       if(!clienteMap[cliente]) clienteMap[cliente]={vencido:0,cobrado:0,valVencido:0,valCobrado:0};
       const cm=clienteMap[cliente];
+      if(!navioMap[navio]) navioMap[navio]={vencido:0,cobrado:0,valVencido:0,valCobrado:0};
+      const nm=navioMap[navio];
 
       if(state.enviado){
-        totalCobrados++; valorCobrados+=total; cm.cobrado++; cm.valCobrado+=total;
+        totalCobrados++; valorCobrados+=total; cm.cobrado++; cm.valCobrado+=total; nm.cobrado++; nm.valCobrado+=total;
       } else {
         // 1º dia do período = data de cobrança → qualquer período não enviado é vencido
-        totalVencidos++; valorVencidos+=total; cm.vencido++; cm.valVencido+=total;
+        totalVencidos++; valorVencidos+=total; cm.vencido++; cm.valVencido+=total; nm.vencido++; nm.valVencido+=total;
         vencidosRows.push({bl,cliente,navio,num:p.num,dtIni,dtFim,total});
       }
     });
@@ -6274,9 +6296,8 @@ function renderDashFat(){
   const cliEntries=Object.entries(clienteMap).sort((a,b)=>b[1].valVencido-a[1].valVencido);
   if(!cliEntries.length){
     cliDiv.innerHTML=`<div class="empty-state"><span class="empty-icon">👥</span>Nenhum dado de faturamento disponível.</div>`;
-    return;
-  }
-  cliDiv.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
+  } else {
+    cliDiv.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
     <thead><tr style="background:var(--bg);">
       <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CLIENTE</th>
       <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--danger);">⚠ VENCIDOS</th>
@@ -6290,6 +6311,31 @@ function renderDashFat(){
       <td style="padding:.5rem .75rem;text-align:right;font-weight:700;color:${d.valVencido>0?'var(--danger)':'var(--muted)'};">${d.valVencido>0?fmt(d.valVencido):'—'}</td>
     </tr>`).join('')}</tbody>
   </table>`;
+  }
+
+  // Resumo por navio
+  const navDiv=document.getElementById('dashfat-navios');
+  if(navDiv){
+    const navEntries=Object.entries(navioMap).sort((a,b)=>b[1].valVencido-a[1].valVencido);
+    if(!navEntries.length){
+      navDiv.innerHTML=`<div class="empty-state"><span class="empty-icon">🚢</span>Nenhum dado por navio disponível.</div>`;
+    } else {
+      navDiv.innerHTML=`<table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead><tr style="background:var(--bg);">
+        <th style="padding:.5rem .75rem;text-align:left;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">NAVIO</th>
+        <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--danger);">⚠ VENCIDOS</th>
+        <th style="padding:.5rem .75rem;text-align:center;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--success);">✓ COBRADOS</th>
+        <th style="padding:.5rem .75rem;text-align:right;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);">TOTAL EM ABERTO</th>
+      </tr></thead>
+      <tbody>${navEntries.map(([nav,d],i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="padding:.5rem .75rem;font-weight:700;color:var(--info);">🚢 ${nav}</td>
+        <td style="padding:.5rem .75rem;text-align:center;">${d.vencido>0?`<span style="color:var(--danger);font-weight:700;">${d.vencido} · ${fmt(d.valVencido)}</span>`:'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:center;">${d.cobrado>0?`<span style="color:var(--success);">${d.cobrado} · ${fmt(d.valCobrado)}</span>`:'—'}</td>
+        <td style="padding:.5rem .75rem;text-align:right;font-weight:700;color:${d.valVencido>0?'var(--danger)':'var(--muted)'};">${d.valVencido>0?fmt(d.valVencido):'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+    }
+  }
 }
 
 
@@ -7018,6 +7064,11 @@ alter table users add column if not exists email text;
       <div class="rpt-section-title">👥 RESUMO POR CLIENTE</div>
       <div id="dashfat-clientes"></div>
     </div>
+    <!-- RESUMO POR NAVIO -->
+    <div class="rpt-section">
+      <div class="rpt-section-title">🚢 RESUMO POR NAVIO</div>
+      <div id="dashfat-navios"></div>
+    </div>
   </div>
 </div>
 
@@ -7130,6 +7181,8 @@ alter table users add column if not exists email text;
           <select id="fat-filter-status" onchange="renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
             <option value="">Todos</option>
+            <option value="vencido">⚠ Vencidos (não faturados)</option>
+            <option value="cobrado">✓ Cobrados (faturados)</option>
             <option value="estoque">📦 Em Estoque</option>
             <option value="incompleta">⏳ Descarga Incompleta</option>
             <option value="zerada">✓ Carga Zerada</option>
