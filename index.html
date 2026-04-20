@@ -4528,7 +4528,11 @@ function exportReportPDF(){
 // ══════════════════════════════════════════
 
 function buildMapFilters(){
-  const arms = [...new Set(coilsDB.map(c=>c.armazem).filter(Boolean))].sort();
+  const normArm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
+  // Use normalized names (deduped) for the dropdown
+  const armsRaw = coilsDB.map(c=>c.armazem).filter(Boolean);
+  const armsNorm = [...new Set(armsRaw.map(normArm))].sort();
   const bls   = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
   const navs  = [...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
 
@@ -4538,7 +4542,7 @@ function buildMapFilters(){
   if(!aEl) return;
 
   const cur = {a:aEl.value, b:bEl.value, n:nEl.value};
-  aEl.innerHTML='<option value="">Todos os armazéns</option>'+arms.map(v=>`<option value="${v}">${v}</option>`).join('');
+  aEl.innerHTML='<option value="">Todos os armazéns</option>'+armsNorm.map(v=>`<option value="${v}">${v}</option>`).join('');
   bEl.innerHTML='<option value="">Todos os BLs</option>'+bls.map(v=>`<option value="${v}">${v}</option>`).join('');
   nEl.innerHTML='<option value="">Todos os navios</option>'+navs.map(v=>`<option value="${v}">${v}</option>`).join('');
   aEl.value=cur.a; bEl.value=cur.b; nEl.value=cur.n;
@@ -4549,9 +4553,13 @@ function renderMapa(){
   const fb = document.getElementById('map-filter-bl')?.value||'';
   const fn = document.getElementById('map-filter-navio')?.value||'';
 
+  // Filter coilsDB with normalized armazem comparison
+  const normArm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
+
   // Filter coilsDB
   const base = coilsDB.filter(c=>
-    (!fa||c.armazem===fa) && (!fb||c.bl===fb) && (!fn||c.navio===fn)
+    (!fa||normArm(c.armazem)===normArm(fa)) && (!fb||c.bl===fb) && (!fn||c.navio===fn)
   );
 
   // Sets for status lookup
@@ -4561,11 +4569,16 @@ function renderMapa(){
   // Group by armazem → bl → ordered by descarga sequence (LIFO: última descarregada = topo da pilha)
   const byArm = {};
   base.forEach(c=>{
-    const arm = c.armazem||'(sem armazém)';
+    // normArm: same armazem name regardless of case, accents, dashes or extra spaces
+    const normArm = s => (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+      .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
+    const armNorm = normArm(c.armazem);
+    const armKey  = armNorm || '(sem armazém)';
+    // Use first seen display name for each normalized key
+    if(!byArm[armKey]) byArm[armKey]={};
     const bl  = c.bl||'(sem BL)';
-    if(!byArm[arm]) byArm[arm]={};
-    if(!byArm[arm][bl]) byArm[arm][bl]=[];
-    byArm[arm][bl].push(c);
+    if(!byArm[armKey][bl]) byArm[armKey][bl]=[];
+    byArm[armKey][bl].push(c);
   });
 
   // Sort each pilha by descarga order: records ordered by id desc = primeiro registrado = mais ao fundo
@@ -4577,13 +4590,15 @@ function renderMapa(){
         const rec = records.find(r=>r.coil===c.coil);
         c._descSeq = rec ? rec.id : Infinity; // not yet discharged = pending
       });
-      // Sort: _mapPos override takes priority, then descarga sequence
-      // smaller = fundo (bottom), larger = topo (top)
+      // Sort: _mapPos override takes priority (when set), then descarga sequence
+      // smaller _mapPos = fundo (bottom), larger = topo (top)
       pile.sort((a,b)=>{
-        if(a._mapPos && b._mapPos) return a._mapPos - b._mapPos;
-        if(a._mapPos) return -1; // has manual pos → use it
-        if(b._mapPos) return 1;
-        return a._descSeq - b._descSeq; // default: LIFO
+        const ap = (a._mapPos != null && a._mapPos > 0) ? a._mapPos : null;
+        const bp = (b._mapPos != null && b._mapPos > 0) ? b._mapPos : null;
+        if(ap !== null && bp !== null) return ap - bp;   // ambos têm posição manual
+        if(ap !== null) return -1;                        // só a tem → vai primeiro (fundo)
+        if(bp !== null) return 1;                         // só b tem → vai primeiro (fundo)
+        return a._descSeq - b._descSeq;                   // fallback: ordem de descarga
       });
     });
   });
@@ -4632,7 +4647,8 @@ function renderMapa(){
               bg='rgba(240,165,0,.08)'; border='rgba(240,165,0,.25)'; txtColor='var(--muted)'; label='PEND.';
             }
             return `<div title="${c.coil} — ${c.cliente||''} ${c.produto||''} ${c.pesob?fmtKg(c.pesob)+' kg':''}"
-              style="background:${bg};border:1px solid ${border};border-radius:4px;padding:5px 8px;margin-bottom:2px;min-width:170px;cursor:default;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:4px;"
+              onclick="abrirMapEdit('${c.coil}','${c.navio||''}','${c.bl||''}')"
+              style="background:${bg};border:1px solid ${border};border-radius:4px;padding:5px 8px;margin-bottom:2px;min-width:170px;cursor:pointer;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:4px;"
               onmouseover="this.style.transform='scale(1.01)'" onmouseout="this.style.transform=''">
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -4641,7 +4657,7 @@ function renderMapa(){
                 </div>
                 <div style="font-size:10px;color:var(--muted);margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}${c._mapObs?` · <em>${c._mapObs}</em>`:''}</div>
               </div>
-              <button onclick="event.stopPropagation();abrirMapEdit('${c.coil}')"
+              <button onclick="event.stopPropagation();abrirMapEdit('${c.coil}','${c.navio||''}','${c.bl||''}')"
                 style="background:transparent;border:1px solid ${border};border-radius:3px;cursor:pointer;color:${txtColor};font-size:10px;padding:2px 5px;flex-shrink:0;opacity:.7;transition:opacity .15s;"
                 onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.7'"
                 title="Editar posição">✏</button>
@@ -4651,7 +4667,10 @@ function renderMapa(){
           return `<div style="display:flex;flex-direction:column;min-width:190px;">
             <!-- Stack header -->
             <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px 8px 0 0;padding:.6rem .8rem;border-bottom:none;">
-              <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;margin-bottom:2px;">BL: ${bl}</div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+                <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;">BL: ${bl}</div>
+                <button onclick="abrirDividirPilha('${bl}')" class="btn btn-secondary btn-sm" style="font-size:10px;padding:1px 6px;" title="Mover bobinas selecionadas para outro armazém">✂ DIVIDIR</button>
+              </div>
               <div style="font-size:10px;color:var(--muted);">${navio} ${cliente?'· '+cliente:''}</div>
               <div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;">
                 <span style="font-size:9px;background:rgba(34,197,94,.1);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${descCount-expCount} em estoque</span>
@@ -4696,12 +4715,18 @@ function applyMapOverrides(){
   });
 }
 
-function abrirMapEdit(coil){
-  const c = coilsDB.find(x=>x.coil===coil);
+function abrirMapEdit(coil, navio, bl){
+  // Suporte a mesmo coil em navios/BLs diferentes
+  const c = coilsDB.find(x=>x.coil===coil &&
+    (navio===undefined || (x.navio||'')===(navio||'')) &&
+    (bl===undefined    || (x.bl||'')===(bl||'')));
   if(!c) return;
-  const ov = mapOverrides[coil]||{};
+  const ovKey = coil+'|'+(c.navio||'')+'|'+(c.bl||'');
+  const ov = mapOverrides[ovKey] || mapOverrides[coil] || {};
 
   document.getElementById('map-edit-coil').value       = coil;
+  document.getElementById('map-edit-coil-navio').value = c.navio||'';
+  document.getElementById('map-edit-coil-bl').value    = c.bl||'';
   document.getElementById('map-edit-coil-label').textContent = coil;
   document.getElementById('map-edit-coil-info').textContent  =
     [c.navio, c.cliente, c.bl, c.produto].filter(Boolean).join(' · ');
@@ -4721,22 +4746,26 @@ function abrirMapEdit(coil){
 
 async function salvarMapEdit(){
   const coil    = document.getElementById('map-edit-coil').value;
+  const cnavio  = document.getElementById('map-edit-coil-navio').value;
+  const cbl     = document.getElementById('map-edit-coil-bl').value;
   const armazem = document.getElementById('map-edit-armazem').value.trim().toUpperCase();
   const posicao = parseInt(document.getElementById('map-edit-posicao').value)||null;
   const obs     = document.getElementById('map-edit-obs-pos').value.trim();
   if(!coil) return;
 
-  // Save override
-  mapOverrides[coil] = { armazem, posicao, obs };
+  // Save override by composite key coil+navio+bl
+  const ovKey = coil+'|'+cnavio+'|'+cbl;
+  mapOverrides[ovKey] = { armazem, posicao, obs };
+  // Legacy single-key for compat
+  mapOverrides[coil]  = { armazem, posicao, obs };
   saveMapOverrides();
 
   // Update coilsDB in memory
-  const c = coilsDB.find(x=>x.coil===coil);
+  const c = coilsDB.find(x=>x.coil===coil&&(x.navio||'')===cnavio&&(x.bl||'')===cbl);
   if(c){
-    c.armazem  = armazem;
-    c._mapPos  = posicao;
-    c._mapObs  = obs;
-    // Sync armazem to Supabase
+    c.armazem = armazem;
+    c._mapPos = posicao;
+    c._mapObs = obs;
     try{
       await supaUpsert('coilsdb', {coil:c.coil, navio:c.navio||'', bl:c.bl||'', armazem}, 'coil,navio,bl');
     } catch(e){
@@ -4855,25 +4884,190 @@ function exportMapaExcel(){
   });
   Object.values(byBL).forEach(p=>p.sort((a,b)=>a._descSeq-b._descSeq));
   const wb=XLSX.utils.book_new();
+
+  // Sheet 1: Mapa atual (leitura)
   const rows=[['Posição na Pilha','BL','Coil Number','Status','Armazém','Navio','Cliente','P.Bruto (kg)','P.Líquido (kg)','Produto','Observação']];
   Object.entries(byBL).forEach(([bl,pile])=>{
     pile.forEach((c,i)=>{
-      const pos=pile.length-i; // topo=maior número
+      const pos=pile.length-i;
       const status=expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE DESC.';
       rows.push([pos,bl,c.coil,status,c.armazem||'',c.navio||'',c.cliente||'',c.pesob||'',c.pesol||'',c.produto||'',pos===pile.length?'← PRÓXIMA A SAIR':'']);
     });
-    rows.push([]); // blank separator
+    rows.push([]);
   });
   const ws=XLSX.utils.aoa_to_sheet(rows);
   ws['!cols']=[{wch:10},{wch:20},{wch:22},{wch:16},{wch:12},{wch:18},{wch:16},{wch:12},{wch:12},{wch:16},{wch:20}];
   XLSX.utils.book_append_sheet(wb,ws,'Mapa Armazém');
+
+  // Sheet 2: Atualização de Pilha (editável para reimportar)
+  // Colunas: Coil Number | Armazém Novo | Posição Nova | Observação
+  // Preencha Armazém Novo e/ou Posição Nova para mover/reordenar
+  const updRows=[
+    ['INSTRUÇÕES: Preencha "Armazém Novo" para mover a bobina. Preencha "Posição Nova" para reordenar (1=fundo, maior=topo). Deixe em branco para não alterar.'],
+    [],
+    ['Coil Number','BL','Navio','Armazém Atual','Posição Atual','Armazém Novo','Posição Nova','Observação']
+  ];
+  Object.entries(byBL).forEach(([bl,pile])=>{
+    pile.forEach((c,i)=>{
+      const posAtual=pile.length-i;
+      updRows.push([c.coil,bl,c.navio||'',c.armazem||'',posAtual,'','','']);
+    });
+    updRows.push([]);
+  });
+  const wsUpd=XLSX.utils.aoa_to_sheet(updRows);
+  wsUpd['!cols']=[{wch:22},{wch:20},{wch:18},{wch:14},{wch:14},{wch:14},{wch:14},{wch:22}];
+  // Merge instruction cell
+  wsUpd['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
+  XLSX.utils.book_append_sheet(wb,wsUpd,'Atualização de Pilha');
+
   XLSX.writeFile(wb,`mapa_armazem_${new Date().toISOString().slice(0,10)}.xlsx`);
-  showToast('✓ Mapa Excel exportado!','#22c55e','#000');
+  showToast('✓ Mapa Excel exportado com aba de atualização!','#22c55e','#000');
 }
 
-// ══════════════════════════════════════════
-// FATURAMENTO — ARMAZENAGEM POR BL/CLIENTE
-// ══════════════════════════════════════════
+// ── Importar mapa Excel — lê aba "Atualização de Pilha" ──────────
+async function importarMapaExcel(file){
+  if(!file) return;
+  if(!file.name.match(/\.(xlsx|xls)$/i)){ showToast('Use .xlsx ou .xls','#e05c1a','#fff'); return; }
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'});
+      // Procura pela aba "Atualização de Pilha"
+      const sheetName=wb.SheetNames.find(s=>/atualiza|pilha|updat/i.test(s));
+      if(!sheetName){
+        showToast('⚠ Aba "Atualização de Pilha" não encontrada no arquivo.','#e05c1a','#fff');
+        return;
+      }
+      const ws=wb.Sheets[sheetName];
+      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:''});
+
+      // Achar linha de cabeçalho (linha com "Coil Number")
+      let hdrIdx=raw.findIndex(r=>r.some(c=>String(c).toLowerCase().includes('coil')));
+      if(hdrIdx<0){ showToast('⚠ Cabeçalho não encontrado na aba.','#e05c1a','#fff'); return; }
+      const hdr=raw[hdrIdx].map(c=>String(c).toLowerCase().trim());
+      const col=k=>hdr.findIndex(h=>h.includes(k));
+
+      const iCoil   = col('coil');
+      const iArmNov = hdr.findIndex(h=>h.includes('armazém') && h.includes('novo') || h.includes('novo') && h.includes('arm'));
+      const iPosNov = hdr.findIndex(h=>h.includes('posição') && h.includes('nova') || h.includes('nova') && h.includes('pos'));
+      const iObs    = col('observ');
+      const iNavio  = col('navio');
+      const iBL     = col('bl');
+
+      if(iCoil<0){ showToast('⚠ Coluna "Coil Number" não encontrada.','#e05c1a','#fff'); return; }
+
+      const dataRows=raw.slice(hdrIdx+1).filter(r=>r[iCoil]&&String(r[iCoil]).trim());
+      let updated=0, skipped=0;
+
+      showLoading(`Processando ${dataRows.length} linhas...`);
+
+      for(const row of dataRows){
+        const coil    = sanitizeCoil(String(row[iCoil]||''));
+        const armNov  = iArmNov>=0 ? String(row[iArmNov]||'').trim().toUpperCase() : '';
+        const posNov  = iPosNov>=0 ? parseInt(row[iPosNov])||null : null;
+        const obsVal  = iObs>=0    ? String(row[iObs]||'').trim() : '';
+        const navioV  = iNavio>=0  ? String(row[iNavio]||'').trim() : '';
+        const blV     = iBL>=0     ? String(row[iBL]||'').trim() : '';
+
+        if(!coil){ skipped++; continue; }
+        if(!armNov && !posNov && !obsVal){ skipped++; continue; } // nada a alterar
+
+        // Encontrar a bobina no banco (por coil, e navio/bl se disponíveis)
+        const c=coilsDB.find(x=>x.coil===coil&&
+          (!navioV||(x.navio||'').toUpperCase()===navioV.toUpperCase())&&
+          (!blV||(x.bl||'').toUpperCase()===blV.toUpperCase()));
+        if(!c){ skipped++; continue; }
+
+        // Aplicar alterações
+        const ovKey=coil+'|'+(c.navio||'')+'|'+(c.bl||'');
+        mapOverrides[ovKey]={ armazem:armNov||c.armazem, posicao:posNov, obs:obsVal||c._mapObs||'' };
+        mapOverrides[coil] ={ armazem:armNov||c.armazem, posicao:posNov, obs:obsVal||c._mapObs||'' };
+        if(armNov) c.armazem=armNov;
+        if(posNov) c._mapPos=posNov;
+        if(obsVal) c._mapObs=obsVal;
+
+        // Sync ao Supabase se armazém mudou
+        if(armNov){
+          try{
+            await supa(`coilsdb?coil=eq.${encodeURIComponent(c.coil)}&navio=eq.${encodeURIComponent(c.navio||'')}&bl=eq.${encodeURIComponent(c.bl||'')}`,
+              {method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({armazem:armNov})});
+          }catch(err){ console.warn('sync failed',c.coil,err.message); }
+        }
+        updated++;
+      }
+
+      saveMapOverrides();
+      // Re-aplicar todos os overrides para garantir que _mapPos está correto em memória
+      applyMapOverrides();
+      hideLoading();
+      buildMapFilters();
+      renderMapa();
+      showToast(`✓ ${updated} bobina(s) atualizadas, ${skipped} ignoradas.`,'#22c55e','#000');
+      registrarAudit('edicao',`Importação de mapa: ${updated} posições atualizadas`,{updated,skipped});
+
+    }catch(err){
+      hideLoading();
+      showToast('⚠ Erro ao ler arquivo: '+err.message,'#e05c1a','#fff');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── Dividir pilha — mover bobinas selecionadas para outra pilha ──
+function abrirDividirPilha(bl){
+  const pile=coilsDB.filter(c=>(c.bl||'')===(bl||''));
+  if(!pile.length) return;
+  const descSet=new Set(records.map(r=>r.coil));
+  const expSet=new Set(expedicoes.map(r=>r.coil));
+
+  document.getElementById('split-bl-label').textContent=bl;
+  document.getElementById('split-destino').value='';
+
+  const lista=document.getElementById('split-coil-list');
+  lista.innerHTML=pile.map(c=>{
+    const status=expSet.has(c.coil)?'EXP':descSet.has(c.coil)?'OK':'?';
+    const color=expSet.has(c.coil)?'var(--exp)':descSet.has(c.coil)?'var(--success)':'var(--accent)';
+    return `<label style="display:flex;align-items:center;gap:.6rem;padding:.3rem 0;cursor:pointer;">
+      <input type="checkbox" value="${c.coil}" data-navio="${c.navio||''}" data-bl="${c.bl||''}"
+        style="accent-color:var(--accent);width:15px;height:15px;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${color};">${c.coil}</span>
+      <span style="font-size:11px;color:var(--muted);">${c.armazem||'?'} · ${(c.pesob||0)} kg · <span style="color:${color}">${status}</span></span>
+    </label>`;
+  }).join('');
+
+  document.getElementById('modal-split-pile').classList.add('open');
+}
+
+async function confirmarDividirPilha(){
+  const destino=document.getElementById('split-destino').value.trim().toUpperCase();
+  if(!destino){ showToast('Informe o armazém de destino.','#e05c1a','#fff'); return; }
+  const checked=[...document.querySelectorAll('#split-coil-list input:checked')];
+  if(!checked.length){ showToast('Selecione ao menos uma bobina.','#e05c1a','#fff'); return; }
+
+  showLoading(`Movendo ${checked.length} bobina(s) para ${destino}...`);
+  let moved=0;
+  for(const cb of checked){
+    const coil=cb.value, navio=cb.dataset.navio, bl=cb.dataset.bl;
+    const c=coilsDB.find(x=>x.coil===coil&&(x.navio||'')===navio&&(x.bl||'')===bl);
+    if(!c) continue;
+    c.armazem=destino;
+    const ovKey=coil+'|'+navio+'|'+bl;
+    mapOverrides[ovKey]={...(mapOverrides[ovKey]||{}), armazem:destino};
+    mapOverrides[coil] ={...(mapOverrides[coil]||{}),  armazem:destino};
+    try{
+      await supa(`coilsdb?coil=eq.${encodeURIComponent(coil)}&navio=eq.${encodeURIComponent(navio)}&bl=eq.${encodeURIComponent(bl)}`,
+        {method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({armazem:destino})});
+    }catch(err){ console.warn('sync failed',coil); }
+    moved++;
+  }
+  saveMapOverrides();
+  hideLoading();
+  closeModal('modal-split-pile');
+  buildMapFilters();
+  renderMapa();
+  registrarAudit('edicao',`Divisão de pilha: ${moved} bobina(s) movidas para ${destino}`,{moved,destino});
+  showToast(`✓ ${moved} bobina(s) movidas para ${destino}!`,'#22c55e','#000');
+}
 
 
 
@@ -4905,7 +5099,19 @@ function getDataFimDescarga(bl){
   return descarregados.map(r=>r.data).sort().pop();
 }
 
-// Retorna os períodos de cobrança de um BL com peso em estoque em cada período
+// Retorna a data da última expedição de um BL (quando o estoque zerou)
+function getDataFimExpedicao(bl){
+  const _nbl=String(bl||'').trim().toUpperCase();
+  const bobinas=coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===_nbl);
+  if(!bobinas.length) return null;
+  // Pega todas as expedições de bobinas deste BL
+  const expBL=bobinas
+    .map(c=>expedicoes.find(e=>e.coil===c.coil))
+    .filter(Boolean);
+  if(!expBL.length) return null;
+  // Data mais recente = última bobina a sair
+  return expBL.map(r=>r.data).sort().pop();
+}
 // ── Chave de armazenamento para pesos congelados por período ──────
 // formato: sp_fat_peso_<bl>_<periodoNum> → pesoBruto em kg
 // ══════════════════════════════════════════════════════
@@ -5250,7 +5456,11 @@ function renderFaturamento(){
     // Status badge
     let statusBadge;
     if(incompleta) statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(240,165,0,.12);color:var(--accent);border:1px solid rgba(240,165,0,.3);font-family:'JetBrains Mono',monospace;">⏳ DESCARGA INCOMPLETA — ${descCoils}/${totalCoils}</span>`;
-    else if(blStatus==='zerada') statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA</span>`;
+    else if(blStatus==='zerada'){
+      const dataFimExp=getDataFimExpedicao(bl);
+      const dataFimFmt=dataFimExp?dataFimExp.split('-').reverse().join('/'):'';
+      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA${dataFimFmt?' · última saída: '+dataFimFmt:''}</span>`;
+    }
     else { statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`; blsAtivos++; }
 
     // Periods rows
@@ -6975,6 +7185,10 @@ alter table users add column if not exists email text;
       </select>
       <button class="btn btn-secondary btn-sm" onclick="exportMapaPDF()">↓ MAPA PDF</button>
       <button class="btn btn-secondary btn-sm" onclick="exportMapaExcel()">↓ MAPA EXCEL</button>
+      <label class="btn btn-primary btn-sm" style="cursor:pointer;">
+        ↑ IMPORTAR MAPA
+        <input type="file" accept=".xlsx,.xls" style="display:none" onchange="importarMapaExcel(this.files[0])">
+      </label>
     </div>
 
     <!-- LEGENDA -->
@@ -6982,7 +7196,7 @@ alter table users add column if not exists email text;
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#22c55e;display:inline-block;"></span> Disponível (última descarregada = 1ª a sair)</span>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#a855f7;display:inline-block;"></span> Expedida</span>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:rgba(240,165,0,.4);display:inline-block;"></span> Aguardando (soterrada)</span>
-      <span style="display:flex;align-items:center;gap:.4rem;color:var(--muted);">Clique em <kbd style="background:var(--surface2);border:1px solid var(--border);border-radius:3px;padding:0 4px;font-size:10px;">✏</kbd> para editar posição de uma bobina</span>
+      <span style="display:flex;align-items:center;gap:.4rem;color:var(--muted);">Clique em qualquer bobina para editar sua posição</span>
     </div>
 
     <div id="map-container"></div>
@@ -6995,6 +7209,8 @@ alter table users add column if not exists email text;
     <div class="modal-title">🗺 EDITAR POSIÇÃO NO MAPA</div>
     <div class="modal-body">
       <input type="hidden" id="map-edit-coil">
+      <input type="hidden" id="map-edit-coil-navio">
+      <input type="hidden" id="map-edit-coil-bl">
       <!-- Info da bobina -->
       <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1.2rem;font-family:'JetBrains Mono',monospace;">
         <div style="font-size:13px;font-weight:700;color:var(--accent);" id="map-edit-coil-label">—</div>
@@ -7350,6 +7566,30 @@ alter table users add column if not exists email text;
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-change-pass')">CANCELAR</button>
       <button class="btn btn-primary" onclick="confirmarAlterarSenha()">✓ ALTERAR SENHA</button>
+    </div>
+  </div>
+</div>
+<!-- ═══════════════════════════════════════════════════
+     MODAL: DIVIDIR PILHA
+═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-split-pile">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title">✂ DIVIDIR PILHA</div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--muted);margin-bottom:1rem;">
+        Selecione as bobinas do BL <strong id="split-bl-label" style="color:var(--accent);font-family:'JetBrains Mono',monospace;"></strong> que deseja mover para outro armazém:
+      </div>
+      <div id="split-coil-list" style="max-height:280px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;"></div>
+      <div class="form-group">
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Armazém de Destino *</label>
+        <input type="text" id="split-destino" placeholder="ex: ARM-02, BLOCO-B"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;outline:none;text-transform:uppercase;"
+          oninput="this.value=this.value.toUpperCase()">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-split-pile')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="confirmarDividirPilha()">✓ MOVER SELECIONADAS</button>
     </div>
   </div>
 </div>
