@@ -5072,7 +5072,7 @@ async function confirmarDividirPilha(){
 
 
 function getTarifaBL(bl, tarifaGlobal){
-  const v = localStorage.getItem(`sp_fat_tarifa_bl_${bl}`);
+  const v = _fatGet(getTarifaKey(bl));
   return v !== null ? parseFloat(v) : tarifaGlobal;
 }
 
@@ -5119,75 +5119,100 @@ function getDataFimExpedicao(bl){
 // ══════════════════════════════════════════════════════
 
 // ── Storage keys ─────────────────────────────────────
-function getFatKey(bl,num){ return `sp_fat_peso_${bl}_${num}`; }
-function getTarifaKey(bl){  return `sp_fat_tarifa_bl_${bl}`; }
-function getFatLogoKey(){   return 'sp_fat_logo'; }
+// ─── FAT CACHE — substitui localStorage para chaves dinâmicas de faturamento ───
+// Evita "exceeded quota" quando há centenas de BLs/períodos
+// Chaves estáticas (tarifa global, período, logo, clientes) continuam no localStorage
+// Chaves dinâmicas (por BL: peso, state, tarifa_bl, handling) ficam apenas em memória
+// O Supabase fat_config é a fonte verdade e recarregado no login/sync
+const _fatCache = {};
+
+function _fatGet(key){
+  // Chaves estáticas: ler localStorage
+  if(['sp_fat_tarifa','sp_fat_periodo','sp_fat_logo','sp_clientes','sp_fat_hist'].includes(key)){
+    return localStorage.getItem(key);
+  }
+  // Chaves dinâmicas: ler cache em memória (populado via applyFatConfig no login/sync)
+  return key in _fatCache ? _fatCache[key] : null;
+}
+
+function _fatSet(key, value){
+  // Chaves estáticas: salvar no localStorage
+  if(['sp_fat_tarifa','sp_fat_periodo','sp_fat_logo','sp_clientes','sp_fat_hist'].includes(key)){
+    try{ localStorage.setItem(key, value); }catch(e){ console.warn('[fat] localStorage full, key skipped:', key); }
+    return;
+  }
+  // Chaves dinâmicas: salvar apenas em memória
+  _fatCache[key] = value;
+}
+
+function _fatRemove(key){
+  delete _fatCache[key];
+  try{ localStorage.removeItem(key); }catch(e){}
+}
+
+function getFatKey(bl,num)     { return `sp_fat_peso_${bl}_${num}`; }
+function getTarifaKey(bl)      { return `sp_fat_tarifa_bl_${bl}`; }
+function getFatLogoKey()       { return 'sp_fat_logo'; }
 function getFatStateKey(bl,num){ return `sp_fat_state_${bl}_${num}`; }
-function getHandlingKey(bl){    return `sp_fat_handling_${bl}`; }
+function getHandlingKey(bl)    { return `sp_fat_handling_${bl}`; }
 
 // Estado por período: { enviado, nf, handling, dataEnvio, usuario }
 function getFatState(bl,num){
-  try{ return JSON.parse(localStorage.getItem(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
+  try{ return JSON.parse(_fatGet(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
 }
 function setFatState(bl,num,state){
   const v=JSON.stringify(state);
-  localStorage.setItem(getFatStateKey(bl,num), v);
+  _fatSet(getFatStateKey(bl,num), v);
   fatConfigSet('state_'+bl+'_'+num, v);
 }
 function getHandlingBL(bl){
-  const v=localStorage.getItem(getHandlingKey(bl));
+  const v=_fatGet(getHandlingKey(bl));
   return v!==null ? parseFloat(v) : null;
 }
-function setHandlingBL(bl,v){ localStorage.setItem(getHandlingKey(bl), String(v)); fatConfigSet('handling_'+bl, String(v)); }
+function setHandlingBL(bl,v){ _fatSet(getHandlingKey(bl), String(v)); fatConfigSet('handling_'+bl, String(v)); }
 
 function getCongeladoPeso(bl,num){
-  const v=localStorage.getItem(getFatKey(bl,num));
+  const v=_fatGet(getFatKey(bl,num));
   return v!==null ? parseFloat(v) : null;
 }
 function congelarPeso(bl,num,kg){
-  localStorage.setItem(getFatKey(bl,num), String(kg));
+  _fatSet(getFatKey(bl,num), String(kg));
   fatConfigSet('peso_'+bl+'_'+num, String(kg));
 }
 
 // Limpa todos os pesos congelados de um BL (força recálculo no próximo render)
 function limparPesosCongelados(bl){
-  for(let i=0;i<localStorage.length;i++){
-    const k=localStorage.key(i);
-    if(k&&k.startsWith(`sp_fat_peso_${bl}_`)){ localStorage.removeItem(k); i--; }
-  }
+  // Remove do _fatCache
+  Object.keys(_fatCache).forEach(k=>{ if(k.startsWith(`sp_fat_peso_${bl}_`)) delete _fatCache[k]; });
 }
 
-// Limpa pesos congelados de todos os BLs da lista (chamado após importar banco)
 function limparPesosCongeladosBatch(bls){
   if(!bls||!bls.length) return;
-  for(let i=0;i<localStorage.length;i++){
-    const k=localStorage.key(i);
-    if(!k||!k.startsWith('sp_fat_peso_')) continue;
-    const bl=bls.find(b=>k.startsWith(`sp_fat_peso_${b}_`));
-    if(bl){ localStorage.removeItem(k); i--; }
-  }
+  Object.keys(_fatCache).forEach(k=>{
+    if(!k.startsWith('sp_fat_peso_')) return;
+    if(bls.some(b=>k.startsWith(`sp_fat_peso_${b}_`))) delete _fatCache[k];
+  });
 }
 
 // Remove pesos congelados de todos os períodos de um BL
 // Chamado sempre que o peso de uma bobina daquele BL é alterado
 function descongelarPesosBL(bl){
-  // Remove todos os pesos congelados do BL (até 60 períodos)
+  // Remove todos os pesos congelados do BL do cache em memória
   for(let num=1; num<=60; num++){
     const key=getFatKey(bl,num);
-    if(localStorage.getItem(key)!==null){
-      localStorage.removeItem(key);
-      if(SUPA_URL&&SUPA_KEY){
-        supa(`fat_config?chave=eq.${encodeURIComponent('peso_'+bl+'_'+num)}`,
-          {method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(()=>{});
-      }
+    if(_fatGet(key)===null) break; // sem mais períodos congelados
+    _fatRemove(key);
+    if(SUPA_URL&&SUPA_KEY){
+      supa(`fat_config?chave=eq.${encodeURIComponent('peso_'+bl+'_'+num)}`,
+        {method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(()=>{});
     }
   }
 }
 function getTarifaBL(bl, global){
-  const v=localStorage.getItem(getTarifaKey(bl));
+  const v=_fatGet(getTarifaKey(bl));
   return v!==null ? parseFloat(v) : global;
 }
-function setTarifaBL(bl, v){ localStorage.setItem(getTarifaKey(bl), String(v)); fatConfigSet('tarifa_bl_'+bl, String(v)); }
+function setTarifaBL(bl, v){ _fatSet(getTarifaKey(bl), String(v)); fatConfigSet('tarifa_bl_'+bl, String(v)); }
 
 // ── Tarifa global e por BL filtrado ──────────────────
 function salvarTarifa(){
@@ -6136,11 +6161,11 @@ function applyFatConfig(rows){
   rows.forEach(r=>{ map[r.chave]=r.valor; });
 
   // Tarifas globais
-  if(map.tarifa)        localStorage.setItem('sp_fat_tarifa',    map.tarifa);
-  if(map.periodo_dias)  localStorage.setItem('sp_fat_periodo',   map.periodo_dias);
+  if(map.tarifa)        { localStorage.setItem('sp_fat_tarifa', map.tarifa); _fatSet('sp_fat_tarifa', map.tarifa); }
+  if(map.periodo_dias)  { localStorage.setItem('sp_fat_periodo', map.periodo_dias); _fatSet('sp_fat_periodo', map.periodo_dias); }
 
   // Logo
-  if(map.logo)          localStorage.setItem('sp_fat_logo',      map.logo);
+  if(map.logo)          { localStorage.setItem('sp_fat_logo', map.logo); }
 
   // Clientes cadastrados
   if(map.clientes){
@@ -6152,17 +6177,17 @@ function applyFatConfig(rows){
 
   // Tarifas por BL (sp_fat_tarifa_bl_XXXXX)
   Object.entries(map).forEach(([k,v])=>{
-    if(k.startsWith('tarifa_bl_')) localStorage.setItem('sp_fat_'+k, v);
-    if(k.startsWith('handling_'))  localStorage.setItem('sp_fat_'+k, v);
-    if(k.startsWith('state_'))     localStorage.setItem('sp_fat_'+k, v);
-    if(k.startsWith('peso_'))      localStorage.setItem('sp_fat_'+k, v);
+    if(k.startsWith('tarifa_bl_')) _fatSet('sp_fat_'+k, v);
+    if(k.startsWith('handling_'))  _fatSet('sp_fat_'+k, v);
+    if(k.startsWith('state_'))     _fatSet('sp_fat_'+k, v);
+    if(k.startsWith('peso_'))      _fatSet('sp_fat_'+k, v);
   });
 }
 
 async function fatConfigSet(chave, valor){
   // Save locally first (always works)
   if(valor!==undefined && valor!==null)
-    localStorage.setItem('sp_fat_'+chave.replace(/^sp_fat_/,''), String(valor));
+    _fatSet('sp_fat_'+chave.replace(/^sp_fat_/,''), String(valor));
   // Sync to Supabase if configured
   if(!SUPA_URL||!SUPA_KEY) return;
   try{
