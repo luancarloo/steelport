@@ -5160,10 +5160,45 @@ function getHandlingKey(bl)    { return `sp_fat_handling_${bl}`; }
 function getFatState(bl,num){
   try{ return JSON.parse(_fatGet(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
 }
-function setFatState(bl,num,state){
+async function setFatState(bl,num,state){
   const v=JSON.stringify(state);
   _fatSet(getFatStateKey(bl,num), v);
-  fatConfigSet('state_'+bl+'_'+num, v);
+  const chave='state_'+bl+'_'+num;
+  const row={chave, valor:v};
+  if(!SUPA_URL||!SUPA_KEY){
+    showToast('⚠ Supabase não configurado — estado salvo apenas localmente.','#f59e0b','#000');
+    return;
+  }
+  // Try upsert
+  try{
+    await supa('fat_config?on_conflict=chave',{
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify(row)
+    });
+    return;
+  }catch(e){
+    // Check for RLS error — guide user to fix
+    if(e.message && (e.message.includes('row-level security') || e.message.includes('policy'))){
+      _showRLSFixModal('fat_config');
+      throw new Error('Política de segurança RLS bloqueia o save. Execute o SQL mostrado no Supabase SQL Editor.');
+    }
+  }
+  // Fallback: DELETE + INSERT
+  try{
+    await supa(`fat_config?chave=eq.${encodeURIComponent(chave)}`,
+      {method:'DELETE',headers:{'Prefer':'return=minimal'}});
+    await supa('fat_config',{
+      method:'POST',
+      headers:{'Prefer':'return=minimal'},
+      body:JSON.stringify(row)
+    });
+  }catch(e2){
+    if(e2.message && (e2.message.includes('row-level security') || e2.message.includes('policy'))){
+      _showRLSFixModal('fat_config');
+    }
+    throw new Error('Falha ao salvar no Supabase: '+e2.message);
+  }
 }
 function getHandlingBL(bl){
   const v=_fatGet(getHandlingKey(bl));
@@ -5175,9 +5210,9 @@ function getCongeladoPeso(bl,num){
   const v=_fatGet(getFatKey(bl,num));
   return v!==null ? parseFloat(v) : null;
 }
-function congelarPeso(bl,num,kg){
+async function congelarPeso(bl,num,kg){
   _fatSet(getFatKey(bl,num), String(kg));
-  fatConfigSet('peso_'+bl+'_'+num, String(kg));
+  await fatConfigSet('peso_'+bl+'_'+num, String(kg));
 }
 
 // Limpa todos os pesos congelados de um BL (força recálculo no próximo render)
@@ -5637,36 +5672,49 @@ function renderFaturamento(){
 }
 
 // ── Confirmar envio de faturamento ───────────────────
-function toggleEnviado(checkbox, bl, num){
+async function toggleEnviado(checkbox, bl, num){
   if(checkbox.checked){
-    // Marcar como enviado — pede NF
     const nf = prompt(`Faturamento BL: ${bl} — ${num}º Período\n\nInforme o número da NF ou referência:`, '');
-    if(nf === null){
-      // Cancelou — desmarca o checkbox
-      checkbox.checked = false;
-      return;
-    }
+    if(nf === null){ checkbox.checked = false; return; }
     const state = {
       enviado:   true,
       nf:        nf.trim()||'—',
       dataEnvio: new Date().toLocaleDateString('pt-BR'),
       usuario:   session?.nome||'Sistema'
     };
-    setFatState(bl, num, state);
-    registrarAudit('faturamento',
-      `Faturamento enviado — BL: ${bl} · ${num}º Período · NF: ${state.nf}`,
-      { bl, num, nf:state.nf, usuario:state.usuario }
-    );
-    showToast(`✓ BL ${bl} · ${num}º período marcado como enviado · NF: ${state.nf}`,'#22c55e','#000');
+    // Desabilita checkbox e mostra salvando
+    checkbox.disabled = true;
+    showToast('💾 Salvando...','#f59e0b','#000');
+    try{
+      await setFatState(bl, num, state);
+      showToast(`✓ BL ${bl} · ${num}º período marcado como enviado · NF: ${state.nf}`,'#22c55e','#000');
+      registrarAudit('faturamento',
+        `Faturamento enviado — BL: ${bl} · ${num}º Período · NF: ${state.nf}`,
+        { bl, num, nf:state.nf, usuario:state.usuario }
+      );
+    }catch(err){
+      showToast(`⚠ Erro ao salvar: ${err.message}`,'#e05c1a','#fff');
+      checkbox.checked = false; // reverte visual
+    }finally{
+      checkbox.disabled = false;
+    }
   } else {
-    // Desmarcar — pede confirmação
     if(!confirm(`Desmarcar o envio do ${num}º período do BL ${bl}?\n\nIsso removerá o registro de NF e data de envio.`)){
-      checkbox.checked = true; // reverte
+      checkbox.checked = true;
       return;
     }
-    setFatState(bl, num, {});
-    registrarAudit('faturamento', `Faturamento reaberto — BL: ${bl} · ${num}º Período`, { bl, num });
-    showToast(`Período ${num} do BL ${bl} reaberto.`,'#f59e0b','#000');
+    checkbox.disabled = true;
+    showToast('💾 Salvando...','#f59e0b','#000');
+    try{
+      await setFatState(bl, num, {});
+      showToast(`Período ${num} do BL ${bl} reaberto.`,'#f59e0b','#000');
+      registrarAudit('faturamento', `Faturamento reaberto — BL: ${bl} · ${num}º Período`, { bl, num });
+    }catch(err){
+      showToast(`⚠ Erro ao salvar: ${err.message}`,'#e05c1a','#fff');
+      checkbox.checked = true; // reverte
+    }finally{
+      checkbox.disabled = false;
+    }
   }
   renderFaturamento();
 }
@@ -6185,16 +6233,36 @@ function applyFatConfig(rows){
 }
 
 async function fatConfigSet(chave, valor){
-  // Save locally first (always works)
+  // Save to in-memory cache first
   if(valor!==undefined && valor!==null)
     _fatSet('sp_fat_'+chave.replace(/^sp_fat_/,''), String(valor));
-  // Sync to Supabase if configured
+  // Sync to Supabase
   if(!SUPA_URL||!SUPA_KEY) return;
+  const row={chave, valor:String(valor??'')};
   try{
-    await supaUpsert('fat_config', {chave, valor:String(valor??'')}, 'chave');
+    // Try upsert (requires PK on chave)
+    await supa('fat_config?on_conflict=chave', {
+      method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+      body:JSON.stringify(row)
+    });
   }catch(e){
-    // Don't spam toasts for background syncs — just log
-    console.warn('[fat_config] sync failed for', chave, e.message);
+    // Fallback: DELETE then INSERT — works even without explicit PK
+    try{
+      await supa(`fat_config?chave=eq.${encodeURIComponent(chave)}`,
+        {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+      await supa('fat_config',{
+        method:'POST',
+        headers:{'Prefer':'return=minimal'},
+        body:JSON.stringify(row)
+      });
+    }catch(e2){
+      if(e2.message && (e2.message.includes('row-level security') || e2.message.includes('policy'))){
+        _showRLSFixModal('fat_config');
+      }
+      console.error('[fat_config] save failed for', chave, e2.message);
+      showToast(`⚠ Erro ao salvar faturamento no banco: ${e2.message}`,'#e05c1a','#fff');
+    }
   }
 }
 
@@ -6240,37 +6308,51 @@ async function fatConfigSync(){
 async function autoSyncFatConfig(){
   if(!SUPA_URL||!SUPA_KEY) return;
 
-  // 1. PUSH — envia dados locais para Supabase (merge, não sobrescreve remoto com vazio)
+  // 1. PUSH — envia dados locais para Supabase
   const rows=[];
   const push=(k,v)=>{ if(v!=null&&v!=='') rows.push({chave:k, valor:String(v)}); };
 
+  // Chaves estáticas (localStorage)
   push('tarifa',       localStorage.getItem('sp_fat_tarifa'));
   push('periodo_dias', localStorage.getItem('sp_fat_periodo'));
   push('logo',         localStorage.getItem('sp_fat_logo'));
   push('clientes',     localStorage.getItem('sp_clientes'));
 
-  for(let i=0;i<localStorage.length;i++){
-    const key=localStorage.key(i);
-    if(!key) continue;
-    const v=localStorage.getItem(key);
-    if(!v) continue;
+  // Chaves dinâmicas (agora no _fatCache em memória, não no localStorage)
+  Object.entries(_fatCache).forEach(([key, v])=>{
+    if(!v) return;
     if(key.startsWith('sp_fat_tarifa_bl_') ||
        key.startsWith('sp_fat_handling_')  ||
        key.startsWith('sp_fat_state_')     ||
        key.startsWith('sp_fat_peso_')){
       push(key.replace('sp_fat_',''), v);
     }
-  }
+  });
 
   try{
     if(rows.length) await supaUpsertBulk('fat_config', rows, 'chave', 200);
   }catch(e){ console.warn('[autoSync] push fat_config failed:', e.message); }
 
-  // 2. PULL — busca dados do Supabase e aplica localmente (sempre a versão mais completa)
+  // 2. PULL — busca do Supabase e aplica ao cache
+  // Após o push acima, o Supabase tem nossos dados mais recentes
+  // O pull carrega dados de outros usuários (tarifas, handlings, etc.)
   try{
     const remote = await supaAll('fat_config?select=*');
     if(remote && remote.length){
-      applyFatConfig(remote);
+      // Aplica todos os dados remotos ao _fatCache
+      // Para chaves dinâmicas: só aplica se NÃO temos valor local (local sempre mais recente após push)
+      const localKeys = new Set(Object.keys(_fatCache));
+      remote.forEach(r=>{
+        const localKey = 'sp_fat_'+r.chave.replace(/^sp_fat_/,'');
+        const isDynamic = r.chave.startsWith('state_') || r.chave.startsWith('peso_') ||
+                          r.chave.startsWith('tarifa_bl_') || r.chave.startsWith('handling_');
+        // Para chaves estáticas: sempre aplica (tarifa global, período, logo, clientes)
+        // Para chaves dinâmicas: aplica se não temos valor local (dado de outro usuário)
+        if(!isDynamic || !localKeys.has(localKey)){
+          _fatSet(localKey, r.valor);
+        }
+      });
+      // Atualiza telas se abertas
       const fatScreen=document.getElementById('screen-faturamento');
       if(fatScreen && fatScreen.classList.contains('active')) renderFaturamento();
       const dashScreen=document.getElementById('screen-dash-fat');
@@ -6703,6 +6785,73 @@ async function syncAuditLog(){
   }
 }
 
+function mostrarSQLFixRLS(){
+  const tables=['coilsdb','records','expedicoes','users','navios','fat_config'];
+  const sql = tables.map(t=>
+    `DROP POLICY IF EXISTS "allow all" ON ${t};\nCREATE POLICY "allow all" ON ${t}\n  FOR ALL USING (true) WITH CHECK (true);\nALTER TABLE ${t} ENABLE ROW LEVEL SECURITY;`
+  ).join('\n\n');
+  const existing=document.getElementById('modal-rls-fix');
+  if(existing) existing.remove();
+  const div=document.createElement('div');
+  div.id='modal-rls-fix';
+  div.className='modal-overlay open';
+  div.innerHTML=`
+    <div class="modal" style="max-width:620px;">
+      <div class="modal-title" style="color:var(--warning);">🔧 CORRIGIR POLÍTICAS RLS</div>
+      <div class="modal-body">
+        <p style="font-size:13px;margin-bottom:1rem;color:var(--text);">
+          Execute o SQL abaixo no <strong>SQL Editor</strong> do seu projeto Supabase.<br>
+          <span style="color:var(--muted);font-size:12px;">Acesse: supabase.com → seu projeto → SQL Editor → New Query</span>
+        </p>
+        <pre style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.85rem;font-size:11px;color:var(--success);overflow-x:auto;line-height:1.7;white-space:pre-wrap;max-height:360px;overflow-y:auto;">${sql}</pre>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-rls-fix').remove()">FECHAR</button>
+        <button class="btn btn-primary" onclick="navigator.clipboard?.writeText(${JSON.stringify(sql)}).then(()=>showToast('✓ SQL copiado!','#22c55e','#000'))">📋 COPIAR SQL</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+// ── RLS Fix helper — mostra SQL para corrigir políticas RLS ──────
+function _showRLSFixModal(tableName){
+  const sql = `-- Execute no SQL Editor do Supabase (supabase.com → seu projeto → SQL Editor)
+-- Corrige política RLS para a tabela ${tableName}
+
+DROP POLICY IF EXISTS "allow all" ON ${tableName};
+CREATE POLICY "allow all" ON ${tableName}
+  FOR ALL USING (true) WITH CHECK (true);
+
+-- Se a policy acima não resolver, desabilite RLS temporariamente:
+-- ALTER TABLE ${tableName} DISABLE ROW LEVEL SECURITY;`;
+
+  const existing = document.getElementById('modal-rls-fix');
+  if(existing) existing.remove();
+
+  const div = document.createElement('div');
+  div.id = 'modal-rls-fix';
+  div.className = 'modal-overlay open';
+  div.innerHTML = `
+    <div class="modal" style="max-width:580px;">
+      <div class="modal-title" style="color:var(--danger);">⚠ ERRO DE POLÍTICA RLS — ${tableName}</div>
+      <div class="modal-body">
+        <p style="font-size:13px;margin-bottom:1rem;color:var(--text);">
+          A tabela <strong>${tableName}</strong> no Supabase está bloqueando escrita por política de segurança (RLS).<br>
+          Execute o SQL abaixo no <strong>SQL Editor</strong> do seu projeto Supabase:
+        </p>
+        <pre style="background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:.85rem;font-size:11px;color:var(--success);overflow-x:auto;line-height:1.7;white-space:pre-wrap;">${sql}</pre>
+        <p style="font-size:12px;color:var(--muted);margin-top:.75rem;">
+          Após executar o SQL, tente salvar novamente.
+        </p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="document.getElementById('modal-rls-fix').remove()">FECHAR</button>
+        <button class="btn btn-primary" onclick="navigator.clipboard?.writeText(${JSON.stringify(sql)}).then(()=>showToast('✓ SQL copiado!','#22c55e','#000'))">📋 COPIAR SQL</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
 function registrarAudit(tipo, descricao, snapshot){
   const entry = {
     id:        Date.now(),
@@ -7086,6 +7235,7 @@ alter table users add column if not exists email text;
     </div>
     <div class="modal-actions" style="margin-top:1.5rem;">
       <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-api-setup')">FECHAR</button>
+      <button class="btn btn-secondary btn-sm" onclick="mostrarSQLFixRLS()" title="Mostra SQL para corrigir erros de política RLS em todas as tabelas">🔧 CORRIGIR RLS</button>
     </div>
   </div>
 </div>
