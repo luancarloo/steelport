@@ -2350,17 +2350,33 @@ function autocompleteCoil(px){
     document.getElementById(px+'l-coil-suggestions')?.remove();
     return;
   }
+
+  // Filtrar por status pendente conforme o módulo
+  const descSet = new Set(records.map(r=>r.coil));
+  const expSet  = new Set(expedicoes.map(r=>r.coil));
+
+  let pool;
+  if(px==='d'){
+    // Descarga: mostrar apenas bobinas que ainda NÃO foram descarregadas
+    pool = coilsDB.filter(c => !descSet.has(c.coil));
+  } else {
+    // Expedição: mostrar apenas bobinas que foram descarregadas mas ainda NÃO foram expedidas
+    pool = coilsDB.filter(c => descSet.has(c.coil) && !expSet.has(c.coil));
+  }
+
   // Se digitou 5 ou menos dígitos numéricos, busca por sufixo
   const isSuffix = /^\d{1,5}$/.test(raw);
   let matches = [];
   if(isSuffix){
-    matches = coilsDB.filter(c=>c.coil && c.coil.endsWith(raw)).map(c=>c.coil).slice(0,8);
+    matches = pool.filter(c=>c.coil && c.coil.endsWith(raw)).map(c=>c.coil).slice(0,8);
   } else {
-    matches = coilsDB.filter(c=>c.coil && c.coil.startsWith(raw)).map(c=>c.coil).slice(0,8);
+    matches = pool.filter(c=>c.coil && c.coil.startsWith(raw)).map(c=>c.coil).slice(0,8);
   }
+
   // Remove old suggestions
   document.getElementById(px+'l-coil-suggestions')?.remove();
   if(!matches.length) return;
+
   // Render suggestions
   const wrap    = inputEl.parentElement;
   wrap.style.position = 'relative';
@@ -2368,7 +2384,7 @@ function autocompleteCoil(px){
   box.id    = px+'l-coil-suggestions';
   box.style.cssText = `position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--accent);border-radius:6px;z-index:999;max-height:220px;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,.3);`;
   matches.forEach(coil=>{
-    const db  = coilsDB.find(c=>c.coil===coil);
+    const db  = pool.find(c=>c.coil===coil);
     const div = document.createElement('div');
     div.style.cssText = `padding:.5rem .75rem;cursor:pointer;font-size:13px;font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);`;
     div.innerHTML = `<span style="color:var(--accent);font-weight:700">${coil}</span><span style="color:var(--muted);font-size:11px">${db?.navio||''} ${db?.cliente?'· '+db.cliente:''}</span>`;
