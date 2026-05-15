@@ -933,24 +933,24 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           </select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Navio</label>
-          <select id="rpt-navio" onchange="renderReport()"><option value="">Todos</option></select>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Navio <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
+          <select id="rpt-navio" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Cliente</label>
-          <select id="rpt-cliente" onchange="renderReport()"><option value="">Todos</option></select>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Cliente <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
+          <select id="rpt-cliente" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">BL</label>
-          <select id="rpt-bl" onchange="renderReport()"><option value="">Todos</option></select>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">BL <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
+          <select id="rpt-bl" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Armazém</label>
-          <select id="rpt-armazem" onchange="renderReport()"><option value="">Todos</option></select>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Armazém <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
+          <select id="rpt-armazem" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Produto</label>
-          <select id="rpt-produto" onchange="renderReport()"><option value="">Todos</option></select>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Produto <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
+          <select id="rpt-produto" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Período</label>
@@ -961,7 +961,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         </div>
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Veículo / Placa</label>
-          <select id="rpt-veiculo" onchange="renderReport()"><option value="">Todos</option></select>
+          <select id="rpt-veiculo" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Data Início</label>
@@ -994,10 +994,12 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 
     <!-- DETALHE BOBINAS -->
     <div class="rpt-section">
+      <div id="rpt-detail-wrapper">
       <div class="rpt-section-title" id="rpt-detail-title">🔩 DETALHE DAS MOVIMENTAÇÕES</div>
       <div class="rpt-preview" id="rpt-detail-table">
         <div class="empty-state"><span class="empty-icon">🔩</span>Aguardando filtros.</div>
       </div>
+      </div><!-- /rpt-detail-wrapper -->
     </div>
 
   </div>
@@ -4048,45 +4050,91 @@ function downloadTemplateMov(tipo){
 }
 
 
+// ─── Helpers para filtros multi-select de relatórios ─────────────
+function _rptGetSelected(id){
+  const el=document.getElementById(id);
+  if(!el) return [];
+  // Ignora a opção em branco "— Todos —" (value="")
+  return [...el.options].filter(o=>o.selected&&o.value).map(o=>o.value);
+}
+function _rptMatch(val, selected){ return !selected.length || selected.includes(val); }
+
 function buildRptSelects(){
+  // Cascading: cada dropdown filtra apenas opções válidas conforme os demais selecionados
+  const sNav = _rptGetSelected('rpt-navio');
+  const sCli = _rptGetSelected('rpt-cliente');
+  const sBl  = _rptGetSelected('rpt-bl');
+  const sArm = _rptGetSelected('rpt-armazem');
+  const sPro = _rptGetSelected('rpt-produto');
+  const sVei = _rptGetSelected('rpt-veiculo');
+
   const all=[...records,...expedicoes];
-  const populate=(id,items)=>{ const el=document.getElementById(id); if(!el) return; const v=el.value; el.innerHTML=el.innerHTML.split('<option')[0]+items.map(x=>`<option>${x}</option>`).join(''); if(v) el.value=v; };
-  populate('rpt-navio',   [...new Set([...all.map(r=>r.navio),   ...coilsDB.map(c=>c.navio)].filter(Boolean))].sort());
-  populate('rpt-cliente', [...new Set([...all.map(r=>r.cliente),  ...coilsDB.map(c=>c.cliente)].filter(Boolean))].sort());
-  populate('rpt-bl',      [...new Set([...all.map(r=>r.bl),       ...coilsDB.map(c=>c.bl)].filter(Boolean))].sort());
-  populate('rpt-armazem', [...new Set([...all.map(r=>r.armazem),  ...coilsDB.map(c=>c.armazem)].filter(Boolean))].sort());
-  populate('rpt-veiculo', [...new Set(all.map(r=>r.veiculo).filter(Boolean))].sort());
-  populate('rpt-produto', [...new Set([...all.map(r=>r.produto),  ...coilsDB.map(c=>c.produto)].filter(Boolean))].sort());
+  const pool=[...coilsDB,...all];
+
+  // Helper: filtra pool respeitando todos os outros filtros (exceto o próprio)
+  const poolFor=(excl)=>pool.filter(r=>{
+    if(excl!=='n' && sNav.length && !sNav.includes(r.navio||'')) return false;
+    if(excl!=='c' && sCli.length && !sCli.includes(r.cliente||'')) return false;
+    if(excl!=='b' && sBl.length  && !sBl.includes(r.bl||''))  return false;
+    if(excl!=='a' && sArm.length && !sArm.includes(r.armazem||'')) return false;
+    if(excl!=='p' && sPro.length && !sPro.includes(r.produto||'')) return false;
+    if(excl!=='v' && sVei.length && !sVei.includes(r.veiculo||'')) return false;
+    return true;
+  });
+
+  const repopulate=(id, items, curSel)=>{
+    const el=document.getElementById(id); if(!el) return;
+    const scrollTop=el.scrollTop;
+    // Primeira opção em branco — permite não ter nenhum selecionado (= Todos)
+    const blankSel=(curSel.length===0)?' selected':'';
+    el.innerHTML=`<option value=""${blankSel}>— Todos —</option>`
+      +items.map(x=>`<option value="${x}"${curSel.includes(x)?' selected':''}>${x}</option>`).join('');
+    el.scrollTop=scrollTop;
+  };
+
+  repopulate('rpt-navio',   [...new Set(poolFor('n').map(r=>r.navio).filter(Boolean))].sort(), sNav);
+  repopulate('rpt-cliente', [...new Set(poolFor('c').map(r=>r.cliente).filter(Boolean))].sort(), sCli);
+  repopulate('rpt-bl',      [...new Set(poolFor('b').map(r=>r.bl).filter(Boolean))].sort(), sBl);
+  repopulate('rpt-armazem', [...new Set(poolFor('a').map(r=>r.armazem).filter(Boolean))].sort(), sArm);
+  repopulate('rpt-produto', [...new Set(poolFor('p').map(r=>r.produto).filter(Boolean))].sort(), sPro);
+  repopulate('rpt-veiculo', [...new Set(poolFor('v').map(r=>r.veiculo).filter(Boolean))].sort(), sVei);
 }
 
 function clearRptFilters(){
-  ['rpt-navio','rpt-cliente','rpt-bl','rpt-armazem','rpt-veiculo','rpt-produto','rpt-data-ini','rpt-data-fim','rpt-search'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  ['rpt-navio','rpt-cliente','rpt-bl','rpt-armazem','rpt-veiculo','rpt-produto'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    [...el.options].forEach(o=>{ o.selected = (o.value===''); });
+  });
+  ['rpt-data-ini','rpt-data-fim','rpt-search','rpt-periodo'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
   document.getElementById('rpt-tipo').value='navio';
   document.getElementById('rpt-movimento').value='ambos';
-  document.getElementById('rpt-periodo').value='';
+  buildRptSelects();
   renderRptSummary(); renderReport();
 }
 
 function getRptData(){
-  const fn  = document.getElementById('rpt-navio').value;
-  const fc  = document.getElementById('rpt-cliente').value;
-  const fb  = document.getElementById('rpt-bl').value;
-  const fa  = document.getElementById('rpt-armazem').value;
-  const fv  = document.getElementById('rpt-veiculo').value;
-  const fp  = document.getElementById('rpt-produto').value;
+  const sNav = _rptGetSelected('rpt-navio');
+  const sCli = _rptGetSelected('rpt-cliente');
+  const sBl  = _rptGetSelected('rpt-bl');
+  const sArm = _rptGetSelected('rpt-armazem');
+  const sVei = _rptGetSelected('rpt-veiculo');
+  const sPro = _rptGetSelected('rpt-produto');
   const fpe = document.getElementById('rpt-periodo').value;
   const di  = document.getElementById('rpt-data-ini').value;
   const df  = document.getElementById('rpt-data-fim').value;
   const qs  = (document.getElementById('rpt-search')?.value||'').toLowerCase();
   const mv  = document.getElementById('rpt-movimento').value;
   const filter=r=>
-    (!fn||r.navio===fn)&&(!fc||r.cliente===fc)&&(!fb||r.bl===fb)
-    &&(!fa||r.armazem===fa)&&(!fv||r.veiculo===fv)&&(!fp||r.produto===fp)
-    &&(!fpe||r.periodo===fpe)&&(!di||r.data>=di)&&(!df||r.data<=df)
-    &&(!qs||[r.coil,r.bl,r.navio,r.veiculo,r.motorista,r.cliente,r.obs,r.produto].some(f=>f&&f.toLowerCase().includes(qs)));
+    _rptMatch(r.navio,  sNav) && _rptMatch(r.cliente, sCli) &&
+    _rptMatch(r.bl,     sBl)  && _rptMatch(r.armazem, sArm) &&
+    _rptMatch(r.veiculo,sVei) && _rptMatch(r.produto,  sPro) &&
+    (!fpe||r.periodo===fpe) && (!di||r.data>=di) && (!df||r.data<=df) &&
+    (!qs||[r.coil,r.bl,r.navio,r.veiculo,r.motorista,r.cliente,r.obs,r.produto].some(f=>f&&f.toLowerCase().includes(qs)));
   const desc=mv==='expedicao'?[]:records.filter(filter);
   const exps=mv==='descarga'?[]:expedicoes.filter(filter);
-  return {desc,exps};
+  return {desc, exps, sNav, sCli, sBl, sArm, sVei, sPro};
 }
 
 function renderRptSummary(){
@@ -4100,7 +4148,8 @@ function renderRptSummary(){
 
 function renderReport(){
   const tipo=document.getElementById('rpt-tipo').value;
-  const {desc,exps}=getRptData();
+  const {desc,exps,sNav,sCli,sBl,sArm}=getRptData();
+  buildRptSelects(); // recalcula opções cascateadas após filtrar
   const all=[...desc.map(r=>({...r,_tipo:'DESCARGA'})),...exps.map(r=>({...r,_tipo:'EXPEDIÇÃO'}))];
   all.sort((a,b)=>a.data>b.data?1:-1);
 
@@ -4110,11 +4159,9 @@ function renderReport(){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR NAVIO';
     groupHeaders=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
     const navSet=[...new Set([...coilsDB.map(c=>c.navio),...all.map(r=>r.navio)].filter(Boolean))].sort();
-    const fn=document.getElementById('rpt-navio').value;
-    const fc=document.getElementById('rpt-cliente').value;
-    const filtNavs=fn?[fn]:navSet;
+    const filtNavs=sNav.length?navSet.filter(n=>sNav.includes(n)):navSet;
     groupRows=filtNavs.map(nav=>{
-      const dbN=coilsDB.filter(c=>c.navio===nav&&(!fc||c.cliente===fc));
+      const dbN=coilsDB.filter(c=>c.navio===nav&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
       const pbd=fmtKg(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
@@ -4125,11 +4172,9 @@ function renderReport(){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR CLIENTE';
     groupHeaders=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
     const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...all.map(r=>r.cliente)].filter(Boolean))].sort();
-    const fc=document.getElementById('rpt-cliente').value;
-    const fn=document.getElementById('rpt-navio').value;
-    const filtClis=fc?[fc]:cliSet;
+    const filtClis=sCli.length?cliSet.filter(c=>sCli.includes(c)):cliSet;
     groupRows=filtClis.map(cli=>{
-      const dbC=coilsDB.filter(c=>c.cliente===cli&&(!fn||c.navio===fn));
+      const dbC=coilsDB.filter(c=>c.cliente===cli&&_rptMatch(c.navio,sNav)&&_rptMatch(c.bl,sBl));
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
       const pbd=fmtKg(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
@@ -4140,8 +4185,9 @@ function renderReport(){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR BL';
     groupHeaders=['BL','NAVIO','CLIENTE','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
     const blSet=[...new Set([...coilsDB.map(c=>c.bl),...all.map(r=>r.bl)].filter(Boolean))].sort();
-    groupRows=blSet.map(bl=>{
-      const dbB=coilsDB.filter(c=>c.bl===bl);
+    const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
+    groupRows=filtBls.map(bl=>{
+      const dbB=coilsDB.filter(c=>c.bl===bl&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli));
       const dB=desc.filter(r=>r.bl===bl);
       const eB=exps.filter(r=>r.bl===bl);
       return [bl,dbB[0]?.navio||dB[0]?.navio||'—',dbB[0]?.cliente||dB[0]?.cliente||'—',
@@ -4183,8 +4229,9 @@ function renderReport(){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR ARMAZÉM';
     groupHeaders=['ARMAZÉM','BOBINAS BANCO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)'];
     const aSet=[...new Set([...coilsDB.map(c=>c.armazem),...all.map(r=>r.armazem)].filter(Boolean))].sort();
-    groupRows=aSet.map(a=>{
-      const dbA=coilsDB.filter(c=>c.armazem===a);
+    const filtArms=sArm.length?aSet.filter(a=>sArm.includes(a)):aSet;
+    groupRows=filtArms.map(a=>{
+      const dbA=coilsDB.filter(c=>c.armazem===a&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
       const dA=desc.filter(r=>r.armazem===a); const eA=exps.filter(r=>r.armazem===a);
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
         fmtKg(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
@@ -4192,10 +4239,14 @@ function renderReport(){
   } else if(tipo==='faturamento'){
     document.getElementById('rpt-group-title').textContent='💰 RELATÓRIO DE FATURAMENTO';
     groupHeaders=['BL','CLIENTE','NAVIO','PERÍODO','DATA COBRANÇA','PESO (kg)','TONELADAS','ARMAZENAGEM (R$)','HANDLING (R$)','TOTAL (R$)','STATUS','NF'];
-    const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
-    const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
-    const blsAll=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
-    blsAll.forEach(bl=>{
+    const tarifaGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias=parseInt(_fatGet('sp_fat_periodo')||localStorage.getItem('sp_fat_periodo')||15);
+    // Respeita filtros selecionados
+    let blsFat=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    if(sBl.length)  blsFat=blsFat.filter(b=>sBl.includes(b));
+    if(sNav.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sNav.includes(c.navio)));
+    if(sCli.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sCli.includes(c.cliente)));
+    blsFat.forEach(bl=>{
       const dbCoils=coilsDB.filter(c=>c.bl===bl);
       const cliente=dbCoils[0]?.cliente||'—';
       const navio=dbCoils[0]?.navio||'—';
@@ -4235,11 +4286,18 @@ function renderReport(){
   else {
     groupContainer.innerHTML=`<table>
       <thead><tr>${groupHeaders.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${groupRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">${r.map((c,ci)=>`<td style="${ci>=2&&ci<=4?'font-weight:700':''};${ci===4?'color:var(--accent)':''}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${groupRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">${r.map((c,ci)=>`<td style="${ci>=2&&ci<=4?'font-weight:700':''}${ci===4?';color:var(--accent)':''}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
     </table>`;
   }
 
-  // DETAIL TABLE
+  // DETAIL TABLE (não mostrar no tipo faturamento)
+  const detWrapper=document.getElementById('rpt-detail-wrapper');
+  if(tipo==='faturamento'){
+    if(detWrapper) detWrapper.style.display='none';
+    return;
+  }
+  if(detWrapper) detWrapper.style.display='';
+
   document.getElementById('rpt-detail-title').textContent=`🔩 DETALHE DAS MOVIMENTAÇÕES (${all.length} registros)`;
   const detContainer=document.getElementById('rpt-detail-table');
   if(!all.length){ detContainer.innerHTML=`<div class="empty-state"><span class="empty-icon">🔩</span>Nenhuma movimentação encontrada.</div>`; return; }
@@ -4280,20 +4338,23 @@ function renderReport(){
 }
 
 function exportReportXLSX(){
-  const {desc,exps}=getRptData();
+  const {desc,exps,sBl,sNav,sCli}=getRptData();
   const tipo=document.getElementById('rpt-tipo').value;
   const mv=document.getElementById('rpt-movimento').value;
   const wb=XLSX.utils.book_new();
 
   // ── Relatório de Faturamento ──────────────────────────
   if(tipo==='faturamento'){
-    const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
-    const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
-    const blsAll=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    const tarifaGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias=parseInt(_fatGet('sp_fat_periodo')||localStorage.getItem('sp_fat_periodo')||15);
+    let blsFat=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    if(sBl.length)  blsFat=blsFat.filter(b=>sBl.includes(b));
+    if(sNav.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sNav.includes(c.navio)));
+    if(sCli.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sCli.includes(c.cliente)));
     const rows=[['BL','CLIENTE','NAVIO','VIAGEM','PRODUTO','Nº PERÍODO','DATA COBRANÇA','PERÍODO (INI→FIM)',
       'PESO (kg)','TONELADAS','TARIFA (R$/t)','ARMAZENAGEM (R$)','HANDLING (R$)','TOTAL (R$)',
       'STATUS','NF','DATA ENVIO','ENVIADO POR']];
-    blsAll.forEach(bl=>{
+    blsFat.forEach(bl=>{
       const dbCoils=coilsDB.filter(c=>c.bl===bl);
       const cliente=dbCoils[0]?.cliente||'';
       const navio=dbCoils[0]?.navio||'';
@@ -4331,8 +4392,7 @@ function exportReportXLSX(){
     summaryData=[['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)']];
     const navSet=[...new Set([...coilsDB.map(c=>c.navio),...desc.map(r=>r.navio),...exps.map(r=>r.navio)].filter(Boolean))].sort();
     navSet.forEach(nav=>{
-      const fn=document.getElementById('rpt-navio').value;
-      if(fn&&fn!==nav) return;
+      if(sNav.length&&!sNav.includes(nav)) return;
       const dbN=coilsDB.filter(c=>c.navio===nav);
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
@@ -4344,8 +4404,7 @@ function exportReportXLSX(){
     summaryData=[['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)']];
     const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...desc.map(r=>r.cliente),...exps.map(r=>r.cliente)].filter(Boolean))].sort();
     cliSet.forEach(cli=>{
-      const fc=document.getElementById('rpt-cliente').value;
-      if(fc&&fc!==cli) return;
+      if(sCli.length&&!sCli.includes(cli)) return;
       const dbC=coilsDB.filter(c=>c.cliente===cli);
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
@@ -4370,15 +4429,9 @@ function exportReportXLSX(){
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(eSheet), 'Expedicoes');
   }
 
-  // Sheet 4: Banco de dados
-  const dbSheet=[['COIL NUMBER','ARMAZÉM','BL','CLIENTE','NAVIO','VIAGEM','PRODUTO','P.BRUTO (kg)','P.LÍQUIDO (kg)']];
-  coilsDB.forEach(c=>dbSheet.push([c.coil,c.armazem,c.bl,c.cliente,c.navio,c.viagem,c.produto,parseFloat(c.pesob)||0,parseFloat(c.pesol)||0]));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dbSheet), 'Banco de Bobinas');
-
   XLSX.writeFile(wb, '4SIDES_STEELPORT_Relatorio_'+new Date().toISOString().split('T')[0]+'.xlsx');
   showToast('✓ Excel exportado com sucesso!','#22c55e','#000');
 }
-
 function exportReportPDF(){
   const {jsPDF}=window.jspdf;
   const tipo=document.getElementById('rpt-tipo').value;
