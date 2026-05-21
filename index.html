@@ -34,6 +34,28 @@ header{background:var(--surface);border-bottom:2px solid var(--accent);padding:0
 .badge-live{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--success);}
 .dot-live{width:8px;height:8px;background:var(--success);border-radius:50%;animation:pulse 2s infinite;}
 
+/* ── OPERATIONAL DASHBOARD ── */
+.op-dashboard{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;width:100%;max-width:1200px;}
+.op-card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:1.2rem 1.4rem;display:flex;flex-direction:column;gap:4px;position:relative;overflow:hidden;}
+.op-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;}
+.op-card.green::before{background:var(--success);}
+.op-card.amber::before{background:var(--accent);}
+.op-card.blue::before{background:var(--info);}
+.op-card.red::before{background:var(--danger);}
+.op-card.purple::before{background:var(--exp);}
+.op-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;}
+.op-value{font-size:30px;font-weight:900;line-height:1.1;}
+.op-value.green{color:var(--success);}
+.op-value.amber{color:var(--accent);}
+.op-value.blue{color:var(--info);}
+.op-value.red{color:var(--danger);}
+.op-value.purple{color:var(--exp);}
+.op-sub{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.op-alert{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-family:'JetBrains Mono',monospace;background:rgba(224,92,26,.12);color:var(--danger);border:1px solid rgba(224,92,26,.3);border-radius:4px;padding:2px 7px;margin-top:4px;}
+.op-alert.ok{background:rgba(34,197,94,.1);color:var(--success);border-color:rgba(34,197,94,.3);}
+@media(max-width:900px){.op-dashboard{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:600px){.op-dashboard{grid-template-columns:1fr;}}
+
 /* ── LOGO THEME ADAPTATION ── */
 .logo img, .login-logo img {
   transition: filter .3s ease;
@@ -260,6 +282,26 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center;}
 .modal-overlay.open{display:flex;}
 .modal{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:600px;width:95%;max-height:90vh;overflow-y:auto;}
+
+/* ── GLOBAL SEARCH ── */
+.search-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:5000;align-items:flex-start;justify-content:center;padding-top:10vh;}
+.search-overlay.open{display:flex;}
+.search-box{background:var(--surface);border:1px solid var(--accent);border-radius:14px;width:100%;max-width:640px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6);}
+.search-input-wrap{display:flex;align-items:center;gap:.75rem;padding:.9rem 1.2rem;border-bottom:1px solid var(--border);}
+.search-input-wrap span{font-size:18px;color:var(--muted);}
+#global-search-input{flex:1;background:transparent;border:none;color:var(--text);font-size:17px;font-family:'Barlow Condensed',sans-serif;outline:none;}
+#global-search-input::placeholder{color:var(--muted);}
+.search-kbd{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:2px 6px;white-space:nowrap;}
+.search-results{max-height:55vh;overflow-y:auto;padding:.5rem 0;}
+.search-group-label{font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:2px;padding:.5rem 1.2rem .25rem;text-transform:uppercase;}
+.search-item{display:flex;align-items:center;gap:.75rem;padding:.55rem 1.2rem;cursor:pointer;transition:background .15s;}
+.search-item:hover,.search-item.focused{background:var(--surface2);}
+.search-item-icon{font-size:15px;width:22px;text-align:center;flex-shrink:0;}
+.search-item-main{font-size:14px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;}
+.search-item-sub{font-size:12px;color:var(--muted);margin-top:1px;}
+.search-item-tag{font-size:10px;font-family:'JetBrains Mono',monospace;padding:2px 6px;border-radius:4px;border:1px solid;white-space:nowrap;flex-shrink:0;}
+.search-empty{padding:2rem;text-align:center;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;}
+.search-footer{border-top:1px solid var(--border);padding:.5rem 1.2rem;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);display:flex;gap:1.2rem;}
 .modal-title{font-size:18px;font-weight:700;margin-bottom:1.5rem;color:var(--accent);}
 .modal-body{color:var(--text);font-size:15px;margin-bottom:2rem;}
 .modal-actions{display:flex;gap:1rem;justify-content:flex-end;}
@@ -342,7 +384,8 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
   </div>
   <div class="header-nav">
     <button class="btn-home" onclick="goHome()" id="btn-back" style="display:none">← INÍCIO</button>
-    <div class="badge-live"><div class="dot-live"></div>SISTEMA ATIVO</div>
+    <div class="badge-live" id="sync-badge" title="Status de sincronização com Supabase"><div class="dot-live" id="sync-dot"></div><span id="sync-label">SISTEMA ATIVO</span></div>
+    <span style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:10px;white-space:nowrap;" id="sync-ts" title="Último sync"></span>
     <span style="color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:11px;" id="clock"></span>
     <div class="user-badge" id="user-badge" style="display:none;">
       <div class="user-avatar" id="user-avatar-hdr">A</div>
@@ -350,6 +393,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
     </div>
     <button class="btn-logout" id="btn-logout" style="display:none;" onclick="doLogout()">SAIR</button>
     <button class="btn-logout" id="btn-change-pass" style="display:none;" onclick="abrirAlterarSenha()" title="Alterar minha senha">🔑</button>
+    <button class="btn-home" id="btn-search" onclick="openGlobalSearch()" title="Busca global (Ctrl+K)" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.5px;">🔍 <span style="opacity:.6;font-size:10px">Ctrl+K</span></button>
     <button class="btn-home" id="btn-sync" style="display:none;" onclick="syncData()" title="Sincronizar dados">⟳ SYNC</button>
     <button class="btn-home" id="btn-theme" onclick="toggleTheme()" title="Alternar tema" style="font-size:16px;padding:.4rem .75rem;">🌙</button>
   </div>
@@ -364,6 +408,33 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
       <h1>4SIDES · STEELPORT</h1>
       <p>SELECIONE O MÓDULO DE TRABALHO</p>
     </div>
+    <!-- OPERATIONAL DASHBOARD -->
+    <div class="op-dashboard" id="op-dashboard">
+      <div class="op-card green">
+        <div class="op-label">EM ESTOQUE AGORA</div>
+        <div class="op-value green" id="op-estoque">0</div>
+        <div class="op-sub">bobinas em pátio</div>
+        <div class="op-sub" id="op-estoque-peso">0 kg</div>
+      </div>
+      <div class="op-card amber">
+        <div class="op-label">DESCARREGADAS</div>
+        <div class="op-value amber" id="op-desc">0</div>
+        <div class="op-sub" id="op-desc-peso">0 kg peso bruto</div>
+      </div>
+      <div class="op-card blue">
+        <div class="op-label">EXPEDIDAS</div>
+        <div class="op-value blue" id="op-exp">0</div>
+        <div class="op-sub" id="op-exp-peso">0 kg peso bruto</div>
+      </div>
+      <div class="op-card red" id="op-card-inconsist" onclick="openInconsistModal()" style="cursor:pointer;" title="Ver detalhes das inconsistências">
+        <div class="op-label">INCONSISTÊNCIAS</div>
+        <div class="op-value red" id="op-inconsist">0</div>
+        <div class="op-sub">bobinas sem cadastro no DB</div>
+        <div id="op-inconsist-badge"></div>
+        <div style="font-size:10px;color:var(--danger);margin-top:4px;opacity:.7;">▶ clique para detalhes</div>
+      </div>
+    </div>
+
     <div class="module-cards" style="max-width:1200px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));"  id="module-cards-grid">
 
       <!-- DESCARGA -->
@@ -422,7 +493,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
       </div>
 
       <!-- MAPEAMENTO -->
-      <div class="module-card" onclick="openModule('mapeamento')" style="border-color:rgba(6,182,212,.2);">
+      <div class="module-card" id="card-mapeamento" onclick="openModule('mapeamento')" style="border-color:rgba(6,182,212,.2);">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(6,182,212,.08),transparent 70%);pointer-events:none;"></div>
         <div class="module-icon">🗺</div>
         <h2 style="color:#22d3ee;">MAPEAMENTO</h2>
@@ -899,11 +970,12 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
   <div class="container">
 
     <!-- SUMMARY CARDS -->
-    <div class="rpt-summary-grid">
-      <div class="rpt-summary-card"><div class="rpt-sum-label">BOBINAS NO BANCO</div><div class="rpt-sum-value" id="rpt-s-db">0</div><div class="rpt-sum-unit">cadastradas</div></div>
-      <div class="rpt-summary-card"><div class="rpt-sum-label">TOTAL DESCARREGADAS</div><div class="rpt-sum-value" style="color:var(--info)" id="rpt-s-desc">0</div><div class="rpt-sum-unit">registros</div></div>
-      <div class="rpt-summary-card"><div class="rpt-sum-label">TOTAL EXPEDIDAS</div><div class="rpt-sum-value" style="color:var(--exp)" id="rpt-s-exp">0</div><div class="rpt-sum-unit">registros</div></div>
+    <div class="rpt-summary-grid" style="grid-template-columns:repeat(5,1fr);">
+      <div class="rpt-summary-card"><div class="rpt-sum-label">BOBINAS NO BANCO</div><div class="rpt-sum-value" id="rpt-s-db">0</div><div class="rpt-sum-unit">filtro ativo</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">TOTAL DESCARREGADAS</div><div class="rpt-sum-value" style="color:var(--info)" id="rpt-s-desc">0</div><div class="rpt-sum-unit">filtro ativo</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">TOTAL EXPEDIDAS</div><div class="rpt-sum-value" style="color:var(--exp)" id="rpt-s-exp">0</div><div class="rpt-sum-unit">filtro ativo</div></div>
       <div class="rpt-summary-card"><div class="rpt-sum-label">SALDO EM ARMAZÉM</div><div class="rpt-sum-value green" id="rpt-s-saldo">0</div><div class="rpt-sum-unit">bobinas</div></div>
+      <div class="rpt-summary-card" style="border-left:3px solid var(--accent);"><div class="rpt-sum-label">SALDO PESO BRUTO</div><div class="rpt-sum-value" id="rpt-s-saldo-peso" style="color:var(--accent);font-size:18px;">0</div><div class="rpt-sum-unit" id="rpt-s-saldo-peso-unit">kg</div></div>
     </div>
 
     <!-- FILTROS GERAIS -->
@@ -1065,6 +1137,9 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-faturamento" style="accent-color:var(--success);width:16px;height:16px;"> 💰 Faturamento
+            </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-mapeamento" style="accent-color:#22d3ee;width:16px;height:16px;"> 🗺 Mapeamento
             </label>
           </div>
         </div>
@@ -1250,7 +1325,22 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 // ══════════════════════════════════════════
 // AUTH & USERS
 // ══════════════════════════════════════════
-const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true}};
+const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',mustChange:true,perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true}};
+
+// ── SHA-256 via Web Crypto API ──────────────────────────────────
+async function hashPass(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+// Verifica senha: aceita hash novo ou texto plano legado (migra automaticamente)
+async function verifyPass(inputPlain, storedUser){
+  if(storedUser.passHash){
+    const h = await hashPass(inputPlain);
+    return h === storedUser.passHash;
+  }
+  // legado — compara plain e migra
+  return inputPlain === storedUser.pass;
+}
 
 function loadUsers(){
   try{ const d=localStorage.getItem('sp_users'); return d?JSON.parse(d):[DEFAULT_ADMIN]; }catch(e){ return [DEFAULT_ADMIN]; }
@@ -1281,26 +1371,37 @@ async function doLogin(){
 
   // 1. Try local cache first (fast path)
   users = loadUsers();
-  let found = users.find(x => x.user.toLowerCase()===u && x.pass===p);
+  let candidate = users.find(x => x.user.toLowerCase()===u);
 
   // 2. If not found locally, try fetching from Supabase
   //    (first access on a new device — localStorage only has DEFAULT_ADMIN)
-  if(!found && SUPA_URL && SUPA_KEY){
+  if(!candidate && SUPA_URL && SUPA_KEY){
     if(btnEl){ btnEl.disabled=true; btnEl.textContent='Verificando...'; }
     try{
       const remoteUsers = await supa('users?select=*');
       if(remoteUsers && remoteUsers.length){
         users = remoteUsers.map(normalizeUser);
-        // Merge DEFAULT_ADMIN if not present
         if(!users.find(x=>x.id==='admin')) users.unshift(DEFAULT_ADMIN);
-        saveUsers(); // cache locally for next time
+        saveUsers();
       }
-      found = users.find(x => x.user.toLowerCase()===u && x.pass===p);
+      candidate = users.find(x => x.user.toLowerCase()===u);
     } catch(e){
-      // Supabase unreachable — keep local result (found stays null)
+      // Supabase unreachable — keep local result
     } finally {
       if(btnEl){ btnEl.disabled=false; btnEl.textContent='ENTRAR'; }
     }
+  }
+
+  if(!candidate){ candidate = null; }
+  const passOk = candidate ? await verifyPass(p, candidate) : false;
+  let found = passOk ? candidate : null;
+
+  // Migrar senha legada para hash na próxima vez
+  if(found && !found.passHash){
+    found.passHash = await hashPass(p);
+    delete found.pass;
+    saveUsers();
+    try{ await supaUpsert('users',{id:found.id,passHash:found.passHash},'id'); }catch(e){}
   }
 
   if(!found){
@@ -1321,6 +1422,15 @@ async function doLogin(){
   preencherDataPeriodoLote('d');
   preencherDataPeriodoLote('e');
   refreshHome();
+  // Forçar troca de senha padrão
+  if(found.mustChange || (found.id==='admin' && !found.passHash)){
+    setTimeout(()=>{
+      showToast('⚠ Por segurança, troque a senha padrão agora.','#f59e0b','#000');
+      document.getElementById('modal-change-pass').classList.add('open');
+      const msg=document.getElementById('cp-msg');
+      if(msg){ msg.style.display=''; msg.style.color='var(--warning)'; msg.textContent='⚠ Altere a senha padrão antes de continuar.'; }
+    }, 800);
+  }
   // Load all data from Supabase after login (non-blocking)
   loadAllData().then(()=>{
     refreshHome();
@@ -1414,6 +1524,8 @@ function applySessionUI(){
     if(dashFatCard) dashFatCard.style.display=(perms.faturamento===true)?'':'none';
     if(histCard) histCard.style.display='none';
     if(bkpCard)  bkpCard.style.display='none';
+    const mapCard=document.getElementById('card-mapeamento');
+    if(mapCard) mapCard.style.display=(perms.mapeamento===true)?'':'none';
   }
 }
 
@@ -1429,6 +1541,7 @@ function canAccess(mod){
   if(mod==='database')   return (perms.consultaDB === true);
   if(mod==='faturamento')return (perms.faturamento === true);
   if(mod==='dash-fat')   return (perms.faturamento === true);
+  if(mod==='mapeamento') return (perms.mapeamento  === true);
   return false;
 }
 
@@ -1450,8 +1563,8 @@ function renderUsersList(){
       ? ['descarga','expedicao','database','relatorios','usuarios']
       : isViewer
       ? ['relatorios']
-      : ['descarga','expedicao','consulta','relatorios'];
-    const permIcons = {descarga:'📥 Desc.',expedicao:'📤 Exped.',consulta:'🔍 Consulta',database:'🗄 Banco',relatorios:'📊 Relatórios',usuarios:'👥 Usuários'};
+      : ['descarga','expedicao','consulta','relatorios','consultaDB','faturamento','mapeamento'];
+    const permIcons = {descarga:'📥 Desc.',expedicao:'📤 Exped.',consulta:'🔍 Consulta',database:'🗄 Banco',consultaDB:'🗄 Banco',relatorios:'📊 Relatórios',usuarios:'👥 Usuários',faturamento:'💰 Fatur.',mapeamento:'🗺 Mapa'};
     const isSelf = session&&session.id===u.id;
     const roleBadge = isAdmin
       ? `<span class="user-card-role-badge admin">⚙ ADMINISTRADOR</span>`
@@ -1465,7 +1578,8 @@ function renderUsersList(){
         <div class="user-card-name">${u.nome} ${isSelf?'<span style="font-size:11px;color:var(--muted);font-family:\'JetBrains Mono\',monospace;">(você)</span>':''}</div>
         ${roleBadge}
         <div style="margin-top:5px;">${permList.map(p=>{
-          const active = isAdmin || isViewer || perms[p]===true || (p!=='relatorios'&&perms[p]!==false);
+          const defaultOn=new Set(['descarga','expedicao','consulta']);
+          const active = isAdmin || isViewer || (defaultOn.has(p)?perms[p]!==false:perms[p]===true);
           return `<span class="perm-chip ${active?'on':''}">${permIcons[p]||p}</span>`;
         }).join('')}</div>
         <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px;">login: ${u.user}${u.email?' · '+u.email:''}</div>
@@ -1505,7 +1619,8 @@ async function saveUser(){
         consulta:    document.getElementById('perm-consulta').checked,
         relatorios:  document.getElementById('perm-relatorios').checked,
         consultaDB:  document.getElementById('perm-consulta-db').checked,
-        faturamento: document.getElementById('perm-faturamento').checked
+        faturamento: document.getElementById('perm-faturamento').checked,
+        mapeamento:  document.getElementById('perm-mapeamento').checked
       };
   // Armazéns permitidos (vazio = todos)
   const armSel = document.getElementById('uf-armazens');
@@ -1513,12 +1628,20 @@ async function saveUser(){
   let userData;
   if(editUserId){
     const idx=users.findIndex(u=>u.id===editUserId);
-    if(idx>=0){ users[idx]={...users[idx],nome,user,email,role,perms,armazens}; if(pass) users[idx].pass=pass; userData=users[idx]; }
+    if(idx>=0){
+      users[idx]={...users[idx],nome,user,email,role,perms,armazens,mustChange:false};
+      if(pass){
+        users[idx].passHash = await hashPass(pass);
+        delete users[idx].pass;
+      }
+      userData=users[idx];
+    }
     editUserId=null;
     document.getElementById('user-form-title').textContent='➕ NOVO USUÁRIO';
     showToast('✓ Usuário atualizado!','#22c55e','#000');
   } else {
-    userData={id:'u'+Date.now(),nome,user,email,pass,role,perms,armazens};
+    const passHash = await hashPass(pass);
+    userData={id:'u'+Date.now(),nome,user,email,passHash,role,perms,armazens,mustChange:false};
     users.push(userData);
     showToast('✓ Usuário '+nome+' criado!','#22c55e','#000');
   }
@@ -1542,6 +1665,7 @@ function editUser(id){
     document.getElementById('perm-relatorios').checked= u.perms?.relatorios === true;
     document.getElementById('perm-consulta-db').checked= u.perms?.consultaDB === true;
     document.getElementById('perm-faturamento').checked= u.perms?.faturamento === true;
+    document.getElementById('perm-mapeamento').checked = u.perms?.mapeamento  === true;
   }
   // Populate armazens
   const armSel = document.getElementById('uf-armazens');
@@ -1580,6 +1704,7 @@ function clearUserForm(){
   document.getElementById('perm-relatorios').checked=false;
   document.getElementById('perm-consulta-db').checked=false;
   document.getElementById('perm-faturamento').checked=false;
+  document.getElementById('perm-mapeamento').checked=false;
   // Deselect all armazens (= access to all)
   const sel=document.getElementById('uf-armazens');
   if(sel) [...sel.options].forEach(o=>o.selected=false);
@@ -1829,9 +1954,12 @@ async function loadAllData(){
     saveUsers();
     // Load shared fat_config
     if(fatCfg && fatCfg.length) applyFatConfig(fatCfg);
-    hideLoading(); return true;
+    hideLoading();
+    setSyncBadge('ok', new Date().toISOString());
+    return true;
   }catch(err){
     hideLoading();
+    setSyncBadge('offline');
     // Show detailed error in a modal instead of just a toast
     const msg = err.message || 'Erro desconhecido';
     document.getElementById('modal-delete-body').innerHTML =
@@ -1872,10 +2000,40 @@ async function saveAndConnect(){
   if(ok){ showToast('✓ Conectado ao Supabase!','#22c55e','#000'); document.getElementById('btn-sync').style.display=''; applySessionUI(); refreshHome(); }
 }
 
+function setSyncBadge(state, ts){
+  const dot   = document.getElementById('sync-dot');
+  const label = document.getElementById('sync-label');
+  const tsEl  = document.getElementById('sync-ts');
+  const badge = document.getElementById('sync-badge');
+  if(!dot||!label) return;
+  if(state==='ok'){
+    dot.style.background='var(--success)'; dot.style.animationDuration='2s';
+    label.textContent='CONECTADO'; badge.style.color='var(--success)';
+    if(ts && tsEl) tsEl.textContent='sync '+new Date(ts).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  } else if(state==='syncing'){
+    dot.style.background='var(--info)'; dot.style.animationDuration='.6s';
+    label.textContent='SINCRONIZANDO...'; badge.style.color='var(--info)';
+  } else if(state==='offline'){
+    dot.style.background='var(--warning)'; dot.style.animationDuration='3s';
+    label.textContent='OFFLINE (LOCAL)'; badge.style.color='var(--warning)';
+    if(tsEl) tsEl.textContent='';
+  } else {
+    dot.style.background='var(--success)'; label.textContent='SISTEMA ATIVO'; badge.style.color='';
+  }
+}
+
 async function syncData(){
+  setSyncBadge('syncing');
   showToast('Sincronizando...','#3b82f6','#fff');
   const ok=await loadAllData();
-  if(ok){ showToast('✓ Sincronizado!','#22c55e','#000'); buildFilterSelects('d'); buildFilterSelects('e'); applyFilters('d'); applyFilters('e'); buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); refreshHome(); }
+  if(ok){
+    setSyncBadge('ok', new Date().toISOString());
+    showToast('✓ Sincronizado!','#22c55e','#000');
+    buildFilterSelects('d'); buildFilterSelects('e'); applyFilters('d'); applyFilters('e');
+    buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); refreshHome();
+  } else {
+    setSyncBadge('offline');
+  }
 }
 
 // ── Compat wrappers usados pelo resto do código ─────────────────
@@ -1936,7 +2094,11 @@ document.addEventListener('DOMContentLoaded', async ()=>{
 // ══════════════════════════════════════════
 // NAVIGATION
 // ══════════════════════════════════════════
+function _confirmDirty(){ return !window._dirtyForm || confirm('Há dados não salvos no formulário. Deseja sair mesmo assim?'); }
+
 function goHome(){
+  if(!_confirmDirty()) return;
+  window._dirtyForm = false;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-home').classList.add('active');
   document.getElementById('btn-back').style.display='none';
@@ -1948,6 +2110,8 @@ function openModule(mod){
     showToast('⚠ Você não tem permissão para acessar este módulo.','#e05c1a','#fff');
     return;
   }
+  if(!_confirmDirty()) return;
+  window._dirtyForm = false;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+mod).classList.add('active');
   document.getElementById('btn-back').style.display='';
@@ -1959,7 +2123,7 @@ function openModule(mod){
   if(mod==='mapeamento') { applyMapOverrides(); buildMapFilters(); renderMapa(); }
   if(mod==='faturamento'){ autoSyncFatConfig().then(()=>{ buildFatSelects(); renderFaturamento(); }); }
   if(mod==='dash-fat')   { autoSyncFatConfig().then(()=>renderDashFat()); }
-  if(mod==='historico')  { renderHistorico(); }
+  if(mod==='historico')  { loadAuditFromSupabase().then(renderHistorico); renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
 }
 
@@ -2021,6 +2185,87 @@ function refreshHome(){
   const mapBLs=new Set(inStock.map(c=>c.bl).filter(Boolean)).size;
   const hpEl=document.getElementById('home-map-pilhas'); if(hpEl) hpEl.textContent=mapPilhas;
   const hbEl=document.getElementById('home-map-bls');    if(hbEl) hbEl.textContent=mapBLs;
+
+  // ── Operational dashboard ───────────────────────────────────────
+  const dbSet = new Set(coilsDB.map(c=>c.coil));
+  // Bobinas em estoque = descargadas mas não expedidas
+  const estoqueCoils = records.filter(r=>!expSet.has(r.coil));
+  const estoquePeso  = estoqueCoils.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  // Inconsistências = descargadas ou expedidas sem cadastro no coilsDB
+  const semCadastro = [...new Set([
+    ...records.map(r=>r.coil),
+    ...expedicoes.map(r=>r.coil)
+  ])].filter(c=>!dbSet.has(c));
+
+  const setEl=(id,val)=>{ const el=document.getElementById(id); if(el) el.textContent=val; };
+  setEl('op-estoque',      estoqueCoils.length);
+  setEl('op-estoque-peso', fmtKg(estoquePeso)+' kg');
+  setEl('op-desc',         records.length);
+  setEl('op-desc-peso',    fmtKg(totalDescPB)+' kg peso bruto');
+  setEl('op-exp',          expedicoes.length);
+  setEl('op-exp-peso',     fmtKg(totalExpPB)+' kg peso bruto');
+  setEl('op-inconsist',    semCadastro.length);
+  const badgeEl = document.getElementById('op-inconsist-badge');
+  if(badgeEl){
+    badgeEl.innerHTML = semCadastro.length===0
+      ? '<span class="op-alert ok">✓ Sem inconsistências</span>'
+      : `<span class="op-alert">⚠ ${semCadastro.length} sem cadastro</span>`;
+  }
+}
+
+function openInconsistModal(){
+  if(!session||session.role!=='admin'){
+    showToast('⚠ Apenas administradores podem ver este relatório.','#e05c1a','#fff');
+    return;
+  }
+  const dbSet=new Set(coilsDB.map(c=>c.coil));
+  const expSet=new Set(expedicoes.map(r=>r.coil));
+  const semCadastro=[...new Set([...records.map(r=>r.coil),...expedicoes.map(r=>r.coil)])].filter(c=>!dbSet.has(c));
+  const modal=document.getElementById('modal-inconsist');
+  const body=document.getElementById('modal-inconsist-body');
+  if(!modal||!body) return;
+  if(!semCadastro.length){
+    body.innerHTML=`<div class="empty-state"><span class="empty-icon">✓</span><div style="color:var(--success);font-weight:700;">Nenhuma inconsistência encontrada!</div><div style="color:var(--muted);font-size:13px;margin-top:4px;">Todas as bobinas movimentadas possuem cadastro no banco de dados.</div></div>`;
+  } else {
+    const rows=semCadastro.map(coil=>{
+      const descs=records.filter(r=>r.coil===coil);
+      const exps=expedicoes.filter(r=>r.coil===coil);
+      const tipo=descs.length&&exps.length?'DESC + EXP':descs.length?'DESCARGA':'EXPEDIÇÃO';
+      const tipoColor=descs.length&&exps.length?'var(--accent)':descs.length?'var(--info)':'var(--exp)';
+      const bl=(descs[0]||exps[0])?.bl||'—';
+      const navio=(descs[0]||exps[0])?.navio||'—';
+      const cliente=(descs[0]||exps[0])?.cliente||'—';
+      const data=(descs[0]||exps[0])?.data||'—';
+      return `<tr>
+        <td><span class="coil-badge">${coil}</span></td>
+        <td><span style="font-size:11px;padding:2px 7px;border-radius:3px;font-family:'JetBrains Mono',monospace;background:rgba(224,92,26,.12);color:${tipoColor};border:1px solid ${tipoColor}33;">${tipo}</span></td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${bl}</td>
+        <td style="font-weight:600">${navio}</td>
+        <td style="color:#60a5fa">${cliente}</td>
+        <td>${data?formatDate(data):'—'}</td>
+        <td style="text-align:center">
+          <span style="font-size:11px;padding:2px 6px;border-radius:3px;background:rgba(59,130,246,.12);color:var(--info);">${descs.length}</span>
+        </td>
+        <td style="text-align:center">
+          <span style="font-size:11px;padding:2px 6px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);">${exps.length}</span>
+        </td>
+      </tr>`;
+    }).join('');
+    body.innerHTML=`
+      <div style="margin-bottom:12px;padding:10px 14px;background:rgba(224,92,26,.08);border:1px solid rgba(224,92,26,.25);border-radius:6px;font-size:13px;color:var(--danger);">
+        ⚠ <strong>${semCadastro.length} bobina(s)</strong> foram movimentadas (descarga ou expedição) mas não possuem cadastro no banco de dados (coilsDB). Cadastre-as no módulo <strong>Database</strong> para resolver.
+      </div>
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>COIL NUMBER</th><th>TIPO MOV.</th><th>BL</th><th>NAVIO</th><th>CLIENTE</th><th>DATA</th>
+          <th style="text-align:center">DESC.</th><th style="text-align:center">EXP.</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>`;
+  }
+  modal.classList.add('open');
 }
 
 // ══════════════════════════════════════════
@@ -2646,12 +2891,30 @@ async function confirmarLote(px){
 }
 
 function printTicketExpedicao(entries, veiculo, motorista, destino, data, periodo, obs){
-  const ticketNum = 'EXP-' + Date.now().toString().slice(-6);
-  // Save to history (keep last 50)
-  const ticketData = {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs, emitidoEm: new Date().toISOString()};
+  const ticketId  = Date.now();
+  const ticketNum = 'EXP-' + ticketId.toString().slice(-6);
+  const ticketData = {
+    id: ticketId, ticketNum, entries, veiculo, motorista, destino,
+    data, periodo, obs, emitidoEm: new Date().toISOString(),
+    usuario: session?.nome||'—', userId: session?.user||''
+  };
   ticketHistory.unshift(ticketData);
-  if(ticketHistory.length > 50) ticketHistory.pop();
-  try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory)); }catch(e){}
+  if(ticketHistory.length > 200) ticketHistory.pop();
+  try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+
+  // Persiste na tabela compartilhada do Supabase
+  if(SUPA_URL && SUPA_KEY){
+    supaUpsert('tickets', {
+      id:         ticketId,
+      ticket_num: ticketNum,
+      ts:         ticketData.emitidoEm,
+      user_id:    ticketData.userId,
+      usuario:    ticketData.usuario,
+      veiculo, motorista, destino, data, periodo, obs,
+      entries:    JSON.stringify(entries)
+    }, 'id').catch(()=>{});
+  }
+
   _renderTicketWindow(ticketData);
 }
 
@@ -2762,38 +3025,84 @@ function _renderTicketWindow(t){
 }
 
 
-function openReprintModal(){
-  const list = document.getElementById('reprint-list');
-  const empty= document.getElementById('reprint-empty');
+async function openReprintModal(){
+  document.getElementById('modal-reprint').classList.add('open');
+  const list  = document.getElementById('reprint-list');
+  const empty = document.getElementById('reprint-empty');
+  list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;">Carregando tickets...</div>';
+  empty.style.display = 'none';
+
+  // Busca do Supabase
+  if(SUPA_URL && SUPA_KEY){
+    try{
+      const isAdmin = session?.role==='admin';
+      const filter  = isAdmin
+        ? 'tickets?select=*&order=ts.desc&limit=200'
+        : `tickets?select=*&user_id=eq.${encodeURIComponent(session?.user||'')}&order=ts.desc&limit=100`;
+      const remote = await supaAll(filter);
+      if(remote && remote.length){
+        const normalized = remote.map(t=>({
+          id:        t.id,
+          ticketNum: t.ticket_num,
+          emitidoEm: t.ts,
+          usuario:   t.usuario,
+          userId:    t.user_id,
+          veiculo:   t.veiculo,
+          motorista: t.motorista,
+          destino:   t.destino,
+          data:      t.data,
+          periodo:   t.periodo,
+          obs:       t.obs,
+          entries:   typeof t.entries==='string' ? JSON.parse(t.entries||'[]') : (t.entries||[])
+        }));
+        // Merge com cache local, dedup por id
+        const byId = {};
+        [...ticketHistory, ...normalized].forEach(t=>{ if(t.id) byId[t.id]=t; });
+        ticketHistory = Object.values(byId).sort((a,b)=>new Date(b.emitidoEm)-new Date(a.emitidoEm));
+        try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+      }
+    }catch(e){}
+  }
+
+  _renderReprintList();
+}
+
+function _renderReprintList(){
+  const list  = document.getElementById('reprint-list');
+  const empty = document.getElementById('reprint-empty');
+  const isAdmin = session?.role==='admin';
   if(!ticketHistory.length){
     list.innerHTML=''; empty.style.display='';
-  } else {
-    empty.style.display='none';
-    list.innerHTML = ticketHistory.map((t,i)=>{
-      const dt = new Date(t.emitidoEm).toLocaleString('pt-BR');
-      const nCoils = t.entries?.length||0;
-      const bl = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
-      const totalPB = (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
-      return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;gap:1rem;">
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-            <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${t.ticketNum}</span>
-            <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo}</span>
-            <span style="font-size:11px;color:var(--muted);">${t.motorista||'—'}</span>
-          </div>
-          <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
-            <span>BL: <b style="color:var(--text)">${bl}</b></span>
-            <span>${nCoils} bobina(s)</span>
-            <span>${fmtKg(totalPB)} kg</span>
-            <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo}</span>
-          </div>
-          <div style="font-size:10px;color:var(--muted);margin-top:.2rem;">Emitido: ${dt}</div>
-        </div>
-        <button class="btn btn-secondary btn-sm" onclick="reprintTicket(${i});closeModal('modal-reprint');" style="flex-shrink:0;">🖨 IMPRIMIR</button>
-      </div>`;
-    }).join('');
+    return;
   }
-  document.getElementById('modal-reprint').classList.add('open');
+  empty.style.display='none';
+  list.innerHTML = ticketHistory.map((t,i)=>{
+    const dt     = new Date(t.emitidoEm).toLocaleString('pt-BR');
+    const nCoils = t.entries?.length||0;
+    const bl     = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
+    const totalPB= (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+    const usuarioBadge = isAdmin && t.usuario
+      ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:1px 6px;">👤 ${t.usuario}</span>`
+      : '';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;gap:1rem;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${t.ticketNum}</span>
+          <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo||'—'}</span>
+          <span style="font-size:11px;color:var(--muted);">${t.motorista||'—'}</span>
+          ${usuarioBadge}
+        </div>
+        <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
+          <span>BL: <b style="color:var(--text)">${bl}</b></span>
+          <span>${nCoils} bobina(s)</span>
+          <span>${fmtKg(totalPB)} kg</span>
+          <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo||'—'}</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-top:.2rem;">Emitido: ${dt}</div>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="reprintTicket(${i});closeModal('modal-reprint');" style="flex-shrink:0;">🖨 IMPRIMIR</button>
+    </div>`;
+  }).join('');
 }
 
 function clearTicketHistory(){
@@ -3360,6 +3669,7 @@ function clearRegForm(px){
   if(errEl){ errEl.classList.remove('show'); errEl.textContent=''; }
   const coilEl=document.getElementById(px+'-coil');
   if(coilEl) coilEl.classList.remove('field-error');
+  window._dirtyForm = false;
 }
 
 function fmtTon(kg){ return (kg/1000).toFixed(2); }
@@ -4137,13 +4447,111 @@ function getRptData(){
   return {desc, exps, sNav, sCli, sBl, sArm, sVei, sPro};
 }
 
+function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
+  let headers=[], rows=[];
+  if(tipo==='navio'){
+    headers=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    const navSet=[...new Set([...coilsDB.map(c=>c.navio),...desc.map(r=>r.navio),...exps.map(r=>r.navio)].filter(Boolean))].sort();
+    const filtNavs=sNav.length?navSet.filter(n=>sNav.includes(n)):navSet;
+    rows=filtNavs.map(nav=>{
+      const dbN=coilsDB.filter(c=>c.navio===nav&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
+      const dN=desc.filter(r=>r.navio===nav); const eN=exps.filter(r=>r.navio===nav);
+      return [nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),
+        Math.round(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+    });
+  } else if(tipo==='cliente'){
+    headers=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...desc.map(r=>r.cliente),...exps.map(r=>r.cliente)].filter(Boolean))].sort();
+    const filtClis=sCli.length?cliSet.filter(c=>sCli.includes(c)):cliSet;
+    rows=filtClis.map(cli=>{
+      const dbC=coilsDB.filter(c=>c.cliente===cli&&_rptMatch(c.navio,sNav)&&_rptMatch(c.bl,sBl));
+      const dC=desc.filter(r=>r.cliente===cli); const eC=exps.filter(r=>r.cliente===cli);
+      return [cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),
+        Math.round(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+    });
+  } else if(tipo==='bl'){
+    headers=['BL','NAVIO','CLIENTE','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    const blSet=[...new Set([...coilsDB.map(c=>c.bl),...desc.map(r=>r.bl),...exps.map(r=>r.bl)].filter(Boolean))].sort();
+    const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
+    rows=filtBls.map(bl=>{
+      const dbB=coilsDB.filter(c=>c.bl===bl&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli));
+      const dB=desc.filter(r=>r.bl===bl); const eB=exps.filter(r=>r.bl===bl);
+      return [bl,dbB[0]?.navio||dB[0]?.navio||'—',dbB[0]?.cliente||dB[0]?.cliente||'—',
+        dB.length,eB.length,Math.max(0,dB.length-eB.length),
+        Math.round(dB.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eB.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+    });
+  } else if(tipo==='produto'){
+    headers=['PRODUTO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    const pSet=[...new Set([...coilsDB.map(c=>c.produto),...desc.map(r=>r.produto),...exps.map(r=>r.produto)].filter(Boolean))].sort();
+    rows=pSet.map(p=>{
+      const dP=desc.filter(r=>r.produto===p); const eP=exps.filter(r=>r.produto===p);
+      return [p,dP.length,eP.length,Math.max(0,dP.length-eP.length),
+        Math.round(dP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+    });
+  } else if(tipo==='veiculo'){
+    headers=['VEÍCULO','MOTORISTA','DESCARGAS','EXPEDIÇÕES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    const vSet=[...new Set([...desc.map(r=>r.veiculo),...exps.map(r=>r.veiculo)].filter(Boolean))].sort();
+    rows=vSet.map(v=>{
+      const dV=desc.filter(r=>r.veiculo===v); const eV=exps.filter(r=>r.veiculo===v);
+      const mot=[...new Set([...dV,...eV].map(r=>r.motorista).filter(Boolean))].join(', ')||'—';
+      return [v,mot,dV.length,eV.length,
+        Math.round(dV.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eV.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+    });
+  } else if(tipo==='periodo'){
+    headers=['PERÍODO','DESCARGAS','EXPEDIÇÕES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    ['07x13','13x19','19x01','01x07'].forEach(per=>{
+      const dP=desc.filter(r=>r.periodo===per); const eP=exps.filter(r=>r.periodo===per);
+      if(dP.length||eP.length) rows.push([per,dP.length,eP.length,
+        Math.round(dP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
+        Math.round(eP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))]);
+    });
+  } else if(tipo==='armazem'){
+    headers=['ARMAZÉM','BOBINAS BANCO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)'];
+    const aSet=[...new Set([...coilsDB.map(c=>c.armazem),...desc.map(r=>r.armazem),...exps.map(r=>r.armazem)].filter(Boolean))].sort();
+    const filtArms=sArm.length?aSet.filter(a=>sArm.includes(a)):aSet;
+    rows=filtArms.map(a=>{
+      const dbA=coilsDB.filter(c=>c.armazem===a&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
+      const dA=desc.filter(r=>r.armazem===a); const eA=exps.filter(r=>r.armazem===a);
+      return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
+        Math.round(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
+    });
+  } else {
+    headers=['TIPO','QUANTIDADE','P.BRUTO TOTAL (kg)','P.LÍQUIDO TOTAL (kg)'];
+    rows=[
+      ['DESCARGA',desc.length,Math.round(desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),Math.round(desc.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0))],
+      ['EXPEDIÇÃO',exps.length,Math.round(exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),Math.round(exps.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0))]
+    ];
+  }
+  return {headers, rows};
+}
+
 function renderRptSummary(){
-  const saldo=records.length-expedicoes.length;
-  document.getElementById('rpt-s-db').textContent=coilsDB.length;
-  document.getElementById('rpt-s-desc').textContent=records.length;
-  document.getElementById('rpt-s-exp').textContent=expedicoes.length;
+  const {desc,exps,sNav,sCli,sBl,sArm}=getRptData();
+  const mv=document.getElementById('rpt-movimento').value;
+  const filtDB=coilsDB.filter(c=>
+    _rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm)
+  );
+  const saldo=desc.length-exps.length;
+  const pbDesc=desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const pbExps=exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const pbSaldo=pbDesc-pbExps;
+  document.getElementById('rpt-s-db').textContent=filtDB.length;
+  document.getElementById('rpt-s-desc').textContent=mv==='expedicao'?'—':desc.length;
+  document.getElementById('rpt-s-exp').textContent=mv==='descarga'?'—':exps.length;
   const el=document.getElementById('rpt-s-saldo');
   el.textContent=saldo; el.className='rpt-sum-value '+(saldo>=0?'green':'red');
+  const pesoEl=document.getElementById('rpt-s-saldo-peso');
+  const pesoUnit=document.getElementById('rpt-s-saldo-peso-unit');
+  if(pesoEl){
+    pesoEl.textContent=(pbSaldo<0?'▼ ':'')+fmtKg(Math.abs(pbSaldo));
+    pesoEl.style.color=pbSaldo>=0?'var(--accent)':'var(--danger)';
+    if(pesoUnit) pesoUnit.textContent=Math.abs(pbSaldo)>=1000?'kg (desc − exp)':'kg (desc − exp)';
+  }
 }
 
 function renderReport(){
@@ -4386,33 +4794,16 @@ function exportReportXLSX(){
     return;
   }
 
-  // Sheet 1: Resumo
-  let summaryData=[];
-  if(tipo==='navio'||tipo==='geral'){
-    summaryData=[['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)']];
-    const navSet=[...new Set([...coilsDB.map(c=>c.navio),...desc.map(r=>r.navio),...exps.map(r=>r.navio)].filter(Boolean))].sort();
-    navSet.forEach(nav=>{
-      if(sNav.length&&!sNav.includes(nav)) return;
-      const dbN=coilsDB.filter(c=>c.navio===nav);
-      const dN=desc.filter(r=>r.navio===nav);
-      const eN=exps.filter(r=>r.navio===nav);
-      summaryData.push([nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),
-        Math.round(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
-        Math.round(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))]);
-    });
-  } else {
-    summaryData=[['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)']];
-    const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...desc.map(r=>r.cliente),...exps.map(r=>r.cliente)].filter(Boolean))].sort();
-    cliSet.forEach(cli=>{
-      if(sCli.length&&!sCli.includes(cli)) return;
-      const dbC=coilsDB.filter(c=>c.cliente===cli);
-      const dC=desc.filter(r=>r.cliente===cli);
-      const eC=exps.filter(r=>r.cliente===cli);
-      summaryData.push([cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),
-        Math.round(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
-        Math.round(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))]);
-    });
-  }
+  // Sheet 1: Resumo (usa helper compartilhado, cobre todos os tipos)
+  const {sArm,sVei,sPro}=getRptData();
+  const {headers:sumH, rows:sumR}=buildRptGroupSummary(tipo,desc,exps,sNav,sCli,sBl,sArm);
+  const pbDescTotal=Math.round(desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
+  const pbExpsTotal=Math.round(exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
+  const summaryData=[sumH,...sumR,
+    [],
+    ['TOTAIS','DESC: '+desc.length,'EXP: '+exps.length,'SALDO: '+(desc.length-exps.length),
+     'P.B. DESC (kg): '+pbDescTotal,'P.B. EXP (kg): '+pbExpsTotal,'SALDO P.B. (kg): '+(pbDescTotal-pbExpsTotal)]
+  ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Resumo');
 
   // Sheet 2: Descargas
@@ -4525,36 +4916,26 @@ function exportReportPDF(){
     else if(fc) doc.text('Cliente: '+fc,pageW-14,17,{align:'right'});
   }
 
-  // PAGE 1: RESUMO
-  addHeader(tipo==='navio'?'RELATÓRIO POR NAVIO':tipo==='cliente'?'RELATÓRIO POR CLIENTE':'RELATÓRIO GERAL');
+  // PAGE 1: RESUMO (usa helper compartilhado, cobre todos os tipos)
+  const tipoLabel={navio:'RELATÓRIO POR NAVIO',cliente:'RELATÓRIO POR CLIENTE',bl:'RELATÓRIO POR BL',
+    produto:'RELATÓRIO POR PRODUTO',veiculo:'RELATÓRIO POR VEÍCULO',periodo:'RELATÓRIO POR PERÍODO',
+    armazem:'RELATÓRIO POR ARMAZÉM',geral:'RELATÓRIO GERAL'}[tipo]||'RELATÓRIO';
+  addHeader(tipoLabel);
   doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(240,165,0);
   doc.text('RESUMO EXECUTIVO',14,26);
 
-  // Summary table
-  const summaryRows=[];
-  if(tipo!=='cliente'){
-    const navSet=[...new Set([...coilsDB.map(c=>c.navio),...desc.map(r=>r.navio)].filter(Boolean))].sort();
-    (fn?[fn]:navSet).forEach(nav=>{
-      const dbN=coilsDB.filter(c=>c.navio===nav&&(!fc||c.cliente===fc));
-      const dN=desc.filter(r=>r.navio===nav);
-      const eN=exps.filter(r=>r.navio===nav);
-      summaryRows.push([nav,String(dbN.length),String(dN.length),String(eN.length),String(Math.max(0,dbN.length-dN.length)),
-        fmtKg(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' t',
-        fmtKg(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg']);
-    });
-    doc.autoTable({startY:30,head:[['NAVIO','BANCO','DESC.','EXP.','PENDENTES','P.BRUTO DESC.','P.BRUTO EXP.']],body:summaryRows,theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:8},bodyStyles:{fontSize:8,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2.5,lineColor:[37,42,53]}});
-  } else {
-    const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...desc.map(r=>r.cliente)].filter(Boolean))].sort();
-    (fc?[fc]:cliSet).forEach(cli=>{
-      const dbC=coilsDB.filter(c=>c.cliente===cli&&(!fn||c.navio===fn));
-      const dC=desc.filter(r=>r.cliente===cli);
-      const eC=exps.filter(r=>r.cliente===cli);
-      summaryRows.push([cli,String(dbC.length),String(dC.length),String(eC.length),String(Math.max(0,dbC.length-dC.length)),
-        fmtKg(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' t',
-        fmtKg(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg']);
-    });
-    doc.autoTable({startY:30,head:[['CLIENTE','BANCO','DESC.','EXP.','PENDENTES','P.BRUTO DESC.','P.BRUTO EXP.']],body:summaryRows,theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:8},bodyStyles:{fontSize:8,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2.5,lineColor:[37,42,53]}});
-  }
+  const {headers:rptSumH, rows:rptSumRows}=buildRptGroupSummary(tipo,desc,exps,
+    _rptGetSelected('rpt-navio'),_rptGetSelected('rpt-cliente'),_rptGetSelected('rpt-bl'),_rptGetSelected('rpt-armazem'));
+  const pbDescPdf=desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const pbExpsPdf=exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const pdfSumBody=[...rptSumRows.map(r=>r.map(String)),
+    Array(rptSumH.length).fill(''),
+    ['TOTAIS','DESC: '+desc.length,'EXP: '+exps.length,...Array(Math.max(0,rptSumH.length-4)).fill(''),'SALDO P.B.: '+fmtKg(pbDescPdf-pbExpsPdf)+' kg'].slice(0,rptSumH.length)
+  ];
+  doc.autoTable({startY:30,head:[rptSumH],body:pdfSumBody,theme:'grid',
+    headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:8},
+    bodyStyles:{fontSize:8,textColor:[220,220,220],fillColor:[17,19,24]},
+    alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2.5,lineColor:[37,42,53]}});
 
   // PAGE 2: DESCARGAS
   if(mv!=='expedicao'&&desc.length){
@@ -5312,11 +5693,28 @@ function descongelarPesosBL(bl){
     }
   }
 }
-function getTarifaBL(bl, global){
-  const v=_fatGet(getTarifaKey(bl));
-  return v!==null ? parseFloat(v) : global;
-}
 function setTarifaBL(bl, v){ _fatSet(getTarifaKey(bl), String(v)); fatConfigSet('tarifa_bl_'+bl, String(v)); }
+
+function editTarifaBL(bl){
+  const tarGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
+  const atual=getTarifaBL(bl, tarGlobal);
+  const input=prompt(`Tarifa de Armazenagem — BL: ${bl}\n\nValor atual: R$ ${atual>0?atual.toFixed(2).replace('.',','):'não definido'}\n\nNova tarifa (R$/t):`, atual>0?atual.toFixed(2).replace('.',','):'');
+  if(input===null) return;
+  const v=parseFloat(input.replace(',','.'));
+  if(isNaN(v)||v<0){ showToast('⚠ Valor inválido.','#e05c1a','#fff'); return; }
+  setTarifaBL(bl, v);
+  renderFaturamento();
+}
+
+function editHandlingBL(bl){
+  const atual=getHandlingBL(bl)||0;
+  const input=prompt(`Tarifa de Handling — BL: ${bl}\n\nValor atual: R$ ${atual>0?atual.toFixed(2).replace('.',','):'não definido'}\n\nNova tarifa (R$/t):`, atual>0?atual.toFixed(2).replace('.',','):'');
+  if(input===null) return;
+  const v=parseFloat(input.replace(',','.'));
+  if(isNaN(v)||v<0){ showToast('⚠ Valor inválido.','#e05c1a','#fff'); return; }
+  setHandlingBL(bl, v);
+  renderFaturamento();
+}
 
 // ── Tarifa global e por BL filtrado ──────────────────
 function salvarTarifa(){
@@ -5606,18 +6004,15 @@ function renderFaturamento(){
         // Handling = tarifa × tonelagem total do BL (todas as bobinas)
         const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||parseFloat(records.find(r=>r.coil===c.coil)?.pesob)||0),0)/1000;
         const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
-
         const ton=p.pesoBruto/1000;
         const valor=tarifaBL>0?ton*tarifaBL:null;
         const dtIni=p.dataIni.split('-').reverse().join('/');
         const dtFim=p.dataFim.split('-').reverse().join('/');
         let statusPer='', rowBg='';
         if(state.enviado){
-          // Já faturado
           statusPer=`<span style="color:var(--success);font-size:11px;font-weight:700;">✓ ENVIADO</span>`;
           rowBg='background:rgba(34,197,94,.04);';
         } else {
-          // O primeiro dia do período já é a data de cobrança — qualquer período não enviado está vencido
           statusPer=`<span style="color:var(--danger);font-size:11px;font-weight:700;">⚠ VENCIDO</span>`;
           rowBg='background:rgba(224,92,26,.06);';
           blsPendentes++;
@@ -5630,10 +6025,14 @@ function renderFaturamento(){
         const handlingHtml=p.num===1?`
           <div style="display:flex;align-items:center;gap:.35rem;margin-top:3px;">
             <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">HANDLING R$/t:</span>
-            <input type="number" min="0" step="0.01" value="${handlingTarifa>0?handlingTarifa.toFixed(2):''}" placeholder="0,00"
-              onchange="setHandlingBL('${bl}',parseFloat(this.value.replace(',','.'))||0);renderFaturamento();"
-              style="width:70px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:4px;font-size:12px;font-weight:700;text-align:right;outline:none;"
-              title="Tarifa de Handling por tonelada">
+            <span style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#60a5fa;min-width:44px;text-align:right;padding:2px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
+              ${handlingTarifa>0?handlingTarifa.toFixed(2):'—'}
+            </span>
+            <button onclick="editHandlingBL('${bl}')"
+              title="Editar tarifa de Handling R$/t deste BL"
+              style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--muted);font-size:11px;padding:2px 5px;line-height:1;"
+              onmouseover="this.style.color='#60a5fa';this.style.borderColor='#60a5fa'"
+              onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">✏</button>
             ${handlingTarifa>0?`<span style="font-size:10px;color:#60a5fa;font-family:'JetBrains Mono',monospace;">×${tonelagemTotalBL.toFixed(2)}t = R$${handlingVal.toFixed(2).replace('.',',')}</span>`:''}
           </div>`:'';
         const totalPeriodo=(valor||0)+(p.num===1?handlingVal:0);
@@ -5689,16 +6088,19 @@ function renderFaturamento(){
         ${cliInfo?.cnpj?`<div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CNPJ: ${cliInfo.cnpj}</div>`:''}
         ${cliInfo?.email?`<a href="mailto:${cliInfo.email}" style="font-size:11px;color:var(--info);text-decoration:none;">✉ ${cliInfo.email}</a>`:''}
         ${cliInfo?.contato?`<div style="font-size:11px;color:var(--muted);">👤 ${cliInfo.contato}</div>`:''}
-        <!-- TARIFA INLINE EDITÁVEL -->
+        <!-- TARIFA INLINE — display fixo + lápis para editar -->
         <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto;">
           <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">R$/t:</span>
-          <input type="number" min="0" step="0.01"
-            value="${tarifaBL>0?tarifaBL.toFixed(2):''}"
-            placeholder="0,00"
-            onchange="setTarifaBL('${bl}',parseFloat(this.value.replace(',','.'))||0);renderFaturamento();"
-            style="width:80px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:5px;font-size:13px;font-weight:700;text-align:right;outline:none;"
-            title="Tarifa por tonelada para este BL">
-          ${totalBL>0?`<span style="font-weight:700;font-size:13px;color:var(--success);margin-left:.5rem;">= R$ ${totalBL.toFixed(2).replace('.',',')}</span>`:''}
+          <span id="fat-tarifa-display-${bl.replace(/[^a-z0-9]/gi,'_')}"
+            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text);min-width:52px;text-align:right;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;">
+            ${tarifaBL>0?tarifaBL.toFixed(2):'—'}
+          </span>
+          <button onclick="editTarifaBL('${bl}')"
+            title="Editar tarifa R$/t deste BL"
+            style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--muted);font-size:13px;padding:3px 6px;line-height:1;"
+            onmouseover="this.style.color='var(--accent)';this.style.borderColor='var(--accent)'"
+            onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">✏</button>
+          ${totalBL>0?`<span style="font-weight:700;font-size:13px;color:var(--success);margin-left:.25rem;">= R$ ${totalBL.toFixed(2).replace('.',',')}</span>`:''}
         </div>
       </div>
       <div style="overflow-x:auto;">
@@ -5815,10 +6217,10 @@ function emitirFatura(bl, periodoNum){
   const produto=dbCoils[0]?.produto||'—';
   const cliInfo=getClienteInfo(cliente);
   const toneladas=p.pesoBruto/1000;
-  const valor=tarifaBL>0?toneladas*tarifaBL:null;
-  // Handling = tarifa de handling × tonelagem TOTAL do BL (todas as bobinas do banco)
   const handlingTarifaBL = getHandlingBL(bl)||0;
   const tonelagemTotalBL = dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||0),0)/1000;
+  const valor=tarifaBL>0?toneladas*tarifaBL:null;
+  // Handling = tarifa de handling × tonelagem TOTAL do BL (todas as bobinas do banco)
   const handling = periodoNum===1 ? handlingTarifaBL*tonelagemTotalBL : 0;
   const totalFatura=(valor||0)+handling;
   const state=getFatState(bl,periodoNum);
@@ -6568,10 +6970,6 @@ try {
 
 function saveAudit(){
   try{ localStorage.setItem('sp_audit', JSON.stringify(auditLog.slice(0,HIST_MAX))); }catch(e){}
-  // Sync to Supabase silently so admin can consolidate
-  if(SUPA_URL&&SUPA_KEY&&session){
-    fatConfigSet('audit_'+session.user, JSON.stringify(auditLog.slice(0,HIST_MAX)));
-  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -6805,12 +7203,16 @@ async function confirmarAlterarSenha(){
   // Verify current password
   const u=users.find(u=>u.user===session.user);
   if(!u){ showMsg('Usuário não encontrado.',false); return; }
-  if(u.pass!==atual){ showMsg('Senha atual incorreta.',false); return; }
+  const passOkCP = await verifyPass(atual, u);
+  if(!passOkCP){ showMsg('Senha atual incorreta.',false); return; }
 
-  // Update
-  u.pass=nova;
+  // Update — salva hash, remove campos legados
+  u.passHash = await hashPass(nova);
+  delete u.pass;
+  u.mustChange = false;
+  if(session.id===u.id){ session.mustChange=false; localStorage.setItem('sp_session',JSON.stringify(session)); }
   try{
-    await supaUpsert('users', {id:u.id, pass:nova}, 'id');
+    await supaUpsert('users', {id:u.id, passHash:u.passHash, mustChange:false}, 'id');
     saveUsers();
     showMsg('✓ Senha alterada com sucesso!',true);
     setTimeout(()=>closeModal('modal-change-pass'), 1500);
@@ -6822,40 +7224,44 @@ async function confirmarAlterarSenha(){
 // ══════════════════════════════════════════════════════
 // CONSOLIDAR HISTÓRICO — admin puxa logs de todos os usuários
 // ══════════════════════════════════════════════════════
-async function syncAuditLog(){
-  if(!SUPA_URL||!SUPA_KEY){ showToast('Supabase não configurado.','#e05c1a','#fff'); return; }
-  showLoading('Consolidando histórico de todos os usuários...');
+async function loadAuditFromSupabase(){
+  if(!SUPA_URL||!SUPA_KEY) return false;
   try{
-    // Push local audit to Supabase
-    await fatConfigSet('audit_'+session.user, JSON.stringify(auditLog.slice(0,HIST_MAX)));
-
-    // Pull all users' audit logs
-    const remote=await supaAll('fat_config?select=*&chave=like.audit_%');
-    if(remote&&remote.length){
-      let allEntries=[];
+    const remote = await supaAll('audit_log?select=*&order=ts.desc&limit=500');
+    if(remote && remote.length){
+      const byId = {};
+      auditLog.forEach(e=>{ if(e.id) byId[e.id]=e; });
       remote.forEach(r=>{
-        try{
-          const entries=JSON.parse(r.valor||'[]');
-          allEntries.push(...entries);
-        }catch(e){}
+        if(!r.id) return;
+        byId[r.id] = {
+          id:        r.id,
+          ts:        r.ts,
+          tipo:      r.tipo,
+          descricao: r.descricao,
+          usuario:   r.usuario,
+          userId:    r.user_id,
+          snapshot:  typeof r.snapshot==='string' ? JSON.parse(r.snapshot||'null') : r.snapshot
+        };
       });
-      // Merge, deduplicate by id, sort by ts desc
-      const byId={};
-      [...auditLog,...allEntries].forEach(e=>{ if(e.id) byId[e.id]=e; });
-      auditLog=Object.values(byId).sort((a,b)=>b.ts>a.ts?1:b.ts<a.ts?-1:0).slice(0,HIST_MAX);
+      auditLog = Object.values(byId).sort((a,b)=>b.ts>a.ts?1:b.ts<a.ts?-1:0).slice(0,HIST_MAX);
       saveAudit();
     }
-    hideLoading();
-    renderHistorico();
-    showToast('✓ Histórico consolidado!','#22c55e','#000');
-  }catch(e){
-    hideLoading();
-    showToast('⚠ Erro: '+e.message,'#e05c1a','#fff');
-  }
+    return true;
+  }catch(e){ return false; }
+}
+
+async function syncAuditLog(){
+  if(!SUPA_URL||!SUPA_KEY){ showToast('Supabase não configurado.','#e05c1a','#fff'); return; }
+  showLoading('Atualizando histórico...');
+  const ok = await loadAuditFromSupabase();
+  hideLoading();
+  renderHistorico();
+  if(ok) showToast('✓ Histórico atualizado!','#22c55e','#000');
+  else   showToast('⚠ Erro ao buscar histórico.','#e05c1a','#fff');
 }
 
 function mostrarSQLFixRLS(){
-  const tables=['coilsdb','records','expedicoes','users','navios','fat_config'];
+  const tables=['coilsdb','records','expedicoes','users','navios','fat_config','audit_log','tickets','backups'];
   const sql = tables.map(t=>
     `DROP POLICY IF EXISTS "allow all" ON ${t};\nCREATE POLICY "allow all" ON ${t}\n  FOR ALL USING (true) WITH CHECK (true);\nALTER TABLE ${t} ENABLE ROW LEVEL SECURITY;`
   ).join('\n\n');
@@ -6929,25 +7335,48 @@ function registrarAudit(tipo, descricao, snapshot){
     usuario:   session?.nome||'Sistema',
     userId:    session?.user||'',
     ts:        new Date().toISOString(),
-    snapshot   // dados antes da alteração para possibilitar rollback
+    snapshot
   };
   auditLog.unshift(entry);
   if(auditLog.length > HIST_MAX) auditLog.pop();
   saveAudit();
+  // Persiste na tabela compartilhada do Supabase imediatamente
+  if(SUPA_URL && SUPA_KEY){
+    supaUpsert('audit_log', {
+      id:        entry.id,
+      ts:        entry.ts,
+      tipo:      entry.tipo,
+      descricao: entry.descricao,
+      usuario:   entry.usuario,
+      user_id:   entry.userId,
+      snapshot:  entry.snapshot ? JSON.stringify(entry.snapshot) : null
+    }, 'id').catch(()=>{});
+  }
   const el=document.getElementById('home-hist-count');
   if(el) el.textContent=auditLog.length;
 }
 
 function renderHistorico(){
-  const q    = (document.getElementById('hist-search')?.value||'').toLowerCase();
-  const tipo = document.getElementById('hist-filter-tipo')?.value||'';
-  const cont = document.getElementById('hist-container');
+  const q       = (document.getElementById('hist-search')?.value||'').toLowerCase();
+  const tipo    = document.getElementById('hist-filter-tipo')?.value||'';
+  const userFil = document.getElementById('hist-filter-usuario')?.value||'';
+  const cont    = document.getElementById('hist-container');
   if(!cont) return;
+
+  // Popula o select de usuários (admin)
+  const userSel = document.getElementById('hist-filter-usuario');
+  if(userSel && session?.role==='admin'){
+    const allUsers = [...new Set(auditLog.map(e=>e.usuario).filter(Boolean))].sort();
+    const cur = userSel.value;
+    userSel.innerHTML = '<option value="">Todos os usuários</option>' +
+      allUsers.map(u=>`<option value="${u}" ${u===cur?'selected':''}>${u}</option>`).join('');
+  }
 
   const list = auditLog.filter(e=>{
     const mQ = !q || [e.descricao,e.usuario,e.tipo].some(f=>f&&f.toLowerCase().includes(q));
     const mT = !tipo || e.tipo===tipo;
-    return mQ && mT;
+    const mU = !userFil || e.usuario===userFil;
+    return mQ && mT && mU;
   });
 
   if(!list.length){
@@ -7076,25 +7505,45 @@ const BKP_MAX = 7; // keep 7 daily backups
 function getBackups(){ try{ return JSON.parse(localStorage.getItem('sp_backups')||'[]'); }catch(e){ return []; } }
 function saveBackups(bkps){ try{ localStorage.setItem('sp_backups',JSON.stringify(bkps)); }catch(e){ showToast('⚠ Espaço insuficiente para backup no navegador.','#f59e0b','#000'); } }
 
-function fazerBackupAgora(){
+async function fazerBackupAgora(){
+  const now = new Date();
   const bkp = {
-    ts:         new Date().toISOString(),
-    label:      new Date().toLocaleString('pt-BR'),
+    ts:         now.toISOString(),
+    label:      now.toLocaleString('pt-BR'),
     records:    JSON.parse(JSON.stringify(records)),
     expedicoes: JSON.parse(JSON.stringify(expedicoes)),
     coilsDB:    JSON.parse(JSON.stringify(coilsDB)),
     users:      JSON.parse(JSON.stringify(users)),
     navios:     [...navios],
   };
-  const size = JSON.stringify(bkp).length;
-  bkp.sizeKB = Math.round(size/1024);
+  const payload = JSON.stringify(bkp);
+  bkp.sizeKB = Math.round(payload.length/1024);
 
   const bkps = getBackups();
   bkps.unshift(bkp);
   if(bkps.length > BKP_MAX) bkps.pop();
   saveBackups(bkps);
-  localStorage.setItem('sp_last_backup', new Date().toISOString());
-  showToast(`✓ Backup criado! ${bkp.sizeKB} KB · ${bkp.label}`,'#22c55e','#000');
+  localStorage.setItem('sp_last_backup', now.toISOString());
+
+  // Tenta salvar no Supabase (tabela backups: id, ts, label, size_kb, data)
+  if(SUPA_URL && SUPA_KEY){
+    try{
+      // Limita payload a 1.8 MB para respeitar limite REST do Supabase
+      const safeData = payload.length > 1800000
+        ? JSON.stringify({records:bkp.records, expedicoes:bkp.expedicoes, coilsDB:bkp.coilsDB, navios:bkp.navios, _truncated:true})
+        : payload;
+      await supa('backups', {
+        method: 'POST',
+        headers: {'Prefer':'return=minimal'},
+        body: JSON.stringify({ts: bkp.ts, label: bkp.label, size_kb: bkp.sizeKB, data: safeData, user_id: session?.id||'system'})
+      });
+      showToast(`✓ Backup criado e sincronizado! ${bkp.sizeKB} KB · ${bkp.label}`,'#22c55e','#000');
+    } catch(e){
+      showToast(`✓ Backup local criado (${bkp.sizeKB} KB) — sync falhou: ${e.message}`,'#f59e0b','#000');
+    }
+  } else {
+    showToast(`✓ Backup criado! ${bkp.sizeKB} KB · ${bkp.label}`,'#22c55e','#000');
+  }
   renderBackup();
 }
 
@@ -7218,6 +7667,123 @@ function restaurarBackup(file){
 
 document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('click',e=>{ if(e.target===el) el.classList.remove('open'); }); });
 
+// ══════════════════════════════════════════════════════
+// BUSCA GLOBAL — Ctrl+K
+// ══════════════════════════════════════════════════════
+let _searchFocusIdx = -1;
+
+function openGlobalSearch(){
+  document.getElementById('global-search-overlay').classList.add('open');
+  const inp = document.getElementById('global-search-input');
+  inp.value=''; inp.focus();
+  document.getElementById('global-search-results').innerHTML='<div class="search-empty">Digite para buscar em todos os módulos</div>';
+  _searchFocusIdx=-1;
+}
+function closeGlobalSearch(){
+  document.getElementById('global-search-overlay').classList.remove('open');
+}
+
+function runGlobalSearch(q){
+  q = q.trim().toUpperCase();
+  const res = document.getElementById('global-search-results');
+  _searchFocusIdx=-1;
+  if(q.length<2){ res.innerHTML='<div class="search-empty">Digite ao menos 2 caracteres</div>'; return; }
+
+  const hits=[];
+
+  // coilsDB
+  coilsDB.filter(c=> [c.coil,c.bl,c.cliente,c.navio,c.armazem,c.produto].some(v=>String(v||'').toUpperCase().includes(q)))
+    .slice(0,6).forEach(c=> hits.push({icon:'🗄',mod:'database',main:c.coil,sub:`BL: ${c.bl||'—'} · ${c.cliente||'—'} · ${c.navio||'—'}`,tag:'BANCO',tagColor:'var(--info)',tagBorder:'rgba(59,130,246,.4)'}));
+
+  // records (descarga)
+  records.filter(r=> [r.coil,r.bl,r.cliente,r.navio,r.armazem,r.periodo,r.veiculo].some(v=>String(v||'').toUpperCase().includes(q)))
+    .slice(0,5).forEach(r=> hits.push({icon:'📥',mod:'descarga',main:r.coil,sub:`Desc. ${formatDate(r.data)} · ${r.bl||'—'} · ${r.periodo||'—'}`,tag:'DESCARGA',tagColor:'var(--accent)',tagBorder:'rgba(240,165,0,.4)'}));
+
+  // expedicoes
+  expedicoes.filter(r=> [r.coil,r.bl,r.cliente,r.navio,r.armazem,r.veiculo].some(v=>String(v||'').toUpperCase().includes(q)))
+    .slice(0,5).forEach(r=> hits.push({icon:'📤',mod:'expedicao',main:r.coil,sub:`Exped. ${formatDate(r.data)} · ${r.bl||'—'} · ${r.veiculo||'—'}`,tag:'EXPEDIÇÃO',tagColor:'var(--exp)',tagBorder:'rgba(168,85,247,.4)'}));
+
+  if(!hits.length){ res.innerHTML='<div class="search-empty">Nenhum resultado para "'+q.toLowerCase()+'"</div>'; return; }
+
+  res.innerHTML = hits.map((h,i)=>`
+    <div class="search-item" data-mod="${h.mod}" data-coil="${h.main}" onclick="searchGo(this)" tabindex="-1">
+      <span class="search-item-icon">${h.icon}</span>
+      <div style="flex:1;min-width:0">
+        <div class="search-item-main">${h.main}</div>
+        <div class="search-item-sub">${h.sub}</div>
+      </div>
+      <span class="search-item-tag" style="color:${h.tagColor};border-color:${h.tagBorder}">${h.tag}</span>
+    </div>`).join('');
+}
+
+function searchGo(el){
+  const mod  = el.dataset.mod;
+  const coil = el.dataset.coil;
+  closeGlobalSearch();
+  openModule(mod);
+  // highlight the coil in the module filter after a tick
+  setTimeout(()=>{
+    const filterMap={database:'db-search',descarga:'d-search',expedicao:'e-search'};
+    const fid=filterMap[mod];
+    if(fid){
+      const fel=document.getElementById(fid);
+      if(fel){ fel.value=coil; fel.dispatchEvent(new Event('input')); }
+    }
+  },200);
+}
+
+function searchKeyNav(e){
+  const items=[...document.querySelectorAll('.search-item')];
+  if(e.key==='ArrowDown'){ e.preventDefault(); _searchFocusIdx=Math.min(_searchFocusIdx+1,items.length-1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); _searchFocusIdx=Math.max(_searchFocusIdx-1,0); }
+  else if(e.key==='Enter' && _searchFocusIdx>=0){ items[_searchFocusIdx]?.click(); return; }
+  else if(e.key==='Escape'){ closeGlobalSearch(); return; }
+  items.forEach((it,i)=>it.classList.toggle('focused',i===_searchFocusIdx));
+  if(items[_searchFocusIdx]) items[_searchFocusIdx].scrollIntoView({block:'nearest'});
+}
+
+// Atalho Ctrl+K / Cmd+K
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey) && e.key==='k'){
+    e.preventDefault();
+    const overlay=document.getElementById('global-search-overlay');
+    if(overlay.classList.contains('open')) closeGlobalSearch();
+    else openGlobalSearch();
+  }
+  if(e.key==='Escape') closeGlobalSearch();
+});
+
+// ── Dirty form: marca formulário como modificado ──────────────────
+window._dirtyForm = false;
+(function setupDirtyAndEnter(){
+  // Campos dos formulários de descarga e expedição
+  const formFields = [
+    'd-coil','d-veiculo','d-bl','d-navio','d-motorista','d-posicao','d-obs',
+    'd-cliente','d-viagem','d-produto','d-pesob','d-pesol','d-armazem',
+    'e-coil','e-veiculo','e-bl','e-navio','e-motorista','e-destino','e-obs',
+    'e-cliente','e-viagem','e-produto','e-pesob','e-pesol','e-armazem'
+  ];
+  formFields.forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    // Dirty flag
+    el.addEventListener('input', ()=>{ window._dirtyForm = true; });
+    // Enter para confirmar (exclui obs)
+    if(el.tagName==='INPUT' && id!=='d-obs' && id!=='e-obs'){
+      el.addEventListener('keydown', e=>{
+        if(e.key==='Enter'){
+          e.preventDefault();
+          const px = id.startsWith('d-') ? 'd' : 'e';
+          // Tenta botão de confirmar lote, depois o botão de adicionar ao lote
+          const btn = document.getElementById(px==='d'?'dl-btn-confirm':'el-btn-confirm')
+                   || document.querySelector(`#screen-${px==='d'?'descarga':'expedicao'} .btn-primary`);
+          if(btn && !btn.disabled) btn.click();
+        }
+      });
+    }
+  });
+})();
+
 </script>
 
 
@@ -7227,6 +7793,17 @@ document.querySelectorAll('.modal-overlay').forEach(el=>{ el.addEventListener('c
   <div id="loading-msg" style="color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:1px;text-align:center;max-width:300px;padding:0 1rem;"></div>
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+
+<!-- ══════════════════ INCONSISTÊNCIAS MODAL ══════════════════ -->
+<div class="modal-overlay" id="modal-inconsist">
+  <div class="modal" style="max-width:860px;width:95%;">
+    <div class="modal-title" style="color:var(--danger);">⚠ INCONSISTÊNCIAS — BOBINAS SEM CADASTRO</div>
+    <div id="modal-inconsist-body" style="max-height:60vh;overflow-y:auto;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:.75rem;margin-top:1.25rem;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-inconsist')">FECHAR</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════════════════ API SETUP MODAL ══════════════════ -->
 <div class="modal-overlay" id="modal-api-setup">
@@ -7690,8 +8267,12 @@ alter table users add column if not exists email text;
           <option value="importacao">Importação</option>
           <option value="faturamento">💰 Faturamento</option>
         </select>
-        <button class="btn btn-primary btn-sm admin-only" onclick="syncAuditLog()" title="Consolida histórico de todos os usuários do Supabase">🔄 CONSOLIDAR</button>
-        <button class="btn btn-danger btn-sm" onclick="limparHistorico()">🗑 LIMPAR HISTÓRICO</button>
+        <select id="hist-filter-usuario" onchange="renderHistorico()" class="admin-only"
+          style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
+          <option value="">Todos os usuários</option>
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="syncAuditLog()" title="Atualiza histórico do Supabase">🔄 ATUALIZAR</button>
+        <button class="btn btn-danger btn-sm" onclick="limparHistorico()">🗑 LIMPAR LOCAL</button>
       </div>
       <div id="hist-container">
         <div class="empty-state"><span class="empty-icon">🕐</span>Nenhuma alteração registrada ainda.</div>
@@ -7834,6 +8415,25 @@ alter table users add column if not exists email text;
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-split-pile')">CANCELAR</button>
       <button class="btn btn-primary" onclick="confirmarDividirPilha()">✓ MOVER SELECIONADAS</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     GLOBAL SEARCH (Ctrl+K)
+═══════════════════════════════════════════════════ -->
+<div class="search-overlay" id="global-search-overlay" onclick="if(event.target===this)closeGlobalSearch()">
+  <div class="search-box">
+    <div class="search-input-wrap">
+      <span>🔍</span>
+      <input id="global-search-input" type="text" placeholder="Buscar bobina, BL, cliente, navio..." autocomplete="off" oninput="runGlobalSearch(this.value)" onkeydown="searchKeyNav(event)">
+      <span class="search-kbd">ESC</span>
+    </div>
+    <div class="search-results" id="global-search-results">
+      <div class="search-empty">Digite para buscar em todos os módulos</div>
+    </div>
+    <div class="search-footer">
+      <span>↑↓ navegar</span><span>Enter abrir</span><span>Esc fechar</span><span style="margin-left:auto;opacity:.6">Ctrl+K</span>
     </div>
   </div>
 </div>
