@@ -1356,9 +1356,16 @@ function saveUsers(){
   localStorage.setItem('sp_users', JSON.stringify(users));
   if(SUPA_URL && SUPA_KEY){
     users.forEach(u => {
-      const {armazens, ...uc} = u; // armazens stored locally only, not in Supabase schema
+      const {armazens, mustChange, pass, passHash, ...uc} = u; // campos só locais
       if(typeof uc.perms==='object') uc.perms=JSON.stringify(uc.perms);
-      supaUpsert('users', uc, 'id').catch(()=>{});
+      if(passHash) uc.passhash = passHash; // coluna lowercase no PostgreSQL
+      supaUpsert('users', uc, 'id').catch(e=>{
+        // Se a coluna passhash ainda não existe no Supabase, salva sem ela
+        if(e.message&&e.message.toLowerCase().includes('passhash')){
+          const {passhash:_, ...ucSafe}=uc;
+          supaUpsert('users', ucSafe, 'id').catch(()=>{});
+        }
+      });
     });
   }
 }
@@ -1401,7 +1408,7 @@ async function doLogin(){
     found.passHash = await hashPass(p);
     delete found.pass;
     saveUsers();
-    try{ await supaUpsert('users',{id:found.id,passHash:found.passHash},'id'); }catch(e){}
+    try{ await supaUpsert('users',{id:found.id,passhash:found.passHash},'id'); }catch(e){}
   }
 
   if(!found){
@@ -1981,7 +1988,13 @@ async function loadAllData(){
 }
 
 function normalizeRecord(r){ if(r.id&&!isNaN(r.id)) r.id=Number(r.id); return r; }
-function normalizeUser(u){ if(typeof u.perms==='string'){ try{u.perms=JSON.parse(u.perms);}catch(e){u.perms={};} } return u; }
+function normalizeUser(u){
+  if(typeof u.perms==='string'){ try{u.perms=JSON.parse(u.perms);}catch(e){u.perms={};} }
+  // PostgreSQL armazena colunas em lowercase — mapeia passhash → passHash
+  if(u.passhash && !u.passHash){ u.passHash=u.passhash; }
+  delete u.passhash;
+  return u;
+}
 
 function showApiError(msg){
   showToast('⚠ Erro: '+(msg||'verifique configuração Supabase'),'#e05c1a','#fff');
@@ -2042,7 +2055,7 @@ async function apiPost(body){
   if(body.action==='addExpedicao') return supaUpsert('expedicoes', body.data,'id');
   if(body.action==='saveCoil'){    return supaUpsert('coilsdb',    body.data,'coil,navio,bl'); }
   if(body.action==='addNavio')     return supaUpsert('navios',     {nome:body.nome},'nome');
-  if(body.action==='saveUser'){    const {armazens, ...ud}={...body.data}; if(typeof ud.perms==='object') ud.perms=JSON.stringify(ud.perms); return supaUpsert('users',ud,'id'); }
+  if(body.action==='saveUser'){    const {armazens, mustChange, pass, passHash, ...ud}={...body.data}; if(typeof ud.perms==='object') ud.perms=JSON.stringify(ud.perms); if(passHash) ud.passhash=passHash; return supaUpsert('users',ud,'id').catch(e=>{ if(e.message&&e.message.toLowerCase().includes('passhash')){ const {passhash:_,...us}=ud; return supaUpsert('users',us,'id'); } throw e; }); }
   if(body.action==='importCoils')  return; // tratado diretamente em confirmImport
   if(body.action==='deleteCoilsMultiple'){ const list=body.coils.map(c=>`"${c}"`).join(','); return supaDelete('coilsdb',`coil=in.(${list})`); }
   throw new Error('Ação desconhecida: '+body.action);
@@ -7212,7 +7225,7 @@ async function confirmarAlterarSenha(){
   u.mustChange = false;
   if(session.id===u.id){ session.mustChange=false; localStorage.setItem('sp_session',JSON.stringify(session)); }
   try{
-    await supaUpsert('users', {id:u.id, passHash:u.passHash, mustChange:false}, 'id');
+    await supaUpsert('users', {id:u.id, passhash:u.passHash}, 'id');
     saveUsers();
     showMsg('✓ Senha alterada com sucesso!',true);
     setTimeout(()=>closeModal('modal-change-pass'), 1500);
@@ -7262,9 +7275,11 @@ async function syncAuditLog(){
 
 function mostrarSQLFixRLS(){
   const tables=['coilsdb','records','expedicoes','users','navios','fat_config','audit_log','tickets','backups'];
-  const sql = tables.map(t=>
+  const rlsSql = tables.map(t=>
     `DROP POLICY IF EXISTS "allow all" ON ${t};\nCREATE POLICY "allow all" ON ${t}\n  FOR ALL USING (true) WITH CHECK (true);\nALTER TABLE ${t} ENABLE ROW LEVEL SECURITY;`
   ).join('\n\n');
+  const colSql = `-- Colunas adicionais necessárias na tabela users:\nALTER TABLE public.users ADD COLUMN IF NOT EXISTS passhash text;\nALTER TABLE public.users ADD COLUMN IF NOT EXISTS email text;\nALTER TABLE public.users ADD COLUMN IF NOT EXISTS nome text;`;
+  const sql = colSql + '\n\n-- ── Políticas RLS ──\n' + rlsSql;
   const existing=document.getElementById('modal-rls-fix');
   if(existing) existing.remove();
   const div=document.createElement('div');
