@@ -2671,20 +2671,6 @@ function addCoilLote(px){
   const src     = px==='e' ? expedicoes : records;
   const already = src.find(r=>r.coil===coil);
 
-  // ── Validação de cliente único por veículo (apenas na descarga) ──
-  if(px==='d' && db?.cliente){
-    const itensValidos = loteItems['d'].filter(r=>r.status!=='err' && r.cliente);
-    if(itensValidos.length > 0){
-      const clienteAtual = itensValidos[0].cliente;
-      if(db.cliente !== clienteAtual){
-        showToast(
-          `⚠ Cliente conflitante! Este veículo já tem bobinas do cliente "${clienteAtual}". A bobina ${coil} pertence ao cliente "${db.cliente}". Um veículo não pode transportar bobinas de clientes diferentes.`,
-          '#e05c1a','#fff'
-        );
-        inputEl.value=''; inputEl.focus(); return;
-      }
-    }
-  }
 
   let status='ok', msg='';
   if(already){
@@ -2813,26 +2799,6 @@ async function confirmarLote(px){
 
   const toSave = loteItems[px].filter(r=>r.status!=='err');
   if(!toSave.length){ showToast('Nenhuma bobina válida para registrar.','#e05c1a','#fff'); return; }
-
-  // ── Guarda final: bloqueia descarga com clientes ou BLs misturados ──
-  if(px==='d'){
-    const clientes = [...new Set(toSave.filter(r=>r.cliente).map(r=>r.cliente))];
-    if(clientes.length > 1){
-      showToast(
-        `⚠ Bloqueado! O lote contém bobinas de ${clientes.length} clientes diferentes: ${clientes.join(', ')}. Remova as bobinas conflitantes antes de registrar.`,
-        '#e05c1a','#fff'
-      );
-      return;
-    }
-    const bls = [...new Set(toSave.filter(r=>r.bl).map(r=>r.bl))];
-    if(bls.length > 1){
-      showToast(
-        `⚠ Bloqueado! O lote contém bobinas de ${bls.length} BLs diferentes: ${bls.join(', ')}. Remova as bobinas conflitantes antes de registrar.`,
-        '#e05c1a','#fff'
-      );
-      return;
-    }
-  }
 
   showLoading(`Registrando ${toSave.length} ${tipo==='expedicao'?'expedições':'descargas'}...`);
 
@@ -3777,7 +3743,7 @@ function togglePassVis(inputId, eyeId){
   else { el.type='password'; eye.textContent='👁'; }
 }
 
-let isLight = localStorage.getItem('sp_theme')==='light';
+let isLight = localStorage.getItem('sp_theme') !== 'dark';
 function toggleTheme(){
   isLight = !isLight;
   localStorage.setItem('sp_theme', isLight?'light':'dark');
