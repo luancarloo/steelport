@@ -2686,21 +2686,6 @@ function addCoilLote(px){
     }
   }
 
-  // ── Validação de BL único por veículo (apenas na descarga) ──
-  if(px==='d' && db?.bl){
-    const itensComBL = loteItems['d'].filter(r=>r.status!=='err' && r.bl);
-    if(itensComBL.length > 0){
-      const blAtual = itensComBL[0].bl;
-      if(db.bl !== blAtual){
-        showToast(
-          `⚠ BL conflitante! Este veículo já tem bobinas do BL "${blAtual}". A bobina ${coil} pertence ao BL "${db.bl}". Um veículo não pode transportar bobinas de BLs diferentes.`,
-          '#e05c1a','#fff'
-        );
-        inputEl.value=''; inputEl.focus(); return;
-      }
-    }
-  }
-
   let status='ok', msg='';
   if(already){
     status='err';
