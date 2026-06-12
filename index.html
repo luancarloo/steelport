@@ -658,24 +658,24 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
       <div class="search-row" style="margin-bottom:1.2rem;">
         <input type="text" id="ddb-search"
           placeholder="⌕  Buscar por coil, BL, cliente, navio, produto..."
-          oninput="renderDBDescarga()"
+          oninput="ddbPage=1;renderDBDescarga()"
           style="flex:1;min-width:200px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;">
-        <select id="ddb-filter-navio" onchange="renderDBDescarga()"
+        <select id="ddb-filter-navio" onchange="ddbPage=1;renderDBDescarga()"
           style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
           <option value="">Todos os navios</option>
         </select>
-        <select id="ddb-filter-cliente" onchange="renderDBDescarga()"
+        <select id="ddb-filter-cliente" onchange="ddbPage=1;renderDBDescarga()"
           style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
           <option value="">Todos os clientes</option>
         </select>
-        <select id="ddb-filter-status" onchange="renderDBDescarga()"
+        <select id="ddb-filter-status" onchange="ddbPage=1;renderDBDescarga()"
           style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
           <option value="">Todos os status</option>
           <option value="pendente">⏳ Pendentes</option>
           <option value="descarregada">✓ Descarregadas</option>
           <option value="expedida">📤 Expedidas</option>
         </select>
-        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ddb-search').value='';document.getElementById('ddb-filter-navio').value='';document.getElementById('ddb-filter-cliente').value='';document.getElementById('ddb-filter-status').value='';renderDBDescarga();">LIMPAR</button>
+        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ddb-search').value='';document.getElementById('ddb-filter-navio').value='';document.getElementById('ddb-filter-cliente').value='';document.getElementById('ddb-filter-status').value='';ddbPage=1;renderDBDescarga();">LIMPAR</button>
       </div>
 
       <!-- Contador -->
@@ -703,10 +703,11 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <th>VEÍCULO</th>
           </tr></thead>
           <tbody id="ddb-tbody">
-            <tr><td colspan="11"><div class="empty-state"><span class="empty-icon">🗄</span>Clique na aba BANCO para carregar.</div></td></tr>
+            <tr><td colspan="11"><div class="empty-state"><span class="empty-icon">🔍</span>Selecione um navio, cliente ou utilize a busca para visualizar os registros.</div></td></tr>
           </tbody>
         </table>
       </div>
+      <div id="ddb-pagination"></div>
     </div>
 
     <!-- PANEL: CONSULTAR DESCARGA -->
@@ -911,8 +912,8 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 
     <div id="dbpanel-bobinas">
       <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem;">
-        <input type="text" id="db-search" placeholder="⌕  Buscar bobina..." style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;" oninput="renderCoilsGrouped()">
-        <select id="db-filter-navio" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="renderCoilsGrouped()"><option value="">Todos os navios</option></select>
+        <input type="text" id="db-search" placeholder="⌕  Buscar bobina..." style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;" oninput="dbPage=1;renderCoilsGrouped()">
+        <select id="db-filter-navio" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()"><option value="">Todos os navios</option></select>
         <button class="btn btn-secondary btn-sm" onclick="exportCoilsCSV()">↓ CSV</button>
         <button class="btn btn-info btn-sm" onclick="openImportModal()">↑ IMPORTAR EXCEL</button>
         <button class="btn btn-primary btn-sm" onclick="openAddCoilForm()">+ NOVA BOBINA</button>
@@ -1727,6 +1728,9 @@ let ticketHistory = JSON.parse(localStorage.getItem('sp_tickets')||'[]'); // per
 let navios     = [];
 let coilsDB    = [];
 let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
+let dbPageSize=50, dbPage=1;
+let ddbPageSize=50, ddbPage=1;
+let fatPageSize=50, fatPage=1;
 let activeFilter={d:'', e:''};
 
 // ── Ordenação e paginação ────────────────────────────
@@ -2155,7 +2159,7 @@ function preencherDataPeriodoLote(prefix){
   const periodo = getPeriodoAtual();
   const dateEl  = document.getElementById(prefix+'l-data');
   const perEl   = document.getElementById(prefix+'l-periodo');
-  if(dateEl) dateEl.value = today;
+  if(dateEl){ dateEl.value = today; dateEl.max = today; }
   if(perEl)  perEl.value  = periodo;
 }
 
@@ -2525,24 +2529,21 @@ function renderDBDescarga(){
   const fc  = document.getElementById('ddb-filter-cliente')?.value||'';
   const fst = document.getElementById('ddb-filter-status')?.value||'';
   const tbody = document.getElementById('ddb-tbody');
+  const pagDiv = document.getElementById('ddb-pagination');
   if(!tbody) return;
+
+  // Sem filtro: exibe placeholder e limpa contadores
+  if(!q && !fn && !fc && !fst){
+    tbody.innerHTML=`<tr><td colspan="11"><div class="empty-state"><span class="empty-icon">🔍</span>Selecione um navio, cliente ou utilize a busca para visualizar os registros.</div></td></tr>`;
+    if(pagDiv) pagDiv.innerHTML='';
+    ['ddb-count-total','ddb-count-pend','ddb-count-desc','ddb-count-exp'].forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent='—'; });
+    return;
+  }
 
   const descSet = new Set(records.map(r=>r.coil));
   const expSet  = new Set(expedicoes.map(r=>r.coil));
 
-  // Filter coilsDB
-  let list = coilsDB.filter(c=>{
-    const mQ = !q || [c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(q));
-    const mN = !fn || c.navio===fn;
-    const mC = !fc || c.cliente===fc;
-    let mSt = true;
-    if(fst==='pendente')      mSt = !descSet.has(c.coil);
-    if(fst==='descarregada')  mSt = descSet.has(c.coil) && !expSet.has(c.coil);
-    if(fst==='expedida')      mSt = expSet.has(c.coil);
-    return mQ && mN && mC && mSt;
-  });
-
-  // Counters (over full filtered list before status)
+  // Lista completa filtrada (sem status) para contadores
   const listAll = coilsDB.filter(c=>{
     const mQ = !q || [c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(q));
     return mQ && (!fn||c.navio===fn) && (!fc||c.cliente===fc);
@@ -2555,17 +2556,32 @@ function renderDBDescarga(){
   document.getElementById('ddb-count-desc').textContent  = desc;
   document.getElementById('ddb-count-exp').textContent   = exped;
 
+  // Lista com filtro de status para a tabela
+  const list = listAll.filter(c=>{
+    if(fst==='pendente')     return !descSet.has(c.coil);
+    if(fst==='descarregada') return descSet.has(c.coil) && !expSet.has(c.coil);
+    if(fst==='expedida')     return expSet.has(c.coil);
+    return true;
+  });
+
   if(!list.length){
     tbody.innerHTML=`<tr><td colspan="11"><div class="empty-state"><span class="empty-icon">🗄</span>Nenhuma bobina encontrada.</div></td></tr>`;
+    if(pagDiv) pagDiv.innerHTML='';
     return;
   }
 
-  tbody.innerHTML = list.map((c,i)=>{
+  const total = list.length;
+  const pages = Math.max(1, Math.ceil(total/ddbPageSize));
+  if(ddbPage>pages) ddbPage=pages;
+  if(ddbPage<1) ddbPage=1;
+  const start = (ddbPage-1)*ddbPageSize;
+  const slice = list.slice(start, start+ddbPageSize);
+
+  tbody.innerHTML = slice.map((c,i)=>{
     const isDesc = descSet.has(c.coil);
     const isExp  = expSet.has(c.coil);
     const rec    = records.find(r=>r.coil===c.coil);
-    const rowStyle = isExp ? 'opacity:.55' : isDesc ? '' : '';
-
+    const rowStyle = isExp ? 'opacity:.55' : '';
     let statusBadge;
     if(isExp){
       statusBadge=`<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(168,85,247,.15);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;font-weight:700;">📤 EXP.</span>`;
@@ -2574,7 +2590,6 @@ function renderDBDescarga(){
     } else {
       statusBadge=`<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(240,165,0,.1);color:var(--accent);border:1px solid rgba(240,165,0,.25);font-family:'JetBrains Mono',monospace;font-weight:700;">⏳ PEND.</span>`;
     }
-
     return `<tr style="${i%2===0?'background:var(--surface2)':''};${rowStyle}">
       <td><span class="coil-badge">${c.coil}</span></td>
       <td>${statusBadge}</td>
@@ -2589,7 +2604,58 @@ function renderDBDescarga(){
       <td style="font-size:12px;font-family:'JetBrains Mono',monospace">${rec?.veiculo||'—'}</td>
     </tr>`;
   }).join('');
+
+  // Paginação
+  if(pagDiv){
+    let pagBtns='';
+    for(let i=1;i<=pages;i++){
+      if(i===1||i===pages||Math.abs(i-ddbPage)<=2){
+        pagBtns+=`<button class="btn btn-sm ${i===ddbPage?'btn-info':'btn-secondary'}" onclick="ddbGoPage(${i})">${i}</button>`;
+      } else if(Math.abs(i-ddbPage)===3){
+        pagBtns+=`<span style="color:var(--muted);padding:0 2px;line-height:30px">…</span>`;
+      }
+    }
+    const end=Math.min(start+ddbPageSize,total);
+    pagDiv.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem;padding:.75rem 1rem;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+        <div style="display:flex;align-items:center;gap:.4rem;">
+          <span style="color:var(--muted);font-size:12px;margin-right:.25rem;">Linhas:</span>
+          ${[20,50,100].map(n=>`<button class="btn btn-sm ${ddbPageSize===n?'btn-info':'btn-secondary'}" onclick="ddbSetPageSize(${n})">${n}</button>`).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;">
+          <button class="btn btn-secondary btn-sm" onclick="ddbGoPage(1)" ${ddbPage<=1?'disabled':''}>«</button>
+          <button class="btn btn-secondary btn-sm" onclick="ddbGoPage(${ddbPage-1})" ${ddbPage<=1?'disabled':''}>‹</button>
+          ${pagBtns}
+          <button class="btn btn-secondary btn-sm" onclick="ddbGoPage(${ddbPage+1})" ${ddbPage>=pages?'disabled':''}>›</button>
+          <button class="btn btn-secondary btn-sm" onclick="ddbGoPage(${pages})" ${ddbPage>=pages?'disabled':''}>»</button>
+        </div>
+        <span style="color:var(--muted);font-size:12px;">Exibindo ${start+1}–${end} de ${total} · Página ${ddbPage} de ${pages}</span>
+      </div>`;
+  }
 }
+
+function ddbGoPage(p){
+  const q=(document.getElementById('ddb-search')?.value||'').toLowerCase();
+  const fn=document.getElementById('ddb-filter-navio')?.value||'';
+  const fc=document.getElementById('ddb-filter-cliente')?.value||'';
+  const fst=document.getElementById('ddb-filter-status')?.value||'';
+  const descSet=new Set(records.map(r=>r.coil));
+  const expSet=new Set(expedicoes.map(r=>r.coil));
+  const listAll=coilsDB.filter(c=>{
+    const mQ=!q||[c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(q));
+    return mQ&&(!fn||c.navio===fn)&&(!fc||c.cliente===fc);
+  });
+  const list=listAll.filter(c=>{
+    if(fst==='pendente')     return !descSet.has(c.coil);
+    if(fst==='descarregada') return descSet.has(c.coil)&&!expSet.has(c.coil);
+    if(fst==='expedida')     return expSet.has(c.coil);
+    return true;
+  });
+  const pages=Math.max(1,Math.ceil(list.length/ddbPageSize));
+  ddbPage=Math.max(1,Math.min(p,pages));
+  renderDBDescarga();
+}
+function ddbSetPageSize(n){ ddbPageSize=n; ddbPage=1; renderDBDescarga(); }
 
 
 let loteItems = { d: [], e: [] };
@@ -2793,6 +2859,7 @@ async function confirmarLote(px){
   const destino = document.getElementById('el-destino')?.value.trim()||'';
 
   if(!data)    { showToast('Informe a data.','#e05c1a','#fff'); return; }
+  if(data > new Date().toISOString().split('T')[0]){ showToast('⚠ A data não pode ser futura.','#e05c1a','#fff'); return; }
   if(!periodo) { showToast('Informe o período.','#e05c1a','#fff'); return; }
   if(!veiculo) { showToast('Informe o veículo/placa.','#e05c1a','#fff'); return; }
   if(!validaPlaca(veiculo)){ showToast('Placa inválida. Use ABC-1234 ou ABC1D23.','#e05c1a','#fff'); return; }
@@ -2826,12 +2893,19 @@ async function confirmarLote(px){
   entries.forEach(e=>src.unshift(e));
 
   try{
-    const supaRows = entries.map(({registradoPor,...safe})=>safe);
+    const supaRows = entries.map(({registradoUser, editadoEm, editadoPor, ...safe})=>safe);
     await supaUpsertBulk(table, supaRows, 'id', 100, (done,total)=>{
       showLoading(`Sincronizando ${done}/${total}...`);
     });
   }catch(err){
-    showToast('⚠ Salvo localmente, sync falhou: '+err.message,'#f59e0b','#000');
+    if(err.message&&err.message.toLowerCase().includes('registrado')){
+      try{
+        const supaRowsSafe=entries.map(({registradoPor,registradoUser,editadoEm,editadoPor,...safe})=>safe);
+        await supaUpsertBulk(table,supaRowsSafe,'id',100,(done,total)=>{ showLoading(`Sincronizando ${done}/${total}...`); });
+      }catch(e2){ showToast('⚠ Salvo localmente, sync falhou: '+e2.message,'#f59e0b','#000'); }
+    } else {
+      showToast('⚠ Salvo localmente, sync falhou: '+err.message,'#f59e0b','#000');
+    }
   }
 
   hideLoading();
@@ -3356,76 +3430,130 @@ function viewDetail(id, px){
 }
 
 // ══════════════════════════════════════════
-// DB GROUPED
+// DB — TABELA PAGINADA
 // ══════════════════════════════════════════
-function renderCoilsGrouped(){
+function _dbGetFiltered(){
   const q=(document.getElementById('db-search')?.value||'').toLowerCase();
   const fn=document.getElementById('db-filter-navio')?.value||'';
-  const discharged=new Set(records.map(r=>r.coil));
-  const expedited =new Set(expedicoes.map(r=>r.coil));
-  const list=coilsDB.filter(c=>{
+  return coilsDB.filter(c=>{
     const mQ=!q||[c.coil,c.bl,c.cliente,c.navio,c.produto,c.armazem,c.viagem].some(f=>f&&f.toLowerCase().includes(q));
     return mQ&&(!fn||c.navio===fn);
   });
-  const groups={};
-  list.forEach(c=>{ const n=c.navio||'(sem navio)'; if(!groups[n]) groups[n]=[]; groups[n].push(c); });
-  const container=document.getElementById('db-groups-container');
-  if(!Object.keys(groups).length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">🔩</span>Nenhuma bobina cadastrada.</div>`; return; }
-  container.innerHTML=Object.entries(groups).map(([navio,coils])=>{
-    const done=coils.filter(c=>discharged.has(c.coil));
-    const expd=coils.filter(c=>expedited.has(c.coil));
-    const totalPL=coils.reduce((a,c)=>a+(parseFloat(c.pesol)||0),0);
-    const navKey=navio.replace(/[^a-zA-Z0-9]/g,'_');
-    const rows=coils.map(c=>{
-      const idx=coilsDB.indexOf(c);
-      const isDesc=discharged.has(c.coil);
-      const isExp =expedited.has(c.coil);
-      const rowOp=(isDesc||isExp)?'opacity:.5':'';
-      const badges=[
-        isDesc?`<span style="margin-left:5px;font-size:10px;background:rgba(34,197,94,.15);color:var(--success);padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(34,197,94,.3);">✓ DESC.</span>`:'',
-        isExp ?`<span style="margin-left:3px;font-size:10px;background:rgba(168,85,247,.15);color:var(--exp);padding:1px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(168,85,247,.3);">✓ EXP.</span>`:''
-      ].join('');
-      return `<tr style="${rowOp}">
-        <td><input type="checkbox" class="coil-cb" data-idx="${idx}" onchange="updateSel('${navKey}')"></td>
-        <td><span class="coil-badge">${c.coil}</span>${badges}</td>
-        <td style="font-size:13px">${c.armazem||'—'}</td>
-        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
-        <td style="color:#60a5fa;font-size:13px">${c.cliente||'—'}</td>
-        <td style="font-size:12px;color:var(--muted)">${c.viagem||'—'}</td>
-        <td style="font-size:13px">${c.produto||'—'}</td>
-        <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
-        <td class="weight-cell">${c.pesol?fmtKg(c.pesol):'—'}</td>
-        <td><div class="actions">
-          <button class="btn btn-info btn-sm" onclick="editCoil(${idx})">EDITAR</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteCoilDB(${idx},'${c.coil}')">✕</button>
-        </div></td></tr>`;
-    }).join('');
-    return `<div class="navio-group" id="group-${navKey}">
-      <div class="navio-group-header">
-        <div class="navio-group-title">🚢 ${navio}
-          <span class="navio-badge">${coils.length} total</span>
-          <span style="font-size:12px;background:rgba(34,197,94,.12);color:var(--success);padding:2px 8px;border-radius:4px;border:1px solid rgba(34,197,94,.2);font-family:'JetBrains Mono',monospace;">${done.length} desc.</span>
-          <span style="font-size:12px;background:rgba(168,85,247,.12);color:var(--exp);padding:2px 8px;border-radius:4px;border:1px solid rgba(168,85,247,.2);font-family:'JetBrains Mono',monospace;">${expd.length} exp.</span>
-          <span style="font-size:12px;background:rgba(240,165,0,.1);color:var(--accent);padding:2px 8px;border-radius:4px;border:1px solid rgba(240,165,0,.2);font-family:'JetBrains Mono',monospace;">${coils.filter(c=>!discharged.has(c.coil)).length} pendentes</span>
-          <span style="font-size:12px;color:var(--muted);font-weight:400">${fmtKg(totalPL)} kg liq.</span>
-        </div>
-        <div class="navio-group-actions">
-          <button class="btn btn-secondary btn-sm" id="bsa-${navKey}" onclick="toggleSel('${navKey}')">☐ SELECIONAR TODOS</button>
-          <button class="btn btn-warn btn-sm" id="bds-${navKey}" style="display:none" onclick="deleteSel('${navKey}')">✕ EXCLUIR SELECIONADOS</button>
-          <button class="btn btn-danger btn-sm" onclick="deleteNavioAll('${navio}')">🗑 EXCLUIR NAVIO</button>
-        </div>
-      </div>
-      <div style="overflow-x:auto;"><table>
-        <thead><tr><th style="width:36px;"></th><th>COIL NUMBER</th><th>ARMAZÉM</th><th>BL</th><th>CLIENTE</th><th>VIAGEM</th><th>PRODUTO</th><th>P. BRUTO (kg)</th><th>P. LÍQUIDO (kg)</th><th>AÇÕES</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-    </div>`;
-  }).join('');
 }
 
-function toggleSel(k){ const g=document.getElementById('group-'+k),cbs=g.querySelectorAll('.coil-cb'),all=[...cbs].every(c=>c.checked); cbs.forEach(c=>c.checked=!all); updateSel(k); }
-function updateSel(k){ const g=document.getElementById('group-'+k),n=g.querySelectorAll('.coil-cb:checked').length,t=g.querySelectorAll('.coil-cb').length; document.getElementById('bsa-'+k).textContent=n===t?'☑ DESMARCAR TODOS':'☐ SELECIONAR TODOS'; const d=document.getElementById('bds-'+k); d.style.display=n>0?'':'none'; if(n>0) d.textContent=`✕ EXCLUIR ${n} SELECIONADO${n>1?'S':''}`; }
-function deleteSel(k){ const g=document.getElementById('group-'+k),idxs=[...g.querySelectorAll('.coil-cb:checked')].map(c=>parseInt(c.dataset.idx)); if(!idxs.length) return; deleteTarget=idxs; deleteType='coils-sel'; document.getElementById('modal-delete-body').innerHTML=`Deseja excluir <strong>${idxs.length} bobina(s)</strong>?`; document.getElementById('modal-delete').classList.add('open'); }
+function renderCoilsGrouped(){
+  const q=(document.getElementById('db-search')?.value||'').toLowerCase();
+  const fn=document.getElementById('db-filter-navio')?.value||'';
+  const container=document.getElementById('db-groups-container');
+
+  if(!q&&!fn){
+    container.innerHTML=`<div class="empty-state" style="padding:3rem 1rem;"><span class="empty-icon">🔍</span><div style="color:var(--muted);font-size:15px;margin-top:.5rem;">Selecione um navio ou utilize a busca para visualizar os registros.</div></div>`;
+    return;
+  }
+
+  const list=_dbGetFiltered();
+  if(!list.length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">🔩</span>Nenhuma bobina encontrada.</div>`; return; }
+
+  const total=list.length;
+  const pages=Math.max(1,Math.ceil(total/dbPageSize));
+  if(dbPage>pages) dbPage=pages;
+  if(dbPage<1) dbPage=1;
+  const start=(dbPage-1)*dbPageSize;
+  const slice=list.slice(start,start+dbPageSize);
+
+  const discharged=new Set(records.map(r=>r.coil));
+  const expedited =new Set(expedicoes.map(r=>r.coil));
+
+  const rows=slice.map(c=>{
+    const idx=coilsDB.indexOf(c);
+    const isDesc=discharged.has(c.coil);
+    const isExp =expedited.has(c.coil);
+    const rowOp=(isDesc||isExp)?'opacity:.55':'';
+    const badges=[
+      isDesc?`<span style="margin-left:5px;font-size:10px;background:rgba(34,197,94,.15);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(34,197,94,.3);">✓ DESC.</span>`:'',
+      isExp ?`<span style="margin-left:3px;font-size:10px;background:rgba(168,85,247,.15);color:var(--exp);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(168,85,247,.3);">✓ EXP.</span>`:''
+    ].join('');
+    return `<tr style="${rowOp}">
+      <td><input type="checkbox" class="db-cb" data-idx="${idx}" onchange="dbUpdateBulk()"></td>
+      <td><span class="coil-badge">${c.coil}</span>${badges}</td>
+      <td style="color:var(--info);font-size:13px">${c.navio||'—'}</td>
+      <td style="font-size:13px">${c.armazem||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
+      <td style="color:#60a5fa;font-size:13px">${c.cliente||'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${c.viagem||'—'}</td>
+      <td style="font-size:13px">${c.produto||'—'}</td>
+      <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
+      <td class="weight-cell">${c.pesol?fmtKg(c.pesol):'—'}</td>
+      <td><div class="actions">
+        <button class="btn btn-info btn-sm" onclick="editCoil(${idx})">EDITAR</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteCoilDB(${idx},'${c.coil.replace(/'/g,"\\'")}')">✕</button>
+      </div></td></tr>`;
+  }).join('');
+
+  const end=Math.min(start+dbPageSize,total);
+
+  // Paginação
+  let pagBtns='';
+  for(let i=1;i<=pages;i++){
+    if(i===1||i===pages||Math.abs(i-dbPage)<=2){
+      pagBtns+=`<button class="btn btn-sm ${i===dbPage?'btn-info':'btn-secondary'}" onclick="dbGoPage(${i})">${i}</button>`;
+    } else if(Math.abs(i-dbPage)===3){
+      pagBtns+=`<span style="color:var(--muted);padding:0 2px;line-height:30px">…</span>`;
+    }
+  }
+
+  container.innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;margin-bottom:.75rem;">
+      <span style="color:var(--muted);font-size:13px">Exibindo <strong style="color:var(--text)">${start+1}–${end}</strong> de <strong style="color:var(--text)">${total}</strong> bobinas</span>
+      <button class="btn btn-warn btn-sm" id="db-bulk-del" style="display:none" onclick="dbDeleteBulk()">✕ EXCLUIR SELECIONADAS</button>
+    </div>
+    <div style="overflow-x:auto;"><table>
+      <thead><tr>
+        <th style="width:36px;"><input type="checkbox" id="db-cb-all" onchange="dbToggleAll(this)" title="Selecionar página"></th>
+        <th>COIL NUMBER</th><th>NAVIO</th><th>ARMAZÉM</th><th>BL</th>
+        <th>CLIENTE</th><th>VIAGEM</th><th>PRODUTO</th><th>P. BRUTO (kg)</th><th>P. LÍQUIDO (kg)</th><th>AÇÕES</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem;padding:.75rem 1rem;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:.4rem;">
+        <span style="color:var(--muted);font-size:12px;margin-right:.25rem;">Linhas:</span>
+        ${[20,50,100].map(n=>`<button class="btn btn-sm ${dbPageSize===n?'btn-info':'btn-secondary'}" onclick="dbSetPageSize(${n})">${n}</button>`).join('')}
+      </div>
+      <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="dbGoPage(1)" ${dbPage<=1?'disabled':''}>«</button>
+        <button class="btn btn-secondary btn-sm" onclick="dbGoPage(${dbPage-1})" ${dbPage<=1?'disabled':''}>‹</button>
+        ${pagBtns}
+        <button class="btn btn-secondary btn-sm" onclick="dbGoPage(${dbPage+1})" ${dbPage>=pages?'disabled':''}>›</button>
+        <button class="btn btn-secondary btn-sm" onclick="dbGoPage(${pages})" ${dbPage>=pages?'disabled':''}>»</button>
+      </div>
+      <span style="color:var(--muted);font-size:12px;">Página ${dbPage} de ${pages}</span>
+    </div>`;
+}
+
+function dbGoPage(p){
+  const total=_dbGetFiltered().length;
+  const pages=Math.max(1,Math.ceil(total/dbPageSize));
+  dbPage=Math.max(1,Math.min(p,pages));
+  renderCoilsGrouped();
+}
+function dbSetPageSize(n){ dbPageSize=n; dbPage=1; renderCoilsGrouped(); }
+function dbToggleAll(cb){ document.querySelectorAll('.db-cb').forEach(c=>c.checked=cb.checked); dbUpdateBulk(); }
+function dbUpdateBulk(){
+  const sel=document.querySelectorAll('.db-cb:checked');
+  const btn=document.getElementById('db-bulk-del');
+  const all=document.getElementById('db-cb-all');
+  if(btn) btn.style.display=sel.length?'':'none';
+  if(btn&&sel.length) btn.textContent=`✕ EXCLUIR ${sel.length} SELECIONADA${sel.length>1?'S':''}`;
+  if(all){ const tot=document.querySelectorAll('.db-cb').length; all.checked=tot>0&&sel.length===tot; all.indeterminate=sel.length>0&&sel.length<tot; }
+}
+function dbDeleteBulk(){
+  const idxs=[...document.querySelectorAll('.db-cb:checked')].map(c=>parseInt(c.dataset.idx));
+  if(!idxs.length) return;
+  deleteTarget=idxs; deleteType='coils-sel';
+  document.getElementById('modal-delete-body').innerHTML=`Deseja excluir <strong>${idxs.length} bobina(s)</strong>?`;
+  document.getElementById('modal-delete').classList.add('open');
+}
 function deleteNavioAll(n){ const ct=coilsDB.filter(c=>c.navio===n).length; deleteTarget=n; deleteType='navio-all'; document.getElementById('modal-delete-body').innerHTML=`Deseja excluir <strong>todas as ${ct} bobinas do navio "${n}"</strong>?`; document.getElementById('modal-delete').classList.add('open'); }
 
 // ══════════════════════════════════════════
@@ -4412,13 +4540,17 @@ function getRptData(){
 }
 
 function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
+  // coilsDB filtrado pelos filtros ativos para que BOBINAS BANCO reflita somente o selecionado
+  const filtDB=coilsDB.filter(c=>
+    _rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm)
+  );
   let headers=[], rows=[];
   if(tipo==='navio'){
     headers=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const navSet=[...new Set([...coilsDB.map(c=>c.navio),...desc.map(r=>r.navio),...exps.map(r=>r.navio)].filter(Boolean))].sort();
+    const navSet=[...new Set([...filtDB.map(c=>c.navio),...desc.map(r=>r.navio),...exps.map(r=>r.navio)].filter(Boolean))].sort();
     const filtNavs=sNav.length?navSet.filter(n=>sNav.includes(n)):navSet;
     rows=filtNavs.map(nav=>{
-      const dbN=coilsDB.filter(c=>c.navio===nav&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
+      const dbN=filtDB.filter(c=>c.navio===nav);
       const dN=desc.filter(r=>r.navio===nav); const eN=exps.filter(r=>r.navio===nav);
       return [nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),
         Math.round(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
@@ -4426,10 +4558,10 @@ function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
     });
   } else if(tipo==='cliente'){
     headers=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...desc.map(r=>r.cliente),...exps.map(r=>r.cliente)].filter(Boolean))].sort();
+    const cliSet=[...new Set([...filtDB.map(c=>c.cliente),...desc.map(r=>r.cliente),...exps.map(r=>r.cliente)].filter(Boolean))].sort();
     const filtClis=sCli.length?cliSet.filter(c=>sCli.includes(c)):cliSet;
     rows=filtClis.map(cli=>{
-      const dbC=coilsDB.filter(c=>c.cliente===cli&&_rptMatch(c.navio,sNav)&&_rptMatch(c.bl,sBl));
+      const dbC=filtDB.filter(c=>c.cliente===cli);
       const dC=desc.filter(r=>r.cliente===cli); const eC=exps.filter(r=>r.cliente===cli);
       return [cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),
         Math.round(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
@@ -4437,10 +4569,10 @@ function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
     });
   } else if(tipo==='bl'){
     headers=['BL','NAVIO','CLIENTE','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const blSet=[...new Set([...coilsDB.map(c=>c.bl),...desc.map(r=>r.bl),...exps.map(r=>r.bl)].filter(Boolean))].sort();
+    const blSet=[...new Set([...filtDB.map(c=>c.bl),...desc.map(r=>r.bl),...exps.map(r=>r.bl)].filter(Boolean))].sort();
     const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
     rows=filtBls.map(bl=>{
-      const dbB=coilsDB.filter(c=>c.bl===bl&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli));
+      const dbB=filtDB.filter(c=>c.bl===bl);
       const dB=desc.filter(r=>r.bl===bl); const eB=exps.filter(r=>r.bl===bl);
       return [bl,dbB[0]?.navio||dB[0]?.navio||'—',dbB[0]?.cliente||dB[0]?.cliente||'—',
         dB.length,eB.length,Math.max(0,dB.length-eB.length),
@@ -4449,7 +4581,7 @@ function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
     });
   } else if(tipo==='produto'){
     headers=['PRODUTO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const pSet=[...new Set([...coilsDB.map(c=>c.produto),...desc.map(r=>r.produto),...exps.map(r=>r.produto)].filter(Boolean))].sort();
+    const pSet=[...new Set([...filtDB.map(c=>c.produto),...desc.map(r=>r.produto),...exps.map(r=>r.produto)].filter(Boolean))].sort();
     rows=pSet.map(p=>{
       const dP=desc.filter(r=>r.produto===p); const eP=exps.filter(r=>r.produto===p);
       return [p,dP.length,eP.length,Math.max(0,dP.length-eP.length),
@@ -4476,10 +4608,10 @@ function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
     });
   } else if(tipo==='armazem'){
     headers=['ARMAZÉM','BOBINAS BANCO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)'];
-    const aSet=[...new Set([...coilsDB.map(c=>c.armazem),...desc.map(r=>r.armazem),...exps.map(r=>r.armazem)].filter(Boolean))].sort();
+    const aSet=[...new Set([...filtDB.map(c=>c.armazem),...desc.map(r=>r.armazem),...exps.map(r=>r.armazem)].filter(Boolean))].sort();
     const filtArms=sArm.length?aSet.filter(a=>sArm.includes(a)):aSet;
     rows=filtArms.map(a=>{
-      const dbA=coilsDB.filter(c=>c.armazem===a&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
+      const dbA=filtDB.filter(c=>c.armazem===a);
       const dA=desc.filter(r=>r.armazem===a); const eA=exps.filter(r=>r.armazem===a);
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
         Math.round(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
@@ -4525,15 +4657,20 @@ function renderReport(){
   const all=[...desc.map(r=>({...r,_tipo:'DESCARGA'})),...exps.map(r=>({...r,_tipo:'EXPEDIÇÃO'}))];
   all.sort((a,b)=>a.data>b.data?1:-1);
 
+  // coilsDB filtrado pelos filtros ativos (para coluna BOBINAS BANCO)
+  const filtDB=coilsDB.filter(c=>
+    _rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm)
+  );
+
   // GROUP TABLE
   let groupRows=[], groupHeaders=[];
   if(tipo==='navio'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR NAVIO';
     groupHeaders=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const navSet=[...new Set([...coilsDB.map(c=>c.navio),...all.map(r=>r.navio)].filter(Boolean))].sort();
+    const navSet=[...new Set([...filtDB.map(c=>c.navio),...all.map(r=>r.navio)].filter(Boolean))].sort();
     const filtNavs=sNav.length?navSet.filter(n=>sNav.includes(n)):navSet;
     groupRows=filtNavs.map(nav=>{
-      const dbN=coilsDB.filter(c=>c.navio===nav&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
+      const dbN=filtDB.filter(c=>c.navio===nav);
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
       const pbd=fmtKg(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
@@ -4543,10 +4680,10 @@ function renderReport(){
   } else if(tipo==='cliente'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR CLIENTE';
     groupHeaders=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const cliSet=[...new Set([...coilsDB.map(c=>c.cliente),...all.map(r=>r.cliente)].filter(Boolean))].sort();
+    const cliSet=[...new Set([...filtDB.map(c=>c.cliente),...all.map(r=>r.cliente)].filter(Boolean))].sort();
     const filtClis=sCli.length?cliSet.filter(c=>sCli.includes(c)):cliSet;
     groupRows=filtClis.map(cli=>{
-      const dbC=coilsDB.filter(c=>c.cliente===cli&&_rptMatch(c.navio,sNav)&&_rptMatch(c.bl,sBl));
+      const dbC=filtDB.filter(c=>c.cliente===cli);
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
       const pbd=fmtKg(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
@@ -4556,10 +4693,10 @@ function renderReport(){
   } else if(tipo==='bl'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR BL';
     groupHeaders=['BL','NAVIO','CLIENTE','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const blSet=[...new Set([...coilsDB.map(c=>c.bl),...all.map(r=>r.bl)].filter(Boolean))].sort();
+    const blSet=[...new Set([...filtDB.map(c=>c.bl),...all.map(r=>r.bl)].filter(Boolean))].sort();
     const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
     groupRows=filtBls.map(bl=>{
-      const dbB=coilsDB.filter(c=>c.bl===bl&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli));
+      const dbB=filtDB.filter(c=>c.bl===bl);
       const dB=desc.filter(r=>r.bl===bl);
       const eB=exps.filter(r=>r.bl===bl);
       return [bl,dbB[0]?.navio||dB[0]?.navio||'—',dbB[0]?.cliente||dB[0]?.cliente||'—',
@@ -4570,7 +4707,7 @@ function renderReport(){
   } else if(tipo==='produto'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR PRODUTO';
     groupHeaders=['PRODUTO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
-    const pSet=[...new Set([...coilsDB.map(c=>c.produto),...all.map(r=>r.produto)].filter(Boolean))].sort();
+    const pSet=[...new Set([...filtDB.map(c=>c.produto),...all.map(r=>r.produto)].filter(Boolean))].sort();
     groupRows=pSet.map(p=>{
       const dP=desc.filter(r=>r.produto===p); const eP=exps.filter(r=>r.produto===p);
       return [p,dP.length,eP.length,Math.max(0,dP.length-eP.length),
@@ -4600,10 +4737,10 @@ function renderReport(){
   } else if(tipo==='armazem'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR ARMAZÉM';
     groupHeaders=['ARMAZÉM','BOBINAS BANCO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)'];
-    const aSet=[...new Set([...coilsDB.map(c=>c.armazem),...all.map(r=>r.armazem)].filter(Boolean))].sort();
+    const aSet=[...new Set([...filtDB.map(c=>c.armazem),...all.map(r=>r.armazem)].filter(Boolean))].sort();
     const filtArms=sArm.length?aSet.filter(a=>sArm.includes(a)):aSet;
     groupRows=filtArms.map(a=>{
-      const dbA=coilsDB.filter(c=>c.armazem===a&&_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl));
+      const dbA=filtDB.filter(c=>c.armazem===a);
       const dA=desc.filter(r=>r.armazem===a); const eA=exps.filter(r=>r.armazem===a);
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
         fmtKg(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
@@ -5869,12 +6006,17 @@ function renderFaturamento(){
   const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
   const fs=document.getElementById('fat-filter-status')?.value||'';
   const container=document.getElementById('fat-container');
+  const pagDiv=document.getElementById('fat-pagination');
   if(!container) return;
 
-  // BLs vêm do coilsDB E dos records (para cobrir casos onde coilsDB não tem navio preenchido)
-  // Normalização: remove espaços e converte maiúsculas para comparações
+  // Sem filtro: exibe placeholder sem processar nada
+  if(!fc&&!fn&&!fa&&!fb&&!fq&&!fs){
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">🔍</span>Selecione um filtro para visualizar os BLs de faturamento.</div>`;
+    if(pagDiv) pagDiv.innerHTML='';
+    return;
+  }
+
   const normStr=s=>String(s||'').trim().toUpperCase();
-  // Constrói mapa BL normalizado → valor canônico (coilsDB tem prioridade)
   const blMap={};
   records.forEach(r=>{ if(r.bl) blMap[normStr(r.bl)]=r.bl.trim(); });
   coilsDB.forEach(c=>{ if(c.bl) blMap[normStr(c.bl)]=c.bl.trim(); });
@@ -5889,25 +6031,17 @@ function renderFaturamento(){
   if(fa) bls=bls.filter(bl=>_arm(normStr(bl))===normStr(fa));
   if(fb) bls=bls.filter(bl=>normStr(bl)===normStr(fb));
   if(fq) bls=bls.filter(bl=>normStr(bl).includes(fq));
-  if(!bls.length){ container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`; return; }
 
-  const hojeStr=new Date().toISOString().split('T')[0];
-  const em7dias=new Date(); em7dias.setDate(em7dias.getDate()+7);
-  const em7Str=em7dias.toISOString().split('T')[0];
-  let htmlOut='', totalGeral=0, totalHandlingGeral=0, blsAtivos=0, blsPendentes=0;
+  if(!bls.length){
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`;
+    if(pagDiv) pagDiv.innerHTML='';
+    return;
+  }
+
+  // Pass único: gera card de cada BL e acumula totais
+  let totalGeral=0, totalHandlingGeral=0, blsAtivos=0, blsPendentes=0;
+  const blCards=[];
   const logoFat=getLogoFatura();
-
-  // Preview logo section
-  const logoSection=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
-    <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">LOGO DA FATURA</span>
-    ${logoFat?`<img src="${logoFat}" style="height:36px;width:auto;border-radius:4px;border:1px solid var(--border);" alt="logo">`:
-    `<span style="font-size:12px;color:var(--muted);">Nenhuma logo configurada</span>`}
-    <label class="btn btn-secondary btn-sm" style="cursor:pointer;font-size:11px;">
-      📁 ${logoFat?'ALTERAR':'ADICIONAR'} LOGO
-      <input type="file" accept="image/*" style="display:none" onchange="salvarLogoFatura(this.files[0])">
-    </label>
-    ${logoFat?`<button class="btn btn-danger btn-sm" style="font-size:11px;" onclick="removerLogoFatura()">✕ REMOVER</button>`:''}
-  </div>`;
 
   bls.sort().forEach(bl=>{
     const blK=normStr(bl);
@@ -5923,10 +6057,8 @@ function renderFaturamento(){
     const expCoils =dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
     const emEstoque=descCoils-expCoils;
     const incompleta=descCoils<totalCoils;
-
     let blStatus=incompleta?'incompleta':emEstoque>0?'estoque':'zerada';
 
-    // Filtros de status de carga (incompleta/estoque/zerada) — aplicar antes de calcular períodos
     if(fs==='estoque'||fs==='incompleta'||fs==='zerada'){
       if(blStatus!==fs) return;
     }
@@ -5935,26 +6067,25 @@ function renderFaturamento(){
     const periodos=fat?fat.periodos:[];
     const tarifaBL=getTarifaBL(bl,tarifa);
 
-    // Filtros de status de faturamento (vencido/cobrado) — aplicar após calcular períodos
     if(fs==='vencido'||fs==='cobrado'){
       if(!periodos.length) return;
       const temVencido=periodos.some(p=>!getFatState(bl,p.num).enviado);
       const temCobrado=periodos.some(p=>getFatState(bl,p.num).enviado);
-      if(fs==='vencido' && !temVencido) return;
-      if(fs==='cobrado' && !temCobrado) return;
+      if(fs==='vencido'&&!temVencido) return;
+      if(fs==='cobrado'&&!temCobrado) return;
     }
 
-    // Status badge
     let statusBadge;
     if(incompleta) statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(240,165,0,.12);color:var(--accent);border:1px solid rgba(240,165,0,.3);font-family:'JetBrains Mono',monospace;">⏳ DESCARGA INCOMPLETA — ${descCoils}/${totalCoils}</span>`;
     else if(blStatus==='zerada'){
       const dataFimExp=getDataFimExpedicao(bl);
       const dataFimFmt=dataFimExp?dataFimExp.split('-').reverse().join('/'):'';
       statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA${dataFimFmt?' · última saída: '+dataFimFmt:''}</span>`;
+    } else {
+      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`;
+      blsAtivos++;
     }
-    else { statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`; blsAtivos++; }
 
-    // Periods rows
     let periodsHTML='', totalBL=0;
     if(!fat){
       periodsHTML=`<tr><td colspan="8" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Aguardando conclusão da descarga para iniciar cobrança.</td></tr>`;
@@ -5963,9 +6094,7 @@ function renderFaturamento(){
     } else {
       periodos.forEach(p=>{
         const state=getFatState(bl,p.num);
-        const handling=p.num===1?getHandlingBL(bl):null;
-        const handlingTarifa=handling!=null?handling:0;
-        // Handling = tarifa × tonelagem total do BL (todas as bobinas)
+        const handlingTarifa=p.num===1?(getHandlingBL(bl)||0):0;
         const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||parseFloat(records.find(r=>r.coil===c.coil)?.pesob)||0),0)/1000;
         const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
         const ton=p.pesoBruto/1000;
@@ -5981,7 +6110,7 @@ function renderFaturamento(){
           rowBg='background:rgba(224,92,26,.06);';
           blsPendentes++;
         }
-        if(valor) totalBL+=valor, totalGeral+=valor;
+        if(valor) { totalBL+=valor; totalGeral+=valor; }
         if(p.num===1&&handlingVal>0){ totalBL+=handlingVal; totalGeral+=handlingVal; totalHandlingGeral+=handlingVal; }
         const lockBadge=p.congelado
           ?`<span style="font-size:9px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 4px;margin-left:3px;font-family:'JetBrains Mono',monospace;">🔒</span>`
@@ -5989,60 +6118,42 @@ function renderFaturamento(){
         const handlingHtml=p.num===1?`
           <div style="display:flex;align-items:center;gap:.35rem;margin-top:3px;">
             <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">HANDLING R$/t:</span>
-            <span style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#60a5fa;min-width:44px;text-align:right;padding:2px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">
-              ${handlingTarifa>0?handlingTarifa.toFixed(2):'—'}
-            </span>
-            <button onclick="editHandlingBL('${bl}')"
-              title="Editar tarifa de Handling R$/t deste BL"
+            <span style="font-size:12px;font-weight:700;font-family:'JetBrains Mono',monospace;color:#60a5fa;min-width:44px;text-align:right;padding:2px 5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;">${handlingTarifa>0?handlingTarifa.toFixed(2):'—'}</span>
+            <button onclick="editHandlingBL('${bl}')" title="Editar tarifa de Handling R$/t deste BL"
               style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--muted);font-size:11px;padding:2px 5px;line-height:1;"
               onmouseover="this.style.color='#60a5fa';this.style.borderColor='#60a5fa'"
               onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">✏</button>
             ${handlingTarifa>0?`<span style="font-size:10px;color:#60a5fa;font-family:'JetBrains Mono',monospace;">×${tonelagemTotalBL.toFixed(2)}t = R$${handlingVal.toFixed(2).replace('.',',')}</span>`:''}
           </div>`:'';
         const totalPeriodo=(valor||0)+(p.num===1?handlingVal:0);
-
-        // Enviado checkbox + NF display inline na linha
-        const checkId = `fat-chk-${bl.replace(/[^a-z0-9]/gi,'_')}_${p.num}`;
-        const enviadoCell = `
+        const checkId=`fat-chk-${bl.replace(/[^a-z0-9]/gi,'_')}_${p.num}`;
+        const enviadoCell=`
           <div style="display:flex;flex-direction:column;gap:3px;">
             <label style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;">
-              <input type="checkbox" id="${checkId}"
-                ${state.enviado?'checked':''}
+              <input type="checkbox" id="${checkId}" ${state.enviado?'checked':''}
                 onchange="toggleEnviado(this,'${bl}',${p.num})"
                 style="width:16px;height:16px;accent-color:var(--success);cursor:pointer;">
-              <span style="font-size:11px;font-weight:700;color:${state.enviado?'var(--success)':'var(--muted)'};">
-                ${state.enviado?'✓ ENVIADO':'Não enviado'}
-              </span>
+              <span style="font-size:11px;font-weight:700;color:${state.enviado?'var(--success)':'var(--muted)'};">${state.enviado?'✓ ENVIADO':'Não enviado'}</span>
             </label>
-            ${state.enviado&&state.nf&&state.nf!=='—'
-              ?`<div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:3px;padding:1px 5px;white-space:nowrap;">
-                  NF: <strong>${state.nf}</strong>
-                </div>`:''}
-            ${state.enviado&&state.dataEnvio
-              ?`<div style="font-size:9px;color:var(--muted);">${state.dataEnvio}${state.usuario?' · '+state.usuario:''}</div>`:''}
+            ${state.enviado&&state.nf&&state.nf!=='—'?`<div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:3px;padding:1px 5px;white-space:nowrap;">NF: <strong>${state.nf}</strong></div>`:''}
+            ${state.enviado&&state.dataEnvio?`<div style="font-size:9px;color:var(--muted);">${state.dataEnvio}${state.usuario?' · '+state.usuario:''}</div>`:''}
           </div>`;
-
         periodsHTML+=`<tr style="${rowBg}">
           <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${lockBadge}</td>
           <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;"><strong style="color:var(--info);">${dtIni}</strong> → ${dtFim}</td>
           <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg<br><span style="font-size:10px;color:var(--muted);">${(p.pesoBruto/1000).toFixed(3)} t${handlingHtml}</span></td>
-          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+R$ ${handlingVal.toFixed(2).replace('.',',')} hdl</span>`:''}${totalPeriodo>valor?`<br><span style="font-size:11px;font-weight:900;color:var(--text);">= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}</td>
+          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+R$ ${handlingVal.toFixed(2).replace('.',',')} hdl</span>`:''}${totalPeriodo>(valor||0)?`<br><span style="font-size:11px;font-weight:900;color:var(--text);">= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}</td>
           <td style="padding:.5rem .75rem;">${statusPer}</td>
           <td style="padding:.5rem .75rem;">${enviadoCell}</td>
-          <td style="padding:.5rem .75rem;">
-            ${state.enviado
-              ?`<div style="display:flex;flex-direction:column;gap:2px;">
-                  <button class="btn btn-success btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;background:var(--success);color:#000;">✓ FATURADO</button>
-                  ${totalPeriodo>0?`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--success);font-weight:700;">R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}
-                </div>`
-              :`<button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;">📄 FATURA</button>`
-            }
-          </td>
+          <td style="padding:.5rem .75rem;">${state.enviado
+            ?`<div style="display:flex;flex-direction:column;gap:2px;"><button class="btn btn-success btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;background:var(--success);color:#000;">✓ FATURADO</button>${totalPeriodo>0?`<span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--success);font-weight:700;">R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}</div>`
+            :`<button class="btn btn-info btn-sm" onclick="emitirFatura('${bl}',${p.num})" style="font-size:11px;white-space:nowrap;">📄 FATURA</button>`
+          }</td>
         </tr>`;
       });
     }
 
-    htmlOut+=`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden;">
+    blCards.push(`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden;">
       <div style="background:var(--surface2);border-bottom:1px solid var(--border);padding:.75rem 1.2rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
         <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--accent);">BL: ${bl}</div>
         <div style="font-size:13px;color:var(--text);font-weight:600;">${cliente}</div>
@@ -6052,15 +6163,11 @@ function renderFaturamento(){
         ${cliInfo?.cnpj?`<div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CNPJ: ${cliInfo.cnpj}</div>`:''}
         ${cliInfo?.email?`<a href="mailto:${cliInfo.email}" style="font-size:11px;color:var(--info);text-decoration:none;">✉ ${cliInfo.email}</a>`:''}
         ${cliInfo?.contato?`<div style="font-size:11px;color:var(--muted);">👤 ${cliInfo.contato}</div>`:''}
-        <!-- TARIFA INLINE — display fixo + lápis para editar -->
         <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto;">
           <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">R$/t:</span>
           <span id="fat-tarifa-display-${bl.replace(/[^a-z0-9]/gi,'_')}"
-            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text);min-width:52px;text-align:right;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;">
-            ${tarifaBL>0?tarifaBL.toFixed(2):'—'}
-          </span>
-          <button onclick="editTarifaBL('${bl}')"
-            title="Editar tarifa R$/t deste BL"
+            style="font-size:13px;font-weight:700;font-family:'JetBrains Mono',monospace;color:var(--text);min-width:52px;text-align:right;padding:3px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:5px;">${tarifaBL>0?tarifaBL.toFixed(2):'—'}</span>
+          <button onclick="editTarifaBL('${bl}')" title="Editar tarifa R$/t deste BL"
             style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--muted);font-size:13px;padding:3px 6px;line-height:1;"
             onmouseover="this.style.color='var(--accent)';this.style.borderColor='var(--accent)'"
             onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">✏</button>
@@ -6081,12 +6188,28 @@ function renderFaturamento(){
           <tbody>${periodsHTML}</tbody>
         </table>
       </div>
-    </div>`;
+    </div>`);
   });
 
+  // Atualiza dashboard
   const hfb=document.getElementById('home-fat-bls');    if(hfb) hfb.textContent=blsAtivos;
   const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsPendentes;
 
+  if(!blCards.length){
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado para os filtros selecionados.</div>`;
+    if(pagDiv) pagDiv.innerHTML='';
+    return;
+  }
+
+  // Paginação sobre os cards
+  const total=blCards.length;
+  const pages=Math.max(1,Math.ceil(total/fatPageSize));
+  if(fatPage>pages) fatPage=pages;
+  if(fatPage<1) fatPage=1;
+  const start=(fatPage-1)*fatPageSize;
+  const pageCards=blCards.slice(start,start+fatPageSize);
+
+  // Header de totais (sobre todos os BLs filtrados)
   const totalArmazGeral=totalGeral-totalHandlingGeral;
   const totalHeader=totalGeral>0
     ?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:1rem;display:flex;gap:2rem;align-items:center;flex-wrap:wrap;">
@@ -6098,13 +6221,51 @@ function renderFaturamento(){
             ${totalHandlingGeral>0?`<span>Handling: <strong style="color:#60a5fa;">R$ ${totalHandlingGeral.toFixed(2).replace('.',',')}</strong></span>`:''}
           </div>
         </div>
-        <span style="font-size:12px;color:var(--muted);">${blsAtivos} BL(s) em estoque${blsPendentes>0?` · <span style="color:var(--danger);">${blsPendentes} com período(s) vencido(s)</span>`:''}</span>
-      </div>`:' ';
+        <span style="font-size:12px;color:var(--muted);">${blsAtivos} BL(s) em estoque · ${total} BL(s) encontrado(s)${blsPendentes>0?` · <span style="color:var(--danger);">${blsPendentes} com período(s) vencido(s)</span>`:''}</span>
+      </div>`:'';
 
-  container.innerHTML=htmlOut
-    ? logoSection+totalHeader+htmlOut
-    : `<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado para os filtros selecionados.</div>`;
+  const logoSection=`<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;">LOGO DA FATURA</span>
+    ${logoFat?`<img src="${logoFat}" style="height:36px;width:auto;border-radius:4px;border:1px solid var(--border);" alt="logo">`:`<span style="font-size:12px;color:var(--muted);">Nenhuma logo configurada</span>`}
+    <label class="btn btn-secondary btn-sm" style="cursor:pointer;font-size:11px;">
+      📁 ${logoFat?'ALTERAR':'ADICIONAR'} LOGO
+      <input type="file" accept="image/*" style="display:none" onchange="salvarLogoFatura(this.files[0])">
+    </label>
+    ${logoFat?`<button class="btn btn-danger btn-sm" style="font-size:11px;" onclick="removerLogoFatura()">✕ REMOVER</button>`:''}
+  </div>`;
+
+  container.innerHTML=logoSection+totalHeader+pageCards.join('');
+
+  // Footer de paginação
+  if(pagDiv){
+    if(total<=fatPageSize){ pagDiv.innerHTML=''; return; }
+    let pagBtns='';
+    for(let i=1;i<=pages;i++){
+      if(i===1||i===pages||Math.abs(i-fatPage)<=2)
+        pagBtns+=`<button class="btn btn-sm ${i===fatPage?'btn-info':'btn-secondary'}" onclick="fatGoPage(${i})">${i}</button>`;
+      else if(Math.abs(i-fatPage)===3)
+        pagBtns+=`<span style="color:var(--muted);padding:0 2px;line-height:30px">…</span>`;
+    }
+    const end=Math.min(start+fatPageSize,total);
+    pagDiv.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-top:1.25rem;padding:.75rem 1rem;background:var(--surface2);border-radius:8px;border:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:.4rem;">
+        <span style="color:var(--muted);font-size:12px;margin-right:.25rem;">BLs por página:</span>
+        ${[20,50,100].map(n=>`<button class="btn btn-sm ${fatPageSize===n?'btn-info':'btn-secondary'}" onclick="fatSetPageSize(${n})">${n}</button>`).join('')}
+      </div>
+      <div style="display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" onclick="fatGoPage(1)" ${fatPage<=1?'disabled':''}>«</button>
+        <button class="btn btn-secondary btn-sm" onclick="fatGoPage(${fatPage-1})" ${fatPage<=1?'disabled':''}>‹</button>
+        ${pagBtns}
+        <button class="btn btn-secondary btn-sm" onclick="fatGoPage(${fatPage+1})" ${fatPage>=pages?'disabled':''}>›</button>
+        <button class="btn btn-secondary btn-sm" onclick="fatGoPage(${pages})" ${fatPage>=pages?'disabled':''}>»</button>
+      </div>
+      <span style="color:var(--muted);font-size:12px;">Exibindo ${start+1}–${end} de ${total} BLs · Página ${fatPage} de ${pages}</span>
+    </div>`;
+  }
 }
+
+function fatGoPage(p){ fatPage=Math.max(1,p); renderFaturamento(); }
+function fatSetPageSize(n){ fatPageSize=n; fatPage=1; renderFaturamento(); }
 
 // ── Confirmar envio de faturamento ───────────────────
 async function toggleEnviado(checkbox, bl, num){
@@ -6521,6 +6682,7 @@ function limparFiltrosFaturamento(){
     const el=document.getElementById(id); if(el) el.value='';
   });
   const sb=document.getElementById('fat-search-bl'); if(sb) sb.value='';
+  fatPage=1;
   atualizarBLsFaturamento();
   renderFaturamento();
 }
@@ -8146,21 +8308,21 @@ alter table users add column if not exists email text;
       <div style="display:flex;gap:1.2rem;align-items:flex-end;flex-wrap:wrap;">
         <div class="form-group" style="min-width:160px;">
           <label>Filtrar por Cliente</label>
-          <select id="fat-filter-cliente" onchange="atualizarBLsFaturamento();renderFaturamento()"
+          <select id="fat-filter-cliente" onchange="atualizarBLsFaturamento();fatPage=1;renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
             <option value="">Todos os clientes</option>
           </select>
         </div>
         <div class="form-group" style="min-width:160px;">
           <label>Filtrar por Navio</label>
-          <select id="fat-filter-navio" onchange="atualizarBLsFaturamento();renderFaturamento()"
+          <select id="fat-filter-navio" onchange="atualizarBLsFaturamento();fatPage=1;renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
             <option value="">Todos os navios</option>
           </select>
         </div>
         <div class="form-group" style="min-width:160px;">
           <label>Filtrar por Armazém</label>
-          <select id="fat-filter-armazem" onchange="atualizarBLsFaturamento();renderFaturamento()"
+          <select id="fat-filter-armazem" onchange="atualizarBLsFaturamento();fatPage=1;renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
             <option value="">Todos os armazéns</option>
           </select>
@@ -8168,20 +8330,20 @@ alter table users add column if not exists email text;
         <div class="form-group" style="min-width:180px;">
           <label>Buscar BL</label>
           <input type="text" id="fat-search-bl" placeholder="Digite o nº do BL..."
-            oninput="renderFaturamento()"
+            oninput="fatPage=1;renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;text-transform:uppercase;"
             onkeyup="this.value=this.value.toUpperCase()">
         </div>
         <div class="form-group" style="min-width:160px;">
           <label>Filtrar por BL</label>
-          <select id="fat-filter-bl" onchange="renderFaturamento()"
+          <select id="fat-filter-bl" onchange="fatPage=1;renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
             <option value="">Todos os BLs</option>
           </select>
         </div>
         <div class="form-group" style="min-width:180px;">
           <label>Filtrar por Status</label>
-          <select id="fat-filter-status" onchange="renderFaturamento()"
+          <select id="fat-filter-status" onchange="fatPage=1;renderFaturamento()"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
             <option value="">Todos</option>
             <option value="vencido">⚠ Vencidos (não faturados)</option>
@@ -8206,8 +8368,9 @@ alter table users add column if not exists email text;
         </div>
       </div>
       <div id="fat-container">
-        <div class="empty-state"><span class="empty-icon">💰</span>Configure a tarifa e clique em Calcular.</div>
+        <div class="empty-state"><span class="empty-icon">🔍</span>Selecione um filtro para visualizar os BLs de faturamento.</div>
       </div>
+      <div id="fat-pagination"></div>
     </div>
 
   </div>
