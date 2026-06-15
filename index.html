@@ -732,6 +732,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('d')">↓ CSV</button>
         <button class="btn btn-info btn-sm" onclick="openImportMov('descarga')">↑ IMPORTAR EXCEL</button>
         <button class="btn btn-secondary btn-sm" onclick="downloadTemplateMov('descarga')">↓ MODELO EXCEL</button>
+        <button class="btn btn-warning btn-sm" onclick="sincronizarDescargaComBD()" title="Atualiza peso, cliente, produto e armazém dos registros filtrados com os dados atuais do Banco de Dados">⟳ SINCRONIZAR COM BD</button>
       </div>
       <div class="table-wrap">
         <div class="table-header">
@@ -2505,6 +2506,84 @@ async function saveMovimento(){
       showToast('⚠ Salvo localmente, sync falhou: '+err.message, '#f59e0b', '#000');
     }
   }
+}
+
+// ══════════════════════════════════════════
+// SINCRONIZAR DESCARGA COM BANCO DE DADOS
+// ══════════════════════════════════════════
+async function sincronizarDescargaComBD(){
+  const filtered = getFiltered('d');
+  if(!filtered.length){
+    showToast('⚠ Nenhum registro visível para sincronizar. Aplique um filtro primeiro.','#f59e0b','#000');
+    return;
+  }
+
+  // Build map coilsDB by coil key for quick lookup
+  const dbMap = {};
+  coilsDB.forEach(c=>{ if(c.coil) dbMap[c.coil.toUpperCase()] = c; });
+
+  // Detect which records have something to update
+  const SYNC_FIELDS = ['pesob','pesol','cliente','produto','viagem','armazem','bl','navio'];
+  const toSync = filtered.filter(r=>{
+    const db = dbMap[(r.coil||'').toUpperCase()];
+    if(!db) return false;
+    return SYNC_FIELDS.some(f=>db[f]!==undefined && db[f]!==null && db[f]!=='' && String(db[f])!==String(r[f]||''));
+  });
+
+  if(!toSync.length){
+    showToast('✓ Todos os registros já estão atualizados com o BD.','#22c55e','#000');
+    return;
+  }
+
+  const fn = document.getElementById('d-filter-navio')?.value||'';
+  const scope = fn ? `navio "${fn}"` : `filtro ativo (${filtered.length} registros)`;
+  if(!confirm(`Sincronizar ${toSync.length} de ${filtered.length} registros de descarga com o Banco de Dados?\n\nEscopo: ${scope}\nCampos atualizados: Peso Bruto, Peso Líquido, Cliente, Produto, Viagem, Armazém, BL, Navio.\n\nOs campos de descarga (data, período, veículo, motorista, obs) serão mantidos.`)){
+    return;
+  }
+
+  showLoading(`Sincronizando 0/${toSync.length}...`);
+  let ok=0, fail=0;
+  const now = new Date().toISOString();
+  const editor = session ? session.nome : 'Sistema';
+
+  for(let i=0;i<toSync.length;i++){
+    const r   = toSync[i];
+    const db  = dbMap[(r.coil||'').toUpperCase()];
+    const idx = records.findIndex(x=>x.id===r.id);
+    if(idx<0) continue;
+
+    const updated = { ...records[idx] };
+    SYNC_FIELDS.forEach(f=>{
+      if(db[f]!==undefined && db[f]!==null && db[f]!=='') updated[f]=db[f];
+    });
+    updated.editadoEm  = now;
+    updated.editadoPor = editor;
+
+    records[idx] = updated;
+
+    showLoading(`Sincronizando ${i+1}/${toSync.length}...`);
+
+    try{
+      const {registradoUser, editadoEm, editadoPor, ...supaEntry} = updated;
+      await supaUpsert('records', supaEntry, 'id');
+      ok++;
+    } catch(err){
+      try{
+        const {registradoPor, registradoUser, editadoEm, editadoPor, ...safeEntry} = updated;
+        await supaUpsert('records', safeEntry, 'id');
+        ok++;
+      } catch(e2){ fail++; }
+    }
+  }
+
+  hideLoading();
+  buildFilterSelects('d'); applyFilters('d'); refreshHome();
+  if(fail===0){
+    showToast(`✓ ${ok} registros sincronizados com o BD!`,'#22c55e','#000');
+  } else {
+    showToast(`⚠ ${ok} sincronizados, ${fail} falharam (salvos localmente).`,'#f59e0b','#000');
+  }
+  registrarAudit('edicao', `Sincronização em massa: ${ok} registros de descarga atualizados com BD. Escopo: ${scope}`);
 }
 
 // ══════════════════════════════════════════
@@ -4666,53 +4745,55 @@ function renderReport(){
   let groupRows=[], groupHeaders=[];
   if(tipo==='navio'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR NAVIO';
-    groupHeaders=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    groupHeaders=['NAVIO','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)','SALDO P.BRUTO (kg)'];
     const navSet=[...new Set([...filtDB.map(c=>c.navio),...all.map(r=>r.navio)].filter(Boolean))].sort();
     const filtNavs=sNav.length?navSet.filter(n=>sNav.includes(n)):navSet;
     groupRows=filtNavs.map(nav=>{
       const dbN=filtDB.filter(c=>c.navio===nav);
       const dN=desc.filter(r=>r.navio===nav);
       const eN=exps.filter(r=>r.navio===nav);
-      const pbd=fmtKg(dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
-      const pbe=fmtKg(eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
-      return [nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),pbd,pbe];
+      const pbdVal=dN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      const pbeVal=eN.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      return [nav,dbN.length,dN.length,eN.length,Math.max(0,dbN.length-dN.length),fmtKg(pbdVal),fmtKg(pbeVal),fmtKg(Math.max(0,pbdVal-pbeVal))];
     });
   } else if(tipo==='cliente'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR CLIENTE';
-    groupHeaders=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    groupHeaders=['CLIENTE','BOBINAS BANCO','DESCARREGADAS','EXPEDIDAS','PENDENTES DESC.','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)','SALDO P.BRUTO (kg)'];
     const cliSet=[...new Set([...filtDB.map(c=>c.cliente),...all.map(r=>r.cliente)].filter(Boolean))].sort();
     const filtClis=sCli.length?cliSet.filter(c=>sCli.includes(c)):cliSet;
     groupRows=filtClis.map(cli=>{
       const dbC=filtDB.filter(c=>c.cliente===cli);
       const dC=desc.filter(r=>r.cliente===cli);
       const eC=exps.filter(r=>r.cliente===cli);
-      const pbd=fmtKg(dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
-      const pbe=fmtKg(eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
-      return [cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),pbd,pbe];
+      const pbdVal=dC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      const pbeVal=eC.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      return [cli,dbC.length,dC.length,eC.length,Math.max(0,dbC.length-dC.length),fmtKg(pbdVal),fmtKg(pbeVal),fmtKg(Math.max(0,pbdVal-pbeVal))];
     });
   } else if(tipo==='bl'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR BL';
-    groupHeaders=['BL','NAVIO','CLIENTE','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    groupHeaders=['BL','NAVIO','CLIENTE','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)','SALDO P.BRUTO (kg)'];
     const blSet=[...new Set([...filtDB.map(c=>c.bl),...all.map(r=>r.bl)].filter(Boolean))].sort();
     const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
     groupRows=filtBls.map(bl=>{
       const dbB=filtDB.filter(c=>c.bl===bl);
       const dB=desc.filter(r=>r.bl===bl);
       const eB=exps.filter(r=>r.bl===bl);
+      const pbdVal=dB.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      const pbeVal=eB.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
       return [bl,dbB[0]?.navio||dB[0]?.navio||'—',dbB[0]?.cliente||dB[0]?.cliente||'—',
         dB.length,eB.length,Math.max(0,dB.length-eB.length),
-        fmtKg(dB.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
-        fmtKg(eB.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+        fmtKg(pbdVal),fmtKg(pbeVal),fmtKg(Math.max(0,pbdVal-pbeVal))];
     });
   } else if(tipo==='produto'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR PRODUTO';
-    groupHeaders=['PRODUTO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)'];
+    groupHeaders=['PRODUTO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)','SALDO P.BRUTO (kg)'];
     const pSet=[...new Set([...filtDB.map(c=>c.produto),...all.map(r=>r.produto)].filter(Boolean))].sort();
     groupRows=pSet.map(p=>{
       const dP=desc.filter(r=>r.produto===p); const eP=exps.filter(r=>r.produto===p);
+      const pbdVal=dP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      const pbeVal=eP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
       return [p,dP.length,eP.length,Math.max(0,dP.length-eP.length),
-        fmtKg(dP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)),
-        fmtKg(eP.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))];
+        fmtKg(pbdVal),fmtKg(pbeVal),fmtKg(Math.max(0,pbdVal-pbeVal))];
     });
   } else if(tipo==='veiculo'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR VEÍCULO';
@@ -4736,14 +4817,16 @@ function renderReport(){
     });
   } else if(tipo==='armazem'){
     document.getElementById('rpt-group-title').textContent='📋 RESUMO POR ARMAZÉM';
-    groupHeaders=['ARMAZÉM','BOBINAS BANCO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)'];
+    groupHeaders=['ARMAZÉM','BOBINAS BANCO','DESC.','EXP.','SALDO','P.BRUTO DESC. (kg)','P.BRUTO EXP. (kg)','SALDO P.BRUTO (kg)'];
     const aSet=[...new Set([...filtDB.map(c=>c.armazem),...all.map(r=>r.armazem)].filter(Boolean))].sort();
     const filtArms=sArm.length?aSet.filter(a=>sArm.includes(a)):aSet;
     groupRows=filtArms.map(a=>{
       const dbA=filtDB.filter(c=>c.armazem===a);
       const dA=desc.filter(r=>r.armazem===a); const eA=exps.filter(r=>r.armazem===a);
+      const pbdVal=dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0);
+      const pbeVal=eA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0);
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
-        fmtKg(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
+        fmtKg(pbdVal),fmtKg(pbeVal),fmtKg(Math.max(0,pbdVal-pbeVal))];
     });
   } else if(tipo==='faturamento'){
     document.getElementById('rpt-group-title').textContent='💰 RELATÓRIO DE FATURAMENTO';
@@ -5161,15 +5244,15 @@ function renderMapa(){
         const rec = records.find(r=>r.coil===c.coil);
         c._descSeq = rec ? rec.id : Infinity; // not yet discharged = pending
       });
-      // Sort: _mapPos override takes priority (when set), then descarga sequence
-      // smaller _mapPos = fundo (bottom), larger = topo (top)
+      // Sort: position 1 = topo (first to exit), higher number = fundo (bottom)
+      // After .reverse() in render: pile[last] → reversed[0] = shown at TOP
       pile.sort((a,b)=>{
         const ap = (a._mapPos != null && a._mapPos > 0) ? a._mapPos : null;
         const bp = (b._mapPos != null && b._mapPos > 0) ? b._mapPos : null;
-        if(ap !== null && bp !== null) return ap - bp;   // ambos têm posição manual
-        if(ap !== null) return -1;                        // só a tem → vai primeiro (fundo)
-        if(bp !== null) return 1;                         // só b tem → vai primeiro (fundo)
-        return a._descSeq - b._descSeq;                   // fallback: ordem de descarga
+        if(ap !== null && bp !== null) return bp - ap;   // descending: pos1 → pile[last] → TOP after reverse
+        if(ap !== null) return 1;                         // a has manual pos → higher index → closer to TOP
+        if(bp !== null) return -1;                        // b has manual pos → higher index → closer to TOP
+        return a._descSeq - b._descSeq;                   // fallback: most recent → pile[last] → TOP
       });
     });
   });
@@ -5230,7 +5313,7 @@ function renderMapa(){
                   <div>
                     <div style="font-size:9px;color:var(--muted);margin-bottom:2px;font-family:'JetBrains Mono',monospace;">POSIÇÃO NA PILHA</div>
                     <input id="map-ie-pos-${sid}" type="number" value="${curPos}" min="1"
-                      placeholder="1 = fundo"
+                      placeholder="1 = topo (1ª a sair)"
                       style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace;outline:none;">
                   </div>
                   <div>
@@ -5249,15 +5332,15 @@ function renderMapa(){
               </div>`;
             }
 
-            let bg, border, label, txtColor;
+            let bg, border, label;
             if(isExp){
-              bg='rgba(168,85,247,.15)'; border='rgba(168,85,247,.5)'; txtColor='var(--exp)'; label='EXP';
+              bg='rgba(168,85,247,.15)'; border='rgba(168,85,247,.5)'; label='EXP';
             } else if(isDesc){
               bg=isTop?'rgba(34,197,94,.25)':'rgba(34,197,94,.1)';
               border=isTop?'rgba(34,197,94,.8)':'rgba(34,197,94,.3)';
-              txtColor=isTop?'var(--success)':'#86efac'; label=isTop?'↑ TOPO':'';
+              label=isTop?'↑ TOPO':'';
             } else {
-              bg='rgba(240,165,0,.08)'; border='rgba(240,165,0,.25)'; txtColor='var(--muted)'; label='PEND.';
+              bg='rgba(240,165,0,.08)'; border='rgba(240,165,0,.25)'; label='PEND.';
             }
             const highlightBorder = isHighlight ? '2px solid var(--accent)' : `1px solid ${border}`;
             return `<div title="${c.coil} — ${c.cliente||''} ${c.produto||''} ${c.pesob?fmtKg(c.pesob)+' kg':''}"
@@ -5265,14 +5348,14 @@ function renderMapa(){
               onmouseover="this.style.transform='scale(1.01)'" onmouseout="this.style.transform=''">
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:${isHighlight?'var(--accent)':txtColor}">${c.coil}</span>
-                  ${label?`<span style="font-size:9px;font-weight:700;color:${txtColor};opacity:.8">${label}</span>`:''}
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#000">${c.coil}</span>
+                  ${label?`<span style="font-size:9px;font-weight:700;color:#000;opacity:.8">${label}</span>`:''}
                 </div>
-                <div style="font-size:10px;color:var(--muted);margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}${c._mapObs?` · <em>${c._mapObs}</em>`:''}</div>
+                <div style="font-size:10px;color:#000;opacity:.65;margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}${c._mapObs?` · <em>${c._mapObs}</em>`:''}</div>
               </div>
               <button onclick="mapInlineEditCoil='${c.coil}';renderMapa()"
-                style="background:transparent;border:1px solid ${border};border-radius:3px;cursor:pointer;color:${txtColor};font-size:10px;padding:2px 5px;flex-shrink:0;opacity:.7;transition:opacity .15s;"
-                onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.7'"
+                style="background:transparent;border:1px solid ${border};border-radius:3px;cursor:pointer;color:#000;font-size:10px;padding:2px 5px;flex-shrink:0;opacity:.6;transition:opacity .15s;"
+                onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='.6'"
                 title="Editar posição">✏</button>
             </div>`;
           }).join('');
@@ -5473,7 +5556,14 @@ function exportMapaPDF(){
     const rec=records.find(r=>r.coil===c.coil);
     byBL[bl].push({...c,_descSeq:rec?rec.id:Infinity});
   });
-  Object.values(byBL).forEach(p=>p.sort((a,b)=>a._descSeq-b._descSeq));
+  Object.values(byBL).forEach(p=>p.sort((a,b)=>{
+    const ap=(a._mapPos!=null&&a._mapPos>0)?a._mapPos:null;
+    const bp=(b._mapPos!=null&&b._mapPos>0)?b._mapPos:null;
+    if(ap!==null&&bp!==null) return bp-ap;
+    if(ap!==null) return 1;
+    if(bp!==null) return -1;
+    return a._descSeq-b._descSeq;
+  }));
   const filtroLabel=[fa&&`Armazém: ${fa}`,fb&&`BL: ${fb}`,fn&&`Navio: ${fn}`].filter(Boolean).join(' | ')||'Todos';
   doc.setFontSize(16); doc.setFont(undefined,'bold');
   doc.text('STEELPORT · 4SIDES — MAPA DE ARMAZÉM',14,14);
@@ -5481,19 +5571,21 @@ function exportMapaPDF(){
   doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')} | Filtro: ${filtroLabel}`,14,20);
   let y=28;
   Object.entries(byBL).forEach(([bl,pile])=>{
-    const rows=pile.map((c,i)=>[
-      String(pile.length-i),
+    // Render from TOP (pos 1 = first to exit) to BOTTOM: reverse so first row = top of pile
+    const pileTop=[...pile].reverse();
+    const rows=pileTop.map((c,i)=>[
+      String(i+1),
       c.coil,
       expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE',
-      c.armazem||'—', c.cliente||'—', c.pesob?fmtKg(c.pesob)+' kg':'—', c.produto||'—'
+      c.cliente||'—', c.armazem||'—', c._mapObs||'—', c.pesob?fmtKg(c.pesob)+' kg':'—', c.produto||'—'
     ]);
     doc.setFontSize(10); doc.setFont(undefined,'bold');
     if(y>170){doc.addPage();y=14;}
     doc.text(`BL: ${bl} (${pile[0]?.navio||'—'} · ${pile[0]?.cliente||'—'})`,14,y);
     y+=4;
-    doc.autoTable({startY:y,head:[['Pos.','Coil Number','Status','Armazém','Cliente','P.Bruto','Produto']],body:rows,
+    doc.autoTable({startY:y,head:[['Pos.','Coil Number','Status','Cliente','Armazém','Obs','P.Bruto','Produto']],body:rows,
       styles:{fontSize:8},headStyles:{fillColor:[30,58,95]},
-      columnStyles:{0:{cellWidth:10},1:{cellWidth:42},2:{cellWidth:28}},
+      columnStyles:{0:{cellWidth:10},1:{cellWidth:38},2:{cellWidth:26},5:{cellWidth:30}},
       didParseCell:(d)=>{
         if(d.section==='body'){
           const s=d.row.raw[2];
@@ -5524,34 +5616,48 @@ function exportMapaExcel(){
     const rec=records.find(r=>r.coil===c.coil);
     byBL[bl].push({...c,_descSeq:rec?rec.id:Infinity});
   });
-  Object.values(byBL).forEach(p=>p.sort((a,b)=>a._descSeq-b._descSeq));
+  Object.values(byBL).forEach(p=>p.sort((a,b)=>{
+    const ap=(a._mapPos!=null&&a._mapPos>0)?a._mapPos:null;
+    const bp=(b._mapPos!=null&&b._mapPos>0)?b._mapPos:null;
+    if(ap!==null&&bp!==null) return bp-ap;
+    if(ap!==null) return 1;
+    if(bp!==null) return -1;
+    return a._descSeq-b._descSeq;
+  }));
   const wb=XLSX.utils.book_new();
 
-  // Sheet 1: Mapa atual (leitura)
-  const rows=[['Posição na Pilha','BL','Coil Number','Status','Armazém','Navio','Cliente','P.Bruto (kg)','P.Líquido (kg)','Produto','Observação']];
+  // Sheet 1: Mapa atual — posição 1 = topo (primeira a sair), maior = fundo
+  // Colunas: Posição | Coil Number | Status | Cliente | Armazém | Obs | P.Bruto | Produto
+  const rows=[['Posição na Pilha','Coil Number','Status','Cliente','Armazém','Obs','P.Bruto (kg)','Produto']];
   Object.entries(byBL).forEach(([bl,pile])=>{
-    pile.forEach((c,i)=>{
-      const pos=pile.length-i;
+    // Cabeçalho de BL
+    rows.push([`BL: ${bl} — Navio: ${pile[0]?.navio||'—'}`,'','','','','','','']);
+    // reverse: pile is sorted fundo→topo; reverse so i=0 = topo = pos 1
+    const pileTop=[...pile].reverse();
+    pileTop.forEach((c,i)=>{
+      const pos=i+1;
       const status=expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE DESC.';
-      rows.push([pos,bl,c.coil,status,c.armazem||'',c.navio||'',c.cliente||'',c.pesob||'',c.pesol||'',c.produto||'',pos===pile.length?'← PRÓXIMA A SAIR':'']);
+      rows.push([pos,c.coil,status,c.cliente||'',c.armazem||'',c._mapObs||'',c.pesob||'',c.produto||'']);
     });
     rows.push([]);
   });
   const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:10},{wch:20},{wch:22},{wch:16},{wch:12},{wch:18},{wch:16},{wch:12},{wch:12},{wch:16},{wch:20}];
+  ws['!cols']=[{wch:10},{wch:22},{wch:16},{wch:18},{wch:12},{wch:24},{wch:12},{wch:16}];
   XLSX.utils.book_append_sheet(wb,ws,'Mapa Armazém');
 
   // Sheet 2: Atualização de Pilha (editável para reimportar)
   // Colunas: Coil Number | Armazém Novo | Posição Nova | Observação
   // Preencha Armazém Novo e/ou Posição Nova para mover/reordenar
   const updRows=[
-    ['INSTRUÇÕES: Preencha "Armazém Novo" para mover a bobina. Preencha "Posição Nova" para reordenar (1=fundo, maior=topo). Deixe em branco para não alterar.'],
+    ['INSTRUÇÕES: Preencha "Armazém Novo" para mover a bobina. Preencha "Posição Nova" para reordenar (1=TOPO/primeira a sair, maior=FUNDO). Deixe em branco para não alterar.'],
     [],
     ['Coil Number','BL','Navio','Armazém Atual','Posição Atual','Armazém Novo','Posição Nova','Observação']
   ];
   Object.entries(byBL).forEach(([bl,pile])=>{
-    pile.forEach((c,i)=>{
-      const posAtual=pile.length-i;
+    // pile sorted fundo→topo; reverse so i=0 = topo = pos 1
+    const pileTop=[...pile].reverse();
+    pileTop.forEach((c,i)=>{
+      const posAtual=i+1; // 1=topo
       updRows.push([c.coil,bl,c.navio||'',c.armazem||'',posAtual,'','','']);
     });
     updRows.push([]);
@@ -8275,9 +8381,9 @@ alter table users add column if not exists email text;
         <div class="form-group">
           <label>Posição na pilha (ordem)</label>
           <input type="number" id="map-edit-posicao" min="1"
-            placeholder="1 = fundo, maior = topo"
+            placeholder="1 = topo (1ª a sair), maior = fundo"
             style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
-          <div style="font-size:10px;color:var(--muted);margin-top:3px;">1 = primeira descarregada (fundo) · maior número = topo</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:3px;">1 = topo (primeira a sair) · maior número = fundo da pilha</div>
         </div>
         <div class="form-group">
           <label>Observação de posição</label>
