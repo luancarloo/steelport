@@ -714,7 +714,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
     <div id="dpanel-consultar" class="panel">
       <div class="search-row">
         <input type="text" id="d-search" placeholder="⌕  Buscar por coil, BL, veículo, motorista, obs..." oninput="applyFilters('d')" style="min-width:220px;">
-        <select id="d-filter-navio" onchange="applyFilters('d')"><option value="">Todos os navios</option></select>
+        <select id="d-filter-navio" onchange="onFilterNavioChange('d')"><option value="">Todos os navios</option></select>
         <select id="d-filter-cliente" onchange="applyFilters('d')"><option value="">Todos os clientes</option></select>
         <select id="d-filter-bl" onchange="applyFilters('d')"><option value="">Todos os BLs</option></select>
         <select id="d-filter-armazem" onchange="applyFilters('d')"><option value="">Todos os armazéns</option></select>
@@ -852,7 +852,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
     <div id="epanel-consultar" class="panel">
       <div class="search-row">
         <input type="text" id="e-search" placeholder="⌕  Buscar por coil, BL, veículo, motorista, obs..." oninput="applyFilters('e')" style="min-width:220px;">
-        <select id="e-filter-navio" onchange="applyFilters('e')"><option value="">Todos os navios</option></select>
+        <select id="e-filter-navio" onchange="onFilterNavioChange('e')"><option value="">Todos os navios</option></select>
         <select id="e-filter-cliente" onchange="applyFilters('e')"><option value="">Todos os clientes</option></select>
         <select id="e-filter-bl" onchange="applyFilters('e')"><option value="">Todos os BLs</option></select>
         <select id="e-filter-armazem" onchange="applyFilters('e')"><option value="">Todos os armazéns</option></select>
@@ -994,6 +994,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <option value="veiculo">Por Veículo</option>
             <option value="periodo">Por Período</option>
             <option value="armazem">Por Armazém</option>
+            <option value="a_descarregar">⏳ A Descarregar</option>
             <option value="faturamento">💰 Faturamento</option>
             <option value="geral">Geral (todos)</option>
           </select>
@@ -3307,24 +3308,38 @@ async function registrar(tipo){
 function buildFilterSelects(px){
   const src = px==='d'?records:expedicoes;
   const navSet =[...new Set([...src.map(r=>r.navio),   ...coilsDB.map(c=>c.navio)].filter(Boolean))].sort();
-  const cliSet =[...new Set([...src.map(r=>r.cliente),  ...coilsDB.map(c=>c.cliente)].filter(Boolean))].sort();
-  const blSet  =[...new Set([...src.map(r=>r.bl),       ...coilsDB.map(c=>c.bl)].filter(Boolean))].sort();
-  const armSet =[...new Set([...src.map(r=>r.armazem),  ...coilsDB.map(c=>c.armazem)].filter(Boolean))].sort();
-  const veiSet =[...new Set(src.map(r=>r.veiculo).filter(Boolean))].sort();
-  const prodSet=[...new Set([...src.map(r=>r.produto),  ...coilsDB.map(c=>c.produto)].filter(Boolean))].sort();
 
-  const populate=(id,items,label)=>{
+  // Escala: navio selecionado restringe as opções dos demais filtros
+  const fn = document.getElementById(px+'-filter-navio')?.value||'';
+  const srcF     = fn ? src.filter(r=>r.navio===fn)     : src;
+  const coilsDBF = fn ? coilsDB.filter(c=>c.navio===fn)  : coilsDB;
+
+  const cliSet =[...new Set([...srcF.map(r=>r.cliente),  ...coilsDBF.map(c=>c.cliente)].filter(Boolean))].sort();
+  const blSet  =[...new Set([...srcF.map(r=>r.bl),       ...coilsDBF.map(c=>c.bl)].filter(Boolean))].sort();
+  const armSet =[...new Set([...srcF.map(r=>r.armazem),  ...coilsDBF.map(c=>c.armazem)].filter(Boolean))].sort();
+  const veiSet =[...new Set(srcF.map(r=>r.veiculo).filter(Boolean))].sort();
+  const prodSet=[...new Set([...srcF.map(r=>r.produto),  ...coilsDBF.map(c=>c.produto)].filter(Boolean))].sort();
+
+  const populate=(id,items,label,keepIfValid)=>{
     const el=document.getElementById(id); if(!el) return;
     const v=el.value;
     el.innerHTML=`<option value="">${label}</option>`+items.map(x=>`<option>${x}</option>`).join('');
-    if(v) el.value=v;
+    if(v && (!keepIfValid || items.includes(v))) el.value=v;
   };
   populate(px+'-filter-navio',  navSet, 'Todos os navios');
-  populate(px+'-filter-cliente',cliSet, 'Todos os clientes');
-  populate(px+'-filter-bl',     blSet,  'Todos os BLs');
-  populate(px+'-filter-armazem',armSet, 'Todos os armazéns');
-  populate(px+'-filter-veiculo',veiSet, 'Todos os veículos');
-  populate(px+'-filter-produto',prodSet,'Todos os produtos');
+  populate(px+'-filter-cliente',cliSet, 'Todos os clientes', true);
+  populate(px+'-filter-bl',     blSet,  'Todos os BLs', true);
+  populate(px+'-filter-armazem',armSet, 'Todos os armazéns', true);
+  populate(px+'-filter-veiculo',veiSet, 'Todos os veículos', true);
+  populate(px+'-filter-produto',prodSet,'Todos os produtos', true);
+}
+
+function onFilterNavioChange(px){
+  ['filter-cliente','filter-bl','filter-armazem','filter-veiculo','filter-produto'].forEach(f=>{
+    const el=document.getElementById(px+'-'+f); if(el) el.value='';
+  });
+  buildFilterSelects(px);
+  applyFilters(px);
 }
 
 function buildDBNavSelect(){
@@ -4540,6 +4555,15 @@ function _rptGetSelected(id){
 }
 function _rptMatch(val, selected){ return !selected.length || selected.includes(val); }
 
+// Bobinas do filtDB que ainda não têm registro de descarga (saldo "a descarregar")
+function getPendingDischarge(filtDB, sPro, qs){
+  const recSet=new Set(records.map(r=>r.coil));
+  let pend=filtDB.filter(c=>!recSet.has(c.coil));
+  if(sPro && sPro.length) pend=pend.filter(c=>sPro.includes(c.produto||''));
+  if(qs) pend=pend.filter(c=>[c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(qs)));
+  return pend;
+}
+
 function buildRptSelects(){
   // Cascading: cada dropdown filtra apenas opções válidas conforme os demais selecionados
   const sNav = _rptGetSelected('rpt-navio');
@@ -4615,10 +4639,10 @@ function getRptData(){
     (!qs||[r.coil,r.bl,r.navio,r.veiculo,r.motorista,r.cliente,r.obs,r.produto].some(f=>f&&f.toLowerCase().includes(qs)));
   const desc=mv==='expedicao'?[]:records.filter(filter);
   const exps=mv==='descarga'?[]:expedicoes.filter(filter);
-  return {desc, exps, sNav, sCli, sBl, sArm, sVei, sPro};
+  return {desc, exps, sNav, sCli, sBl, sArm, sVei, sPro, qs};
 }
 
-function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
+function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm, sPro=[], qs=''){
   // coilsDB filtrado pelos filtros ativos para que BOBINAS BANCO reflita somente o selecionado
   const filtDB=coilsDB.filter(c=>
     _rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm)
@@ -4695,6 +4719,19 @@ function buildRptGroupSummary(tipo, desc, exps, sNav, sCli, sBl, sArm){
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
         Math.round(dA.reduce((s,r)=>s+(parseFloat(r.pesob)||0),0))];
     });
+  } else if(tipo==='a_descarregar'){
+    headers=['BL','NAVIO','CLIENTE','BOBINAS NO BANCO','JÁ DESCARREGADAS','A DESCARREGAR','P.BRUTO A DESCARREGAR (kg)'];
+    const pend=getPendingDischarge(filtDB, sPro, qs);
+    const blSet=[...new Set(filtDB.map(c=>c.bl).filter(Boolean))].sort();
+    const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
+    rows=filtBls.map(bl=>{
+      const dbB=filtDB.filter(c=>c.bl===bl);
+      const pendB=pend.filter(c=>c.bl===bl);
+      if(!pendB.length) return null;
+      return [bl,dbB[0]?.navio||'—',dbB[0]?.cliente||'—',
+        dbB.length, dbB.length-pendB.length, pendB.length,
+        Math.round(pendB.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0))];
+    }).filter(Boolean);
   } else {
     headers=['TIPO','QUANTIDADE','P.BRUTO TOTAL (kg)','P.LÍQUIDO TOTAL (kg)'];
     rows=[
@@ -4731,7 +4768,7 @@ function renderRptSummary(){
 
 function renderReport(){
   const tipo=document.getElementById('rpt-tipo').value;
-  const {desc,exps,sNav,sCli,sBl,sArm}=getRptData();
+  const {desc,exps,sNav,sCli,sBl,sArm,sPro,qs}=getRptData();
   buildRptSelects(); // recalcula opções cascateadas após filtrar
   const all=[...desc.map(r=>({...r,_tipo:'DESCARGA'})),...exps.map(r=>({...r,_tipo:'EXPEDIÇÃO'}))];
   all.sort((a,b)=>a.data>b.data?1:-1);
@@ -4828,6 +4865,20 @@ function renderReport(){
       return [a,dbA.length,dA.length,eA.length,Math.max(0,dA.length-eA.length),
         fmtKg(pbdVal),fmtKg(pbeVal),fmtKg(Math.max(0,pbdVal-pbeVal))];
     });
+  } else if(tipo==='a_descarregar'){
+    document.getElementById('rpt-group-title').textContent='⏳ A DESCARREGAR — SALDO POR BL';
+    groupHeaders=['BL','NAVIO','CLIENTE','BOBINAS NO BANCO','JÁ DESCARREGADAS','A DESCARREGAR','P.BRUTO A DESCARREGAR (kg)'];
+    const pend=getPendingDischarge(filtDB, sPro, qs);
+    const blSet=[...new Set(filtDB.map(c=>c.bl).filter(Boolean))].sort();
+    const filtBls=sBl.length?blSet.filter(b=>sBl.includes(b)):blSet;
+    groupRows=filtBls.map(bl=>{
+      const dbB=filtDB.filter(c=>c.bl===bl);
+      const pendB=pend.filter(c=>c.bl===bl);
+      if(!pendB.length) return null; // BL totalmente descarregado: sai do saldo "a descarregar"
+      return [bl,dbB[0]?.navio||'—',dbB[0]?.cliente||'—',
+        dbB.length, dbB.length-pendB.length, pendB.length,
+        fmtKg(pendB.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0))];
+    }).filter(Boolean);
   } else if(tipo==='faturamento'){
     document.getElementById('rpt-group-title').textContent='💰 RELATÓRIO DE FATURAMENTO';
     groupHeaders=['BL','CLIENTE','NAVIO','PERÍODO','DATA COBRANÇA','PESO (kg)','TONELADAS','ARMAZENAGEM (R$)','HANDLING (R$)','TOTAL (R$)','STATUS','NF'];
@@ -4889,6 +4940,35 @@ function renderReport(){
     return;
   }
   if(detWrapper) detWrapper.style.display='';
+
+  // DETALHE — tipo "a descarregar" lista as bobinas pendentes, não movimentações
+  if(tipo==='a_descarregar'){
+    const pendList=getPendingDischarge(filtDB, sPro, qs);
+    document.getElementById('rpt-detail-title').textContent=`⏳ BOBINAS PENDENTES DE DESCARGA (${pendList.length} registros)`;
+    const detContainer=document.getElementById('rpt-detail-table');
+    if(!pendList.length){ detContainer.innerHTML=`<div class="empty-state"><span class="empty-icon">⏳</span>Nenhuma bobina pendente de descarga para os filtros selecionados.</div>`; return; }
+    const st=tableState.rpt;
+    const {slice:pendSlice, total:pendTotal, pages:pendPages}=sortAndPage(pendList, st);
+    const rthSort=(label,col)=>`<th style="cursor:pointer;user-select:none;white-space:nowrap;" onclick="setSort('rpt','${col}',renderReport)" title="Ordenar por ${label}">${label} <span style="font-size:9px;opacity:${st.col===col?1:0.35}">${st.col===col?(st.dir>0?'▲':'▼'):'↕'}</span></th>`;
+    detContainer.innerHTML=`<table>
+      <thead><tr>
+        ${rthSort('COIL NUMBER','coil')}${rthSort('NAVIO','navio')}${rthSort('BL','bl')}
+        ${rthSort('CLIENTE','cliente')}${rthSort('PRODUTO','produto')}${rthSort('ARMAZÉM','armazem')}
+        ${rthSort('P.BRUTO (kg)','pesob')}
+      </tr></thead>
+      <tbody>${pendSlice.map((c,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td><span class="coil-badge">${c.coil}</span></td>
+        <td style="font-weight:600">${c.navio||'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
+        <td style="color:#60a5fa">${c.cliente||'—'}</td>
+        <td style="font-size:13px">${c.produto||'—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${c.armazem||'—'}</td>
+        <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+    ${renderPager(st, pendTotal, pendPages, "(p)=>setPage('rpt',p,renderReport)", 'rpt-detail')}`;
+    return;
+  }
 
   document.getElementById('rpt-detail-title').textContent=`🔩 DETALHE DAS MOVIMENTAÇÕES (${all.length} registros)`;
   const detContainer=document.getElementById('rpt-detail-table');
@@ -4979,8 +5059,8 @@ function exportReportXLSX(){
   }
 
   // Sheet 1: Resumo (usa helper compartilhado, cobre todos os tipos)
-  const {sArm,sVei,sPro}=getRptData();
-  const {headers:sumH, rows:sumR}=buildRptGroupSummary(tipo,desc,exps,sNav,sCli,sBl,sArm);
+  const {sArm,sVei,sPro,qs}=getRptData();
+  const {headers:sumH, rows:sumR}=buildRptGroupSummary(tipo,desc,exps,sNav,sCli,sBl,sArm,sPro,qs);
   const pbDescTotal=Math.round(desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
   const pbExpsTotal=Math.round(exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
   const summaryData=[sumH,...sumR,
@@ -4989,6 +5069,18 @@ function exportReportXLSX(){
      'P.B. DESC (kg): '+pbDescTotal,'P.B. EXP (kg): '+pbExpsTotal,'SALDO P.B. (kg): '+(pbDescTotal-pbExpsTotal)]
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Resumo');
+
+  // Sheet extra: lista de bobinas pendentes de descarga (tipo "a descarregar")
+  if(tipo==='a_descarregar'){
+    const filtDB=coilsDB.filter(c=>_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm));
+    const pend=getPendingDischarge(filtDB,sPro,qs);
+    const pSheet=[['COIL NUMBER','NAVIO','BL','CLIENTE','PRODUTO','ARMAZÉM','P.BRUTO (kg)']];
+    pend.forEach(c=>pSheet.push([c.coil,c.navio||'',c.bl||'',c.cliente||'',c.produto||'',c.armazem||'',parseFloat(c.pesob)||0]));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pSheet), 'A Descarregar');
+    XLSX.writeFile(wb, '4SIDES_STEELPORT_ADescarregar_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    showToast('✓ Excel exportado com sucesso!','#22c55e','#000');
+    return;
+  }
 
   // Sheet 2: Descargas
   if(mv!=='expedicao'){
@@ -5080,7 +5172,7 @@ function exportReportPDF(){
   }
 
   const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-  const {desc,exps}=getRptData();
+  const {desc,exps,sNav:sNavPdf,sCli:sCliPdf,sBl:sBlPdf,sArm:sArmPdf,sPro:sProPdf,qs:qsPdf}=getRptData();
   const mv=document.getElementById('rpt-movimento').value;
   const fn=document.getElementById('rpt-navio').value;
   const fc=document.getElementById('rpt-cliente').value;
@@ -5103,13 +5195,14 @@ function exportReportPDF(){
   // PAGE 1: RESUMO (usa helper compartilhado, cobre todos os tipos)
   const tipoLabel={navio:'RELATÓRIO POR NAVIO',cliente:'RELATÓRIO POR CLIENTE',bl:'RELATÓRIO POR BL',
     produto:'RELATÓRIO POR PRODUTO',veiculo:'RELATÓRIO POR VEÍCULO',periodo:'RELATÓRIO POR PERÍODO',
-    armazem:'RELATÓRIO POR ARMAZÉM',geral:'RELATÓRIO GERAL'}[tipo]||'RELATÓRIO';
+    armazem:'RELATÓRIO POR ARMAZÉM',a_descarregar:'⏳ A DESCARREGAR',geral:'RELATÓRIO GERAL'}[tipo]||'RELATÓRIO';
   addHeader(tipoLabel);
   doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(240,165,0);
   doc.text('RESUMO EXECUTIVO',14,26);
 
   const {headers:rptSumH, rows:rptSumRows}=buildRptGroupSummary(tipo,desc,exps,
-    _rptGetSelected('rpt-navio'),_rptGetSelected('rpt-cliente'),_rptGetSelected('rpt-bl'),_rptGetSelected('rpt-armazem'));
+    _rptGetSelected('rpt-navio'),_rptGetSelected('rpt-cliente'),_rptGetSelected('rpt-bl'),_rptGetSelected('rpt-armazem'),
+    sProPdf,qsPdf);
   const pbDescPdf=desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   const pbExpsPdf=exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   const pdfSumBody=[...rptSumRows.map(r=>r.map(String)),
@@ -5120,6 +5213,31 @@ function exportReportPDF(){
     headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:8},
     bodyStyles:{fontSize:8,textColor:[220,220,220],fillColor:[17,19,24]},
     alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2.5,lineColor:[37,42,53]}});
+
+  // PAGE 2 (tipo "a descarregar"): lista de bobinas pendentes
+  if(tipo==='a_descarregar'){
+    const filtDBpdf=coilsDB.filter(c=>_rptMatch(c.navio,sNavPdf)&&_rptMatch(c.cliente,sCliPdf)&&_rptMatch(c.bl,sBlPdf)&&_rptMatch(c.armazem,sArmPdf));
+    const pendPdf=getPendingDischarge(filtDBpdf,sProPdf,qsPdf);
+    if(pendPdf.length){
+      doc.addPage();
+      addHeader('BOBINAS PENDENTES ('+pendPdf.length+' registros)');
+      doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.setTextColor(240,165,0);
+      doc.text('A DESCARREGAR',14,26);
+      doc.autoTable({startY:30,
+        head:[['COIL NUMBER','NAVIO','BL','CLIENTE','PRODUTO','ARMAZÉM','P.BRUTO (kg)']],
+        body:pendPdf.map(c=>[c.coil,c.navio||'—',c.bl||'—',c.cliente||'—',c.produto||'—',c.armazem||'—',c.pesob?fmtKg(c.pesob):'—']),
+        theme:'grid',headStyles:{fillColor:[17,19,24],textColor:[240,165,0],fontStyle:'bold',fontSize:7},bodyStyles:{fontSize:7,textColor:[220,220,220],fillColor:[17,19,24]},alternateRowStyles:{fillColor:[24,28,35]},styles:{cellPadding:2,lineColor:[37,42,53]}});
+    }
+    const totalPagesPend=doc.internal.getNumberOfPages();
+    for(let i=1;i<=totalPagesPend;i++){
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(100,100,100);
+      doc.text('4SIDES · STEELPORT · Sistema de Gestão de Armazém · Página '+i+' de '+totalPagesPend, pageW/2, doc.internal.pageSize.getHeight()-5,{align:'center'});
+    }
+    doc.save('4SIDES_STEELPORT_ADescarregar_'+new Date().toISOString().split('T')[0]+'.pdf');
+    showToast('✓ PDF exportado com sucesso!','#22c55e','#000');
+    return;
+  }
 
   // PAGE 2: DESCARGAS
   if(mv!=='expedicao'&&desc.length){
@@ -6223,6 +6341,9 @@ function renderFaturamento(){
   const _cli=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.cliente)?.cliente||records.find(r=>normStr(r.bl)===k&&r.cliente)?.cliente||'');
   const _arm=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.armazem)?.armazem||records.find(r=>normStr(r.bl)===k&&r.armazem)?.armazem||'');
 
+  // BLs com armazém "Porto" não são faturados por nós — excluir sempre
+  bls=bls.filter(bl=>!_arm(normStr(bl)).includes('PORTO'));
+
   if(fc) bls=bls.filter(bl=>_cli(normStr(bl))===normStr(fc));
   if(fn) bls=bls.filter(bl=>_nav(normStr(bl))===normStr(fn));
   if(fa) bls=bls.filter(bl=>_arm(normStr(bl))===normStr(fa));
@@ -7302,7 +7423,10 @@ function renderDashFat(){
   const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
   const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
 
-  const bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+  const normStr=s=>String(s||'').trim().toUpperCase();
+  const bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))]
+    .filter(bl=>!normStr(coilsDB.find(c=>c.bl===bl&&c.armazem)?.armazem||'').includes('PORTO'))
+    .sort();
 
   let totalVencidos=0, totalCobrados=0;
   let valorVencidos=0, valorCobrados=0;
