@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -8,6 +8,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<!-- OAuth2 PKCE implementado diretamente — sem dependência externa -->
 <style>
 :root{--bg:#0a0c0f;--surface:#111318;--surface2:#181c23;--border:#252a35;--accent:#f0a500;--text:#e8eaf0;--muted:#6b7280;--danger:#e05c1a;--success:#22c55e;--info:#3b82f6;--warning:#f59e0b;--exp:#a855f7;}
 body.light-theme img[alt="4SIDES STEELPORT"]{filter:none;}
@@ -345,6 +346,57 @@ th.cb-th{width:36px;padding-left:1rem !important;}
 tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 @media(max-width:900px){.form-grid,.autofill-inner{grid-template-columns:1fr 1fr;}.stats-bar{grid-template-columns:1fr 1fr;}.module-cards{grid-template-columns:1fr;}}
 @media(max-width:600px){.form-grid,.autofill-inner{grid-template-columns:1fr;}header{padding:0 1rem;}.container{padding:1rem;}.module-cards{grid-template-columns:1fr;}}
+
+/* ── FOLLOW-UP MODULE ── */
+.fu-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.2rem 1.5rem;margin-bottom:1rem;position:relative;transition:border .2s;}
+.fu-card:hover{border-color:var(--info);}
+.fu-card-active{border-left:3px solid var(--info);}
+.fu-card-inactive{border-left:3px solid var(--border);opacity:.7;}
+.fu-badge{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-family:'JetBrains Mono',monospace;border-radius:4px;padding:2px 8px;letter-spacing:1px;}
+.fu-badge-on{background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);}
+.fu-badge-off{background:rgba(107,114,128,.1);color:var(--muted);border:1px solid var(--border);}
+.fu-col-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:.5rem;}
+.fu-col-item{display:flex;align-items:center;gap:.5rem;padding:.4rem .6rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;transition:border .15s;}
+.fu-col-item:hover{border-color:var(--info);}
+.fu-col-item input[type=checkbox]{accent-color:var(--info);width:15px;height:15px;cursor:pointer;}
+.fu-dow-grid{display:flex;gap:.4rem;flex-wrap:wrap;}
+.fu-dow-btn{display:flex;align-items:center;gap:.35rem;padding:.35rem .7rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;letter-spacing:.5px;transition:all .15s;}
+.fu-dow-btn:has(input:checked){background:rgba(59,130,246,.15);border-color:var(--info);color:var(--info);}
+.fu-dow-btn input[type=checkbox]{accent-color:var(--info);width:14px;height:14px;cursor:pointer;}
+.fu-section{margin-bottom:1.5rem;}
+.fu-section-title{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:.75rem;padding-bottom:.4rem;border-bottom:1px solid var(--border);}
+.fu-dest-item{display:flex;align-items:center;justify-content:space-between;padding:.45rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:6px;margin-bottom:.4rem;}
+.fu-multiselect{background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:.5rem;font-family:'Barlow Condensed',sans-serif;font-size:14px;min-height:80px;outline:none;width:100%;}
+.fu-multiselect:focus{border-color:var(--info);}
+.fu-multiselect option:checked{background:rgba(59,130,246,.25);}
+.fu-html-preview{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:1rem;font-size:12px;max-height:200px;overflow:auto;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+.fu-ejs-guide{background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);border-radius:8px;padding:1rem 1.2rem;font-size:13px;line-height:1.7;}
+.fu-ejs-step{display:flex;gap:.75rem;align-items:flex-start;margin-bottom:.5rem;}
+.fu-ejs-num{width:22px;height:22px;background:var(--info);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:900;flex-shrink:0;margin-top:1px;}
+.fu-toggle-wrap{display:flex;align-items:center;gap:.75rem;}
+.fu-toggle{position:relative;display:inline-block;width:44px;height:24px;}
+.fu-toggle input{opacity:0;width:0;height:0;}
+.fu-toggle-slider{position:absolute;cursor:pointer;inset:0;background:var(--border);border-radius:12px;transition:.3s;}
+.fu-toggle-slider:before{position:absolute;content:'';height:18px;width:18px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s;}
+.fu-toggle input:checked + .fu-toggle-slider{background:var(--info);}
+.fu-toggle input:checked + .fu-toggle-slider:before{transform:translateX(20px);}
+/* ── Carga Geral ──────────────────────────────── */
+.cg-tab-bar{display:flex;gap:.5rem;margin-bottom:1.25rem;border-bottom:1px solid var(--border);padding-bottom:.5rem;flex-wrap:wrap;}
+.cg-tab{padding:.45rem 1.1rem;border-radius:6px 6px 0 0;font-size:13px;font-family:'JetBrains Mono',monospace;font-weight:600;letter-spacing:.5px;cursor:pointer;border:1px solid transparent;border-bottom:none;color:var(--muted);transition:all .2s;}
+.cg-tab:hover{color:var(--text);}
+.cg-tab.active{background:var(--surface);border-color:var(--border);color:#f97316;}
+.cg-panel{display:none;}.cg-panel.active{display:block;}
+.cg-progress-bar{height:8px;background:var(--surface2);border-radius:4px;overflow:hidden;margin-top:.3rem;}
+.cg-progress-fill{height:100%;background:linear-gradient(90deg,#22c55e,#4ade80);border-radius:4px;transition:width .4s;}
+.cg-progress-fill.warn{background:linear-gradient(90deg,#f59e0b,#fbbf24);}
+.cg-progress-fill.danger{background:linear-gradient(90deg,#ef4444,#f87171);}
+.cg-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-family:'JetBrains Mono',monospace;font-weight:700;}
+.cg-badge-pend{background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.3);}
+.cg-badge-ok{background:rgba(34,197,94,.15);color:#22c55e;border:1px solid rgba(34,197,94,.3);}
+.cg-badge-aberto{background:rgba(99,102,241,.15);color:#818cf8;border:1px solid rgba(99,102,241,.3);}
+.cg-form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem;margin-bottom:1rem;}
+.cg-saldo-box{padding:1rem 1.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:1rem;}
+.cg-saldo-num{font-size:28px;font-weight:900;color:#f97316;font-family:'Barlow Condensed',sans-serif;line-height:1;}
 </style>
 </head>
 <body>
@@ -548,6 +600,30 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <p>Backup automático diário. Exporte e restaure todos os dados do sistema.</p>
         <div class="module-stats">
           <div class="mini-stat" style="background:rgba(99,102,241,.08);border-color:rgba(99,102,241,.2);">Último: <span id="home-backup-last" style="color:#818cf8;">—</span></div>
+        </div>
+      </div>
+
+      <!-- CARGA GERAL -->
+      <div class="module-card" id="card-carga-geral" onclick="openModule('carga-geral')" style="border-color:rgba(249,115,22,.2);display:none;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(249,115,22,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">📦</div>
+        <h2 style="color:#f97316;">CARGA GERAL</h2>
+        <p>Descarga e expedição de BFM, Vergalhão, Cantoneira e outros por quantidade.</p>
+        <div class="module-stats">
+          <div><span id="home-cg-itens">0</span> itens cadastrados</div>
+          <div><span id="home-cg-pend">0</span> com saldo pendente</div>
+        </div>
+      </div>
+
+      <!-- FOLLOW-UP (admin only) -->
+      <div class="module-card" id="card-followup" onclick="openModule('followup')" style="border-color:rgba(59,130,246,.2);display:none;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(59,130,246,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">📧</div>
+        <h2 style="color:#60a5fa;">FOLLOW-UP</h2>
+        <p>Envio automático de relatórios por e-mail. Configure destinatários, conteúdo e horário de envio diário.</p>
+        <div class="module-stats">
+          <div class="mini-stat" style="background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.2);">Ativos: <span id="home-followup-ativos" style="color:#60a5fa;">0</span></div>
+          <div class="mini-stat" style="background:rgba(59,130,246,.08);border-color:rgba(59,130,246,.2);">Enviados hoje: <span id="home-followup-hoje" style="color:#60a5fa;">0</span></div>
         </div>
       </div>
 
@@ -996,6 +1072,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <option value="armazem">Por Armazém</option>
             <option value="a_descarregar">⏳ A Descarregar</option>
             <option value="faturamento">💰 Faturamento</option>
+            <option value="kingspan">🟧 Kingspan (Faturamento)</option>
             <option value="geral">Geral (todos)</option>
           </select>
         </div>
@@ -1049,6 +1126,20 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Busca Livre</label>
           <input type="text" id="rpt-search" placeholder="Coil, motorista, obs..." oninput="renderReport()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:6px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
+        </div>
+      </div>
+      <div id="rpt-kingspan-note" style="display:none;grid-column:1/-1;gap:1rem;flex-wrap:wrap;align-items:flex-start;">
+        <div style="padding:.6rem 1rem;background:rgba(251,146,60,.08);border:1px solid rgba(251,146,60,.25);border-radius:8px;font-size:12px;color:#fb923c;font-family:'JetBrains Mono',monospace;flex:1;">
+          🟧 <strong>Modo Kingspan:</strong> todos os BLs cujo cliente contém a palavra "Kingspan" (KINGSPAN, KINGSPAN -, KINGSPAN ISOESTE, etc.). <strong>Data Início / Data Fim</strong> filtram pela <strong>data de emissão</strong> (data em que o período foi marcado como Enviado).
+        </div>
+        <div style="min-width:180px;">
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Status de Faturamento</label>
+          <select id="rpt-fat-status" onchange="renderReport()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:6px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;">
+            <option value="">Todos</option>
+            <option value="enviado">✓ Enviado</option>
+            <option value="pendente">⚠ Pendente</option>
+            <option value="aberto">◌ Em Aberto</option>
+          </select>
         </div>
       </div>
       <div class="rpt-btns">
@@ -1143,6 +1234,9 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-mapeamento" style="accent-color:#22d3ee;width:16px;height:16px;"> 🗺 Mapeamento
+            </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-carga-geral" style="accent-color:#f97316;width:16px;height:16px;"> 📦 Carga Geral
             </label>
           </div>
         </div>
@@ -1328,7 +1422,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 // ══════════════════════════════════════════
 // AUTH & USERS
 // ══════════════════════════════════════════
-const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',mustChange:true,perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true}};
+const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',mustChange:true,perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true,faturamento:true,mapeamento:true,followup:true,cargaGeral:true}};
 
 // ── SHA-256 via Web Crypto API ──────────────────────────────────
 async function hashPass(str){
@@ -1359,16 +1453,17 @@ function saveUsers(){
   localStorage.setItem('sp_users', JSON.stringify(users));
   if(SUPA_URL && SUPA_KEY){
     users.forEach(u => {
-      const {armazens, mustChange, pass, passHash, ...uc} = u; // campos só locais
+      const {mustChange, pass, passHash, ...uc} = u; // campos só locais
       if(typeof uc.perms==='object') uc.perms=JSON.stringify(uc.perms);
+      if(Array.isArray(uc.armazens)) uc.armazens=JSON.stringify(uc.armazens);
       if(passHash) uc.passhash = passHash; // coluna lowercase no PostgreSQL
-      supaUpsert('users', uc, 'id').catch(e=>{
-        // Se a coluna passhash ainda não existe no Supabase, salva sem ela
-        if(e.message&&e.message.toLowerCase().includes('passhash')){
-          const {passhash:_, ...ucSafe}=uc;
-          supaUpsert('users', ucSafe, 'id').catch(()=>{});
-        }
+      const tryUpsert=(payload)=>supaUpsert('users', payload, 'id').catch(e=>{
+        // Se a coluna passhash/armazens ainda não existe no Supabase, salva sem ela
+        const msg=(e.message||'').toLowerCase();
+        if(msg.includes('passhash')&&'passhash' in payload){ const {passhash:_, ...rest}=payload; return tryUpsert(rest); }
+        if(msg.includes('armazens')&&'armazens' in payload){ const {armazens:_, ...rest}=payload; return tryUpsert(rest); }
       });
+      tryUpsert(uc);
     });
   }
 }
@@ -1447,6 +1542,10 @@ async function doLogin(){
     buildFilterSelects('d'); buildFilterSelects('e');
     // Backup automático diário
     setTimeout(checkBackupAutomatico, 3000);
+    // Follow-UP: carregar configs e iniciar agendador
+    loadCgData(); updateCgStats();
+    loadFollowupConfigs(); loadFollowupHistory(); loadExchangeCfg();
+    renderFollowupStats(); startFollowupScheduler();
     // Sync faturamento: push dados locais → pull dados do Supabase
     setTimeout(autoSyncFatConfig, 4000);
     // Sync automático a cada 5 minutos
@@ -1499,6 +1598,8 @@ function applySessionUI(){
   const histCard = document.getElementById('card-historico');
   const bkpCard  = document.getElementById('card-backup');
 
+  const fuCard = document.getElementById('card-followup');
+
   if(isAdmin){
     [descCard,expCard,dbCard,repCard].forEach(c=>{ if(c) c.style.display=''; });
     if(usrCard)  usrCard.style.display='';
@@ -1507,6 +1608,8 @@ function applySessionUI(){
     if(dashFatCard) dashFatCard.style.display='';
     if(histCard) histCard.style.display='';
     if(bkpCard)  bkpCard.style.display='';
+    if(fuCard)   fuCard.style.display='';
+  const cgCard=document.getElementById('card-carga-geral'); if(cgCard) cgCard.style.display='';
     const badge = document.getElementById('api-status-badge');
     if(badge) badge.innerHTML = (SUPA_URL && SUPA_KEY)
       ? 'Status: <span style="color:var(--success);">✓ CONECTADO</span>'
@@ -1522,6 +1625,8 @@ function applySessionUI(){
     if(dashFatCard) dashFatCard.style.display='none';
     if(histCard) histCard.style.display='none';
     if(bkpCard)  bkpCard.style.display='none';
+    if(fuCard)   fuCard.style.display='none';
+  const cgCard2=document.getElementById('card-carga-geral'); if(cgCard2) cgCard2.style.display='none';
   } else {
     // operator
     if(descCard) descCard.style.display=(perms.descarga===false)?'none':'';
@@ -1534,8 +1639,11 @@ function applySessionUI(){
     if(dashFatCard) dashFatCard.style.display=(perms.faturamento===true)?'':'none';
     if(histCard) histCard.style.display='none';
     if(bkpCard)  bkpCard.style.display='none';
+    if(fuCard)   fuCard.style.display=(perms.followup===true)?'':'none';
     const mapCard=document.getElementById('card-mapeamento');
     if(mapCard) mapCard.style.display=(perms.mapeamento===true)?'':'none';
+    const cgCard3=document.getElementById('card-carga-geral');
+    if(cgCard3) cgCard3.style.display=(perms.cargaGeral===true)?'':'none';
   }
 }
 
@@ -1552,6 +1660,8 @@ function canAccess(mod){
   if(mod==='faturamento')return (perms.faturamento === true);
   if(mod==='dash-fat')   return (perms.faturamento === true);
   if(mod==='mapeamento') return (perms.mapeamento  === true);
+  if(mod==='followup')   return (perms.followup    === true);
+  if(mod==='carga-geral')return (perms.cargaGeral  === true);
   return false;
 }
 
@@ -1630,7 +1740,8 @@ async function saveUser(){
         relatorios:  document.getElementById('perm-relatorios').checked,
         consultaDB:  document.getElementById('perm-consulta-db').checked,
         faturamento: document.getElementById('perm-faturamento').checked,
-        mapeamento:  document.getElementById('perm-mapeamento').checked
+        mapeamento:  document.getElementById('perm-mapeamento').checked,
+        cargaGeral:  document.getElementById('perm-carga-geral').checked
       };
   // Armazéns permitidos (vazio = todos)
   const armSel = document.getElementById('uf-armazens');
@@ -1675,7 +1786,8 @@ function editUser(id){
     document.getElementById('perm-relatorios').checked= u.perms?.relatorios === true;
     document.getElementById('perm-consulta-db').checked= u.perms?.consultaDB === true;
     document.getElementById('perm-faturamento').checked= u.perms?.faturamento === true;
-    document.getElementById('perm-mapeamento').checked = u.perms?.mapeamento  === true;
+    document.getElementById('perm-mapeamento').checked  = u.perms?.mapeamento  === true;
+    document.getElementById('perm-carga-geral').checked = u.perms?.cargaGeral  === true;
   }
   // Populate armazens
   const armSel = document.getElementById('uf-armazens');
@@ -1715,6 +1827,7 @@ function clearUserForm(){
   document.getElementById('perm-consulta-db').checked=false;
   document.getElementById('perm-faturamento').checked=false;
   document.getElementById('perm-mapeamento').checked=false;
+  document.getElementById('perm-carga-geral').checked=false;
   // Deselect all armazens (= access to all)
   const sel=document.getElementById('uf-armazens');
   if(sel) [...sel.options].forEach(o=>o.selected=false);
@@ -1964,6 +2077,14 @@ async function loadAllData(){
     navios     = (navs ||[]).map(r=>r.nome).filter(Boolean);
     users      = (usrs ||[]).map(normalizeUser);
     if(!users.length) users=[DEFAULT_ADMIN];
+    // Mantém a sessão atual sincronizada com os armazéns mais recentes do usuário
+    if(session){
+      const freshSelf=users.find(u=>u.id===session.id);
+      if(freshSelf) session.armazens=freshSelf.armazens||[];
+      localStorage.setItem('sp_session', JSON.stringify(session));
+    }
+    // Restringe os dados em memória aos armazéns permitidos pela sessão atual
+    applyArmazemRestriction();
     saveUsers();
     // Load shared fat_config
     if(fatCfg && fatCfg.length) applyFatConfig(fatCfg);
@@ -1996,10 +2117,37 @@ async function loadAllData(){
 function normalizeRecord(r){ if(r.id&&!isNaN(r.id)) r.id=Number(r.id); return r; }
 function normalizeUser(u){
   if(typeof u.perms==='string'){ try{u.perms=JSON.parse(u.perms);}catch(e){u.perms={};} }
+  if(typeof u.armazens==='string'){ try{u.armazens=JSON.parse(u.armazens);}catch(e){u.armazens=[];} }
+  if(!Array.isArray(u.armazens)) u.armazens=u.armazens||[];
   // PostgreSQL armazena colunas em lowercase — mapeia passhash → passHash
   if(u.passhash && !u.passHash){ u.passHash=u.passhash; }
   delete u.passhash;
   return u;
+}
+
+function normArmazem(s){
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+// Lista de armazéns normalizados que a sessão atual pode acessar, ou null = acesso total
+function getSessionArmazens(){
+  if(!session || !Array.isArray(session.armazens) || !session.armazens.length) return null;
+  return session.armazens.map(normArmazem);
+}
+
+function armazemPermitido(arm){
+  const ua=getSessionArmazens();
+  return !ua || ua.includes(normArmazem(arm));
+}
+
+// Restringe coilsDB/records/expedicoes aos armazéns permitidos pela sessão atual
+function applyArmazemRestriction(){
+  const ua=getSessionArmazens();
+  if(!ua) return;
+  coilsDB    = coilsDB.filter(c=>armazemPermitido(c.armazem));
+  records    = records.filter(r=>armazemPermitido(r.armazem));
+  expedicoes = expedicoes.filter(r=>armazemPermitido(r.armazem));
 }
 
 function showApiError(msg){
@@ -2061,7 +2209,19 @@ async function apiPost(body){
   if(body.action==='addExpedicao') return supaUpsert('expedicoes', body.data,'id');
   if(body.action==='saveCoil'){    return supaUpsert('coilsdb',    body.data,'coil,navio,bl'); }
   if(body.action==='addNavio')     return supaUpsert('navios',     {nome:body.nome},'nome');
-  if(body.action==='saveUser'){    const {armazens, mustChange, pass, passHash, ...ud}={...body.data}; if(typeof ud.perms==='object') ud.perms=JSON.stringify(ud.perms); if(passHash) ud.passhash=passHash; return supaUpsert('users',ud,'id').catch(e=>{ if(e.message&&e.message.toLowerCase().includes('passhash')){ const {passhash:_,...us}=ud; return supaUpsert('users',us,'id'); } throw e; }); }
+  if(body.action==='saveUser'){
+    const {mustChange, pass, passHash, ...ud}={...body.data};
+    if(typeof ud.perms==='object') ud.perms=JSON.stringify(ud.perms);
+    if(Array.isArray(ud.armazens)) ud.armazens=JSON.stringify(ud.armazens);
+    if(passHash) ud.passhash=passHash;
+    const tryUpsert=(payload)=>supaUpsert('users',payload,'id').catch(e=>{
+      const msg=(e.message||'').toLowerCase();
+      if(msg.includes('passhash')&&'passhash' in payload){ const {passhash:_,...rest}=payload; return tryUpsert(rest); }
+      if(msg.includes('armazens')&&'armazens' in payload){ const {armazens:_,...rest}=payload; return tryUpsert(rest); }
+      throw e;
+    });
+    return tryUpsert(ud);
+  }
   if(body.action==='importCoils')  return; // tratado diretamente em confirmImport
   if(body.action==='deleteCoilsMultiple'){ const list=body.coils.map(c=>`"${c}"`).join(','); return supaDelete('coilsdb',`coil=in.(${list})`); }
   throw new Error('Ação desconhecida: '+body.action);
@@ -2118,6 +2278,7 @@ function _confirmDirty(){ return !window._dirtyForm || confirm('Há dados não s
 function goHome(){
   if(!_confirmDirty()) return;
   window._dirtyForm = false;
+  cgStopSync();
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-home').classList.add('active');
   document.getElementById('btn-back').style.display='none';
@@ -2144,6 +2305,8 @@ function openModule(mod){
   if(mod==='dash-fat')   { autoSyncFatConfig().then(()=>renderDashFat()); }
   if(mod==='historico')  { loadAuditFromSupabase().then(renderHistorico); renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
+  if(mod==='followup')   { renderFollowup(); showFuTab('regras'); }
+  if(mod==='carga-geral'){ renderCargaGeral(); showCgTab('banco'); }
 }
 
 // ── Retorna o período correspondente ao horário atual ──────────
@@ -3008,11 +3171,32 @@ async function confirmarLote(px){
   showModuleTab(tipo,'consultar');
 }
 
-function printTicketExpedicao(entries, veiculo, motorista, destino, data, periodo, obs){
+// ── Numeração sequencial de tickets ──────────────────────────
+async function getNextTicketNum(prefix){
+  const KEY = 'sp_tseq_'+prefix;
+  let next = 1;
+  if(SUPA_URL&&SUPA_KEY){
+    try{
+      const rows = await supa(
+        `tickets?select=ticket_num&ticket_num=gte.${prefix}-000000&ticket_num=lte.${prefix}-999999&order=ticket_num.desc&limit=1`
+      );
+      if(rows&&rows.length){
+        const m = rows[0].ticket_num.match(/-(\d+)$/);
+        if(m) next = parseInt(m[1],10)+1;
+      }
+    }catch(e){ /* fallback to local */ }
+  }
+  const local = parseInt(localStorage.getItem(KEY)||'0',10);
+  if(local >= next) next = local + 1;
+  localStorage.setItem(KEY, String(next));
+  return `${prefix}-${String(next).padStart(6,'0')}`;
+}
+
+async function printTicketExpedicao(entries, veiculo, motorista, destino, data, periodo, obs){
   const ticketId  = Date.now();
-  const ticketNum = 'EXP-' + ticketId.toString().slice(-6);
+  const ticketNum = await getNextTicketNum('EXP');
   const ticketData = {
-    id: ticketId, ticketNum, entries, veiculo, motorista, destino,
+    id: ticketId, ticketNum, tipo:'EXP', entries, veiculo, motorista, destino,
     data, periodo, obs, emitidoEm: new Date().toISOString(),
     usuario: session?.nome||'—', userId: session?.user||''
   };
@@ -3020,17 +3204,13 @@ function printTicketExpedicao(entries, veiculo, motorista, destino, data, period
   if(ticketHistory.length > 200) ticketHistory.pop();
   try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
 
-  // Persiste na tabela compartilhada do Supabase
-  if(SUPA_URL && SUPA_KEY){
-    supaUpsert('tickets', {
-      id:         ticketId,
-      ticket_num: ticketNum,
-      ts:         ticketData.emitidoEm,
-      user_id:    ticketData.userId,
-      usuario:    ticketData.usuario,
+  if(SUPA_URL&&SUPA_KEY){
+    supaUpsert('tickets',{
+      id: String(ticketId), ticket_num: ticketNum, tipo:'EXP',
+      ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
       veiculo, motorista, destino, data, periodo, obs,
-      entries:    JSON.stringify(entries)
-    }, 'id').catch(()=>{});
+      entries: JSON.stringify(entries)
+    },'id').catch(()=>{});
   }
 
   _renderTicketWindow(ticketData);
@@ -3038,7 +3218,126 @@ function printTicketExpedicao(entries, veiculo, motorista, destino, data, period
 
 function reprintTicket(idx){
   const t = ticketHistory[idx];
-  if(t) _renderTicketWindow(t);
+  if(!t) return;
+  if(t.tipo==='CG') _renderCgTicketWindow(t); else _renderTicketWindow(t);
+}
+
+async function printTicketCgExpedicao(regs, veiculo, motorista, destino, data, periodo, obs){
+  const ticketId  = Date.now();
+  const ticketNum = await getNextTicketNum('CGX');
+  const ticketData = {
+    id: ticketId, ticketNum, tipo:'CGX',
+    regs, veiculo, motorista, destino, data, periodo, obs,
+    emitidoEm: new Date().toISOString(),
+    usuario: session?.nome||'—', userId: session?.user||''
+  };
+  ticketHistory.unshift(ticketData);
+  if(ticketHistory.length > 200) ticketHistory.pop();
+  try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+  if(SUPA_URL&&SUPA_KEY){
+    supaUpsert('tickets',{
+      id: String(ticketId), ticket_num: ticketNum, tipo:'CGX',
+      ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
+      veiculo, motorista, destino, data, periodo, obs,
+      entries: JSON.stringify(regs)
+    },'id').catch(()=>{});
+  }
+  _renderCgTicketWindow(ticketData);
+}
+
+function _renderCgTicketWindow(t){
+  const {ticketNum, regs=[], veiculo, motorista, destino, data, periodo, obs, usuario} = t;
+  const dataFmt = data ? data.split('-').reverse().join('/') : '-';
+  const LINE  = '------------------------------------------------';
+  const DLINE = '================================================';
+  const LOGO_SRC = (()=>{ try{ const m=_renderTicketWindow.toString().match(/LOGO_SRC\s*=\s*'([^']+)'/); return m?m[1]:''; }catch(e){ return ''; } })();
+  const row=(lbl,val)=>`<div class="row"><span class="lbl">${lbl}</span><span class="val">${(val||'-').toString().toUpperCase()}</span></div>`;
+  const totalQtd=regs.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+  const totalPeso=regs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
+  const cliente=[...new Set(regs.map(r=>r.cliente).filter(Boolean))].join(' / ').toUpperCase()||'-';
+  const w=window.open('','_blank','width=400,height=750');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${ticketNum}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    @page{size:80mm auto;margin:4mm 3mm;}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#000;background:#fff;width:72mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
+    .no-print{margin-bottom:10px;display:flex;gap:8px;}
+    .no-print button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:700;font-family:Arial,sans-serif;text-transform:uppercase;}
+    .header{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:3px;}
+    .header img{height:26px;width:auto;}
+    .header-name{font-size:16px;font-weight:900;letter-spacing:1px;line-height:1.1;}
+    .header-sub{text-align:center;font-size:12px;font-weight:700;margin-bottom:2px;}
+    .tnum{text-align:center;font-size:18px;font-weight:900;letter-spacing:2px;margin:3px 0;}
+    .tdate{text-align:center;font-size:12px;margin-bottom:2px;}
+    .sep{white-space:pre;font-size:13px;margin:3px 0;font-family:Arial,sans-serif;letter-spacing:0;}
+    .stitle{font-size:14px;font-weight:900;margin-bottom:3px;}
+    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:13px;}
+    .lbl{flex-shrink:0;margin-right:6px;font-weight:700;}
+    .val{font-weight:900;text-align:right;word-break:break-all;}
+    .item-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #999;}
+    .item-row:last-child{border-bottom:none;}
+    .item-desc{font-weight:700;flex:1;padding-right:6px;word-break:break-word;}
+    .item-qtd{text-align:right;flex-shrink:0;font-weight:900;}
+    .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:3px 0;}
+    .sign-area{margin-top:8px;}
+    .sign-line{border-top:1.5px solid #000;margin-top:22px;padding-top:3px;text-align:center;font-size:12px;font-weight:700;}
+    .footer{text-align:center;font-size:11px;margin-top:8px;color:#555;}
+    @media print{.no-print{display:none!important;}body{width:72mm;margin:0;padding:0;}}
+  </style></head><body>
+
+  <div class="no-print">
+    <button onclick="window.print()" style="background:#000;color:#fff;">IMPRIMIR</button>
+    <button onclick="window.close()" style="background:#ddd;color:#000;">FECHAR</button>
+  </div>
+
+  <div class="header">
+    <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
+    <div class="header-name">4SIDES - STEELPORT</div>
+  </div>
+  <div class="header-sub">TICKET DE EXPEDICAO - CARGA GERAL</div>
+  <div class="sep">${DLINE}</div>
+  <div class="tnum">${ticketNum}</div>
+  <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">CLIENTE</div>
+  ${row('', cliente)}
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">TRANSPORTE</div>
+  ${row('VEICULO:', veiculo)}
+  ${row('MOTORISTA:', motorista)}
+  ${row('DESTINO:', destino)}
+  ${row('DATA:', dataFmt)}
+  ${row('PERIODO:', periodo)}
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">ITENS - ${regs.length} REG.</div>
+  ${regs.map((r,i)=>`
+    <div class="item-row">
+      <span class="item-desc">${String(i+1).padStart(2,'0')}. BL ${(r.bl||'').toUpperCase()} — ${(r.descricao||'').toUpperCase()}</span>
+      <span class="item-qtd">${r.quantidade} ${r.unidade||'UN'}${r.peso_kg?` / ${Number(r.peso_kg).toLocaleString('pt-BR')} KG`:''}</span>
+    </div>`).join('')}
+  <div class="sep">${LINE}</div>
+
+  <div class="total-row"><span>QTDE TOTAL:</span><span>${totalQtd} UN</span></div>
+  ${totalPeso?`<div class="total-row"><span>PESO TOTAL:</span><span>${Number(totalPeso).toLocaleString('pt-BR')} KG</span></div>`:''}
+  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${obs.toString().toUpperCase()}</div>`:''}
+  <div class="sep">${DLINE}</div>
+
+  <div class="sign-area">
+    <div class="sign-line">ASSINATURA DO MOTORISTA</div>
+    <div style="margin-top:10px;padding:6px 4px;border:1px solid #ccc;border-radius:3px;">
+      <div style="font-size:10px;color:#555;margin-bottom:2px;">OPERADOR RESPONSAVEL</div>
+      <div style="font-size:14px;font-weight:900;text-align:center;">${(usuario||'—').toUpperCase()}</div>
+    </div>
+  </div>
+  <div class="footer">4SIDES - STEELPORT WAREHOUSE SYSTEMS</div>
+
+  <script>setTimeout(()=>window.print(),400);<\/script>
+  </body></html>`);
+  w.document.close();
 }
 
 function _renderTicketWindow(t){
@@ -3145,23 +3444,26 @@ function _renderTicketWindow(t){
 
 async function openReprintModal(){
   document.getElementById('modal-reprint').classList.add('open');
-  const list  = document.getElementById('reprint-list');
-  const empty = document.getElementById('reprint-empty');
+  const searchEl = document.getElementById('reprint-search');
+  const tipoEl   = document.getElementById('reprint-tipo');
+  if(searchEl) searchEl.value = '';
+  if(tipoEl)   tipoEl.value   = '';
+  const list = document.getElementById('reprint-list');
   list.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--muted);font-family:\'JetBrains Mono\',monospace;font-size:12px;">Carregando tickets...</div>';
-  empty.style.display = 'none';
+  document.getElementById('reprint-empty').style.display = 'none';
 
-  // Busca do Supabase
   if(SUPA_URL && SUPA_KEY){
     try{
       const isAdmin = session?.role==='admin';
-      const filter  = isAdmin
-        ? 'tickets?select=*&order=ts.desc&limit=200'
-        : `tickets?select=*&user_id=eq.${encodeURIComponent(session?.user||'')}&order=ts.desc&limit=100`;
-      const remote = await supaAll(filter);
+      const q = isAdmin
+        ? 'tickets?select=*&order=ts.desc&limit=500'
+        : `tickets?select=*&user_id=eq.${encodeURIComponent(session?.user||'')}&order=ts.desc&limit=200`;
+      const remote = await supaAll(q);
       if(remote && remote.length){
         const normalized = remote.map(t=>({
           id:        t.id,
           ticketNum: t.ticket_num,
+          tipo:      t.tipo||'EXP',
           emitidoEm: t.ts,
           usuario:   t.usuario,
           userId:    t.user_id,
@@ -3173,7 +3475,6 @@ async function openReprintModal(){
           obs:       t.obs,
           entries:   typeof t.entries==='string' ? JSON.parse(t.entries||'[]') : (t.entries||[])
         }));
-        // Merge com cache local, dedup por id
         const byId = {};
         [...ticketHistory, ...normalized].forEach(t=>{ if(t.id) byId[t.id]=t; });
         ticketHistory = Object.values(byId).sort((a,b)=>new Date(b.emitidoEm)-new Date(a.emitidoEm));
@@ -3182,40 +3483,68 @@ async function openReprintModal(){
     }catch(e){}
   }
 
-  _renderReprintList();
+  _renderReprintList('','');
 }
 
-function _renderReprintList(){
+function filterReprintList(term){
+  const tipo = document.getElementById('reprint-tipo')?.value||'';
+  _renderReprintList(term||'', tipo);
+}
+
+function _renderReprintList(term, tipo){
   const list  = document.getElementById('reprint-list');
   const empty = document.getElementById('reprint-empty');
   const isAdmin = session?.role==='admin';
-  if(!ticketHistory.length){
-    list.innerHTML=''; empty.style.display='';
-    return;
-  }
+  const q = (term||'').toLowerCase().trim();
+
+  const filtered = ticketHistory.map((t,i)=>({t,i})).filter(({t})=>{
+    if(tipo && (t.tipo||'EXP')!==tipo) return false;
+    if(!q) return true;
+    const entries = t.entries||t.regs||[];
+    const bls = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(' ');
+    const hay = [t.ticketNum,t.veiculo,t.motorista,t.destino,bls,t.usuario].join(' ').toLowerCase();
+    return hay.includes(q);
+  });
+
+  if(!filtered.length){ list.innerHTML=''; empty.style.display=''; return; }
   empty.style.display='none';
-  list.innerHTML = ticketHistory.map((t,i)=>{
-    const dt     = new Date(t.emitidoEm).toLocaleString('pt-BR');
-    const nCoils = t.entries?.length||0;
-    const bl     = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
-    const totalPB= (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+
+  list.innerHTML = filtered.map(({t,i})=>{
+    const dt      = new Date(t.emitidoEm).toLocaleString('pt-BR');
+    const isCG    = t.tipo==='CGX'||t.tipo==='CG';
+    const entries = t.entries||t.regs||[];
+    const bl      = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(', ')||'--';
+    const tipoBadge = isCG
+      ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(249,115,22,.15);color:#f97316;border:1px solid rgba(249,115,22,.3);border-radius:4px;padding:1px 6px;">📦 CG</span>`
+      : `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(168,85,247,.15);color:var(--exp);border:1px solid rgba(168,85,247,.3);border-radius:4px;padding:1px 6px;">🔩 BOB</span>`;
     const usuarioBadge = isAdmin && t.usuario
       ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:1px 6px;">👤 ${t.usuario}</span>`
       : '';
+    let detail;
+    if(isCG){
+      const totalQtd = entries.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+      const totalKg  = entries.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
+      detail = `<span>BL: <b style="color:var(--text)">${bl}</b></span>
+        <span>${entries.length} item(s)</span>
+        <span>${totalQtd} un${totalKg?' / '+Number(totalKg).toLocaleString('pt-BR')+' kg':''}</span>
+        <span>${t.data?t.data.split('-').reverse().join('/'):''} / ${t.periodo||'--'}</span>`;
+    } else {
+      const totalPB = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      detail = `<span>BL: <b style="color:var(--text)">${bl}</b></span>
+        <span>${entries.length} bobina(s)</span>
+        <span>${fmtKg(totalPB)} kg</span>
+        <span>${t.data?t.data.split('-').reverse().join('/'):''} / ${t.periodo||'--'}</span>`;
+    }
     return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;gap:1rem;">
       <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${t.ticketNum}</span>
-          <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo||'—'}</span>
-          <span style="font-size:11px;color:var(--muted);">${t.motorista||'—'}</span>
+        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:14px;">${t.ticketNum||'--'}</span>
+          ${tipoBadge}
+          <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo||'--'}</span>
+          <span style="font-size:11px;color:var(--muted);">${t.motorista||'--'}</span>
           ${usuarioBadge}
         </div>
-        <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
-          <span>BL: <b style="color:var(--text)">${bl}</b></span>
-          <span>${nCoils} bobina(s)</span>
-          <span>${fmtKg(totalPB)} kg</span>
-          <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo||'—'}</span>
-        </div>
+        <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">${detail}</div>
         <div style="font-size:10px;color:var(--muted);margin-top:.2rem;">Emitido: ${dt}</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="reprintTicket(${i});closeModal('modal-reprint');" style="flex-shrink:0;">🖨 IMPRIMIR</button>
@@ -3859,6 +4188,7 @@ function clearRegForm(px){
 }
 
 function fmtTon(kg){ return (kg/1000).toFixed(2); }
+function _dateEnvioISO(s){ const m=s&&s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m?`${m[3]}-${m[2]}-${m[1]}`:s||''; }
 function fmtKg(kg){
   const n = Math.round(Number(kg)||0);
   return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.');
@@ -4610,7 +4940,7 @@ function clearRptFilters(){
     const el=document.getElementById(id); if(!el) return;
     [...el.options].forEach(o=>{ o.selected = (o.value===''); });
   });
-  ['rpt-data-ini','rpt-data-fim','rpt-search','rpt-periodo'].forEach(id=>{
+  ['rpt-data-ini','rpt-data-fim','rpt-search','rpt-periodo','rpt-fat-status'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
   });
   document.getElementById('rpt-tipo').value='navio';
@@ -4770,6 +5100,9 @@ function renderReport(){
   const tipo=document.getElementById('rpt-tipo').value;
   const {desc,exps,sNav,sCli,sBl,sArm,sPro,qs}=getRptData();
   buildRptSelects(); // recalcula opções cascateadas após filtrar
+  // Nota Kingspan
+  const ksNote=document.getElementById('rpt-kingspan-note');
+  if(ksNote) ksNote.style.display=tipo==='kingspan'?'flex':'none';
   const all=[...desc.map(r=>({...r,_tipo:'DESCARGA'})),...exps.map(r=>({...r,_tipo:'EXPEDIÇÃO'}))];
   all.sort((a,b)=>a.data>b.data?1:-1);
 
@@ -4914,6 +5247,51 @@ function renderReport(){
         ]);
       });
     });
+  } else if(tipo==='kingspan'){
+    document.getElementById('rpt-group-title').textContent='🟧 RELATÓRIO KINGSPAN — FATURAMENTO POR BL';
+    groupHeaders=['DATA ENTRADA','TRANSPORTADORA','CNPJ','NAVIO','BL','NOTA FISCAL','VALOR (R$)','PERÍODO INICIAL','PERÍODO FINAL','PESO (kg)','TARIFA (R$/t)','TIPO','STATUS'];
+    const tarifaGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias =parseInt(_fatGet('sp_fat_periodo')||localStorage.getItem('sp_fat_periodo')||15);
+    const di=document.getElementById('rpt-data-ini').value;
+    const df=document.getElementById('rpt-data-fim').value;
+    const fatStatus=document.getElementById('rpt-fat-status')?.value||'';
+    const TRANSP='Seatrade Serviços Portuários e Logísticos LTDA.';
+    const CNPJ  ='80731037000129';
+    let blsKS=[...new Set(coilsDB.filter(c=>(c.cliente||'').toUpperCase().includes('KINGSPAN')).map(c=>c.bl).filter(Boolean))].sort();
+    if(sBl.length)  blsKS=blsKS.filter(b=>sBl.includes(b));
+    if(sNav.length) blsKS=blsKS.filter(b=>coilsDB.some(c=>c.bl===b&&sNav.includes(c.navio)));
+    blsKS.forEach(bl=>{
+      const dbCoils=coilsDB.filter(c=>c.bl===bl);
+      const navio  =dbCoils[0]?.navio||'';
+      const dataEntrada=getDataFimDescarga(bl)||'';
+      const dataEntradaFmt=dataEntrada?dataEntrada.split('-').reverse().join('/'):'—';
+      const fat=calcPeriodosBL(bl,periodoDias);
+      if(!fat||!fat.periodos.length) return;
+      const tarifaBL=getTarifaBL(bl,tarifaGlobal);
+      const hTarifa =getHandlingBL(bl)||0;
+      const hPeso   =dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
+      const hTon    =hPeso/1000;
+      fat.periodos.forEach(p=>{
+        const state =getFatState(bl,p.num);
+        if(di||df){ const envio=_dateEnvioISO(state.dataEnvio); if(!envio||(di&&envio<di)||(df&&envio>df)) return; }
+        const statusPeriodo=state.enviado?'enviado':p.encerrado?'pendente':'aberto';
+        if(fatStatus && statusPeriodo!==fatStatus) return;
+        const nf    =state.nf||'';
+        const ton   =p.pesoBruto/1000;
+        const vArm  =tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+        const vHand =p.num===1&&hTarifa>0?parseFloat((hTarifa*hTon).toFixed(2)):0;
+        const pIni  =p.dataIni.split('-').reverse().join('/');
+        const pFim  =p.dataFim.split('-').reverse().join('/');
+        const fmtR  =v=>'R$ '+v.toFixed(2).replace('.',',');
+        const statusLabel=state.enviado?'✓ Enviado':p.encerrado?'⚠ Pendente':'◌ Em Aberto';
+        // Linha Armazenagem
+        groupRows.push([dataEntradaFmt,TRANSP,CNPJ,navio,bl,nf||'—',vArm>0?fmtR(vArm):'—',pIni,pFim,fmtKg(p.pesoBruto),tarifaBL>0?fmtR(tarifaBL):'—','ARMAZENAGEM',statusLabel]);
+        // Linha Handling (apenas 1º período e se configurado)
+        if(vHand>0){
+          groupRows.push([dataEntradaFmt,TRANSP,CNPJ,navio,bl,nf||'—',fmtR(vHand),pIni,pFim,fmtKg(hPeso),fmtR(hTarifa),'HANDLING',statusLabel]);
+        }
+      });
+    });
   } else {
     document.getElementById('rpt-group-title').textContent='📋 RESUMO GERAL';
     groupHeaders=['TIPO','QUANTIDADE','P.BRUTO TOTAL (kg)','P.LÍQUIDO TOTAL (kg)'];
@@ -4933,9 +5311,9 @@ function renderReport(){
     </table>`;
   }
 
-  // DETAIL TABLE (não mostrar no tipo faturamento)
+  // DETAIL TABLE (não mostrar em faturamento/kingspan)
   const detWrapper=document.getElementById('rpt-detail-wrapper');
-  if(tipo==='faturamento'){
+  if(tipo==='faturamento'||tipo==='kingspan'){
     if(detWrapper) detWrapper.style.display='none';
     return;
   }
@@ -5014,6 +5392,82 @@ function exportReportXLSX(){
   const tipo=document.getElementById('rpt-tipo').value;
   const mv=document.getElementById('rpt-movimento').value;
   const wb=XLSX.utils.book_new();
+
+  // ── Relatório Kingspan ────────────────────────────────
+  if(tipo==='kingspan'){
+    const tarifaGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
+    const periodoDias =parseInt(_fatGet('sp_fat_periodo')||localStorage.getItem('sp_fat_periodo')||15);
+    const di=document.getElementById('rpt-data-ini').value;
+    const df=document.getElementById('rpt-data-fim').value;
+    const TRANSP='Seatrade Serviços Portuários e Logísticos LTDA.';
+    const CNPJ  ='80731037000129';
+    const fatStatus=document.getElementById('rpt-fat-status')?.value||'';
+    const headers=['DATA ENTRADA','TRANSPORTADORA','TOMADOR CNPJ','NAVIO','BL','NOTA FISCAL','VALOR','PERIODO INICIAL','PERIODO FINAL','PESO (kg)','TARIFA','TIPO','STATUS'];
+    const dataRows=[];
+    let blsKS=[...new Set(coilsDB.filter(c=>(c.cliente||'').toUpperCase().includes('KINGSPAN')).map(c=>c.bl).filter(Boolean))].sort();
+    if(sBl.length)  blsKS=blsKS.filter(b=>sBl.includes(b));
+    if(sNav.length) blsKS=blsKS.filter(b=>coilsDB.some(c=>c.bl===b&&sNav.includes(c.navio)));
+    blsKS.forEach(bl=>{
+      const dbCoils=coilsDB.filter(c=>c.bl===bl);
+      const navio  =dbCoils[0]?.navio||'';
+      const dataEntrada=getDataFimDescarga(bl)||'';
+      const fat=calcPeriodosBL(bl,periodoDias);
+      if(!fat||!fat.periodos.length) return;
+      const tarifaBL=getTarifaBL(bl,tarifaGlobal);
+      const hTarifa =getHandlingBL(bl)||0;
+      const hPeso   =dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
+      const hTon    =hPeso/1000;
+      fat.periodos.forEach(p=>{
+        const state=getFatState(bl,p.num);
+        if(di||df){ const envio=_dateEnvioISO(state.dataEnvio); if(!envio||(di&&envio<di)||(df&&envio>df)) return; }
+        const statusPeriodo=state.enviado?'enviado':p.encerrado?'pendente':'aberto';
+        if(fatStatus && statusPeriodo!==fatStatus) return;
+        const statusLabel=state.enviado?'Enviado':p.encerrado?'Pendente':'Em Aberto';
+        const nf   =state.nf||'';
+        const ton  =p.pesoBruto/1000;
+        const vArm =tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+        const vHand=p.num===1&&hTarifa>0?parseFloat((hTarifa*hTon).toFixed(2)):0;
+        // Linha Armazenagem
+        dataRows.push([dataEntrada,TRANSP,CNPJ,navio,bl,nf,vArm,p.dataIni,p.dataFim,p.pesoBruto,tarifaBL,'ARMAZENAGEM',statusLabel]);
+        // Linha Handling (somente 1º período)
+        if(vHand>0){
+          dataRows.push([dataEntrada,TRANSP,CNPJ,navio,bl,nf,vHand,p.dataIni,p.dataFim,hPeso,hTarifa,'HANDLING',statusLabel]);
+        }
+      });
+    });
+    const ws=XLSX.utils.aoa_to_sheet([headers,...dataRows]);
+    // Larguras de coluna
+    ws['!cols']=[{wch:14},{wch:44},{wch:16},{wch:20},{wch:18},{wch:16},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:14},{wch:12}];
+    // Formata colunas de data (A, H, I) como datas legíveis dd/mm/yyyy no Excel
+    // Os valores já estão como string ISO — converte para date serial para Excel reconhecer como data
+    dataRows.forEach((_r,ri)=>{
+      const rowIdx=ri+1; // +1 por causa do header
+      [0,7,8].forEach(ci=>{
+        const addr=XLSX.utils.encode_cell({r:rowIdx,c:ci});
+        if(ws[addr]&&ws[addr].v){
+          const iso=ws[addr].v;
+          if(/^\d{4}-\d{2}-\d{2}$/.test(iso)){
+            const [y,m,d]=iso.split('-').map(Number);
+            // Excel date serial (days since 1900-01-01, with leap-year bug)
+            const serial=Math.round((new Date(y,m-1,d)-new Date(1899,11,30))/86400000);
+            ws[addr]={t:'n',v:serial,z:'DD/MM/YYYY'};
+          }
+        }
+      });
+      // Colunas Valor (G=6), Tarifa (K=10) como número monetário
+      [6,10].forEach(ci=>{
+        const addr=XLSX.utils.encode_cell({r:rowIdx,c:ci});
+        if(ws[addr]) ws[addr]={t:'n',v:ws[addr].v,z:'"R$"#,##0.00'};
+      });
+      // Peso (J=9) como número inteiro
+      const pesoAddr=XLSX.utils.encode_cell({r:rowIdx,c:9});
+      if(ws[pesoAddr]) ws[pesoAddr]={t:'n',v:ws[pesoAddr].v,z:'#,##0'};
+    });
+    XLSX.utils.book_append_sheet(wb, ws, 'Kingspan');
+    XLSX.writeFile(wb, '4SIDES_STEELPORT_Kingspan_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    showToast('✓ Relatório Kingspan exportado!','#22c55e','#000');
+    return;
+  }
 
   // ── Relatório de Faturamento ──────────────────────────
   if(tipo==='faturamento'){
@@ -8233,6 +8687,1683 @@ window._dirtyForm = false;
   });
 })();
 
+// ══════════════════════════════════════════════════════════════
+// CARGA GERAL MODULE
+// ══════════════════════════════════════════════════════════════
+
+let cgItems     = []; // [{id,bl,navio,cliente,produto,descricao,qtd_total,unidade,armazem,peso,created_at}]
+let cgDescargas = []; // [{id,bl,descricao,quantidade,data,periodo,veiculo,motorista,armazem,obs,created_at}]
+let cgExpedicoes= []; // [{id,bl,descricao,quantidade,data,periodo,veiculo,motorista,obs,created_at}]
+let _cgEditId   = null;
+
+// ── Storage ──────────────────────────────────────────────────
+function saveCgItems(){     localStorage.setItem('sp_cg_items',      JSON.stringify(cgItems));     }
+function saveCgDescargas(){ localStorage.setItem('sp_cg_descargas',  JSON.stringify(cgDescargas)); }
+function saveCgExpedicoes(){localStorage.setItem('sp_cg_expedicoes', JSON.stringify(cgExpedicoes));}
+
+function loadCgData(){
+  try{ cgItems      = JSON.parse(localStorage.getItem('sp_cg_items')     ||'[]'); }catch(e){ cgItems=[]; }
+  try{ cgDescargas  = JSON.parse(localStorage.getItem('sp_cg_descargas') ||'[]'); }catch(e){ cgDescargas=[]; }
+  try{ cgExpedicoes = JSON.parse(localStorage.getItem('sp_cg_expedicoes')||'[]'); }catch(e){ cgExpedicoes=[]; }
+}
+
+// ── Sync Supabase (opcional) ──────────────────────────────────
+async function syncCgToSupabase(){
+  if(!SUPA_URL||!SUPA_KEY) return;
+  try{
+    // upsert items
+    if(cgItems.length){
+      await supa('bulk_items?on_conflict=id',{
+        method:'POST', headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify(cgItems)
+      });
+    }
+  }catch(e){ console.warn('CG sync error:',e.message); }
+}
+
+async function loadCgFromSupabase(){
+  if(!SUPA_URL||!SUPA_KEY) return;
+  try{
+    const [items, descs, exps] = await Promise.all([
+      supa('bulk_items?select=*&order=created_at.asc').catch(()=>null),
+      supa('bulk_descargas?select=*&order=data.asc,created_at.asc').catch(()=>null),
+      supa('bulk_expedicoes?select=*&order=data.asc,created_at.asc').catch(()=>null)
+    ]);
+    if(items!==null){ cgItems=items; saveCgItems(); }
+    if(descs!==null){ cgDescargas=descs; saveCgDescargas(); }
+    if(exps!==null){  cgExpedicoes=exps; saveCgExpedicoes(); }
+  }catch(e){ console.warn('CG load error:',e.message); }
+}
+
+// ── Sync em tempo real ────────────────────────────────────
+let _cgSyncInterval = null;
+
+function _cgSetSyncStatus(status){
+  const dot   = document.getElementById('cg-sync-dot');
+  const label = document.getElementById('cg-sync-label');
+  if(!dot||!label) return;
+  if(status==='ok'){
+    dot.style.background='#22c55e';
+    label.textContent='Sincronizado '+new Date().toLocaleTimeString('pt-BR');
+  } else if(status==='syncing'){
+    dot.style.background='#f59e0b';
+    label.textContent='Sincronizando...';
+  } else if(status==='error'){
+    dot.style.background='#ef4444';
+    label.textContent='Erro ao sincronizar';
+  } else {
+    dot.style.background='var(--muted)';
+    label.textContent='Sem conexao com servidor';
+  }
+}
+
+async function cgSyncNow(showFeedback=false){
+  if(!SUPA_URL||!SUPA_KEY){ _cgSetSyncStatus('offline'); return; }
+  _cgSetSyncStatus('syncing');
+  try{
+    const [items, descs, exps] = await Promise.all([
+      supa('bulk_items?select=*&order=created_at.asc').catch(()=>null),
+      supa('bulk_descargas?select=*&order=data.asc,created_at.asc').catch(()=>null),
+      supa('bulk_expedicoes?select=*&order=data.asc,created_at.asc').catch(()=>null)
+    ]);
+    if(items!==null){ cgItems=items; saveCgItems(); }
+    if(descs!==null){
+      const _dIds=new Set(descs.map(r=>r.id));
+      const _dLocal=cgDescargas.filter(r=>!_dIds.has(r.id));
+      cgDescargas=[...descs,..._dLocal].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      saveCgDescargas();
+    }
+    if(exps!==null){
+      const _eIds=new Set(exps.map(r=>r.id));
+      const _eLocal=cgExpedicoes.filter(r=>!_eIds.has(r.id));
+      cgExpedicoes=[...exps,..._eLocal].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      saveCgExpedicoes();
+    }
+    renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico();
+    updateCgStats(); cgPopulateBLSelects();
+    _cgSetSyncStatus('ok');
+    if(showFeedback) showToast('↻ Dados sincronizados!','#22c55e','#000');
+  }catch(e){
+    console.warn('CG sync error:',e.message);
+    _cgSetSyncStatus('error');
+  }
+}
+
+function cgStartSync(){
+  cgSyncNow();
+  if(_cgSyncInterval) clearInterval(_cgSyncInterval);
+  _cgSyncInterval = setInterval(()=>cgSyncNow(), 15000);
+}
+
+function cgStopSync(){
+  if(_cgSyncInterval){ clearInterval(_cgSyncInterval); _cgSyncInterval=null; }
+}
+
+// ── Helpers ───────────────────────────────────────────────────
+function cgQtdDescarregada(bl, descricao){
+  const _bl=String(bl||'').toUpperCase(), _d=String(descricao||'').toUpperCase();
+  return cgDescargas.filter(r=>r.bl.toUpperCase()===_bl&&r.descricao.toUpperCase()===_d)
+    .reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+}
+function cgQtdExpedida(bl, descricao){
+  const _bl=String(bl||'').toUpperCase(), _d=String(descricao||'').toUpperCase();
+  return cgExpedicoes.filter(r=>r.bl.toUpperCase()===_bl&&r.descricao.toUpperCase()===_d)
+    .reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+}
+function cgSaldoDescarga(item){ return Math.max(0,(item.qtd_total||0)-cgQtdDescarregada(item.bl,item.descricao)); }
+function cgSaldoArmazem(item){  return Math.max(0,cgQtdDescarregada(item.bl,item.descricao)-cgQtdExpedida(item.bl,item.descricao)); }
+
+// ── Init ─────────────────────────────────────────────────────
+function renderCargaGeral(){
+  renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico(); updateCgStats();
+  cgPopulateBLSelects();
+  cgStartSync();
+  const hoje=new Date().toISOString().split('T')[0];
+  ['cg-desc-data','cg-exp-data','cg-desc-filtro-data','cg-exp-filtro-data'].forEach(id=>{
+    const el=document.getElementById(id); if(el&&!el.value) el.value=hoje;
+  });
+  cgAutoFillPeriodo();
+  cgRenderItems('desc');
+  cgRenderItems('exp');
+}
+
+function showCgTab(tab){
+  ['banco','descarga','expedicao','historico'].forEach(t=>{
+    document.getElementById('cg-tab-'+t)?.classList.toggle('active',t===tab);
+    document.getElementById('cg-panel-'+t)?.classList.toggle('active',t===tab);
+  });
+  if(tab==='descarga')  { renderCgDescHoje(); cgRenderItems('desc'); }
+  if(tab==='expedicao') { renderCgExpHoje();  cgRenderItems('exp'); }
+  if(tab==='historico') renderCgHistorico();
+}
+
+function updateCgStats(){
+  const hoje=new Date().toISOString().split('T')[0];
+  const pendentes=cgItems.filter(it=>cgSaldoDescarga(it)>0).length;
+  const descHoje=cgDescargas.filter(r=>r.data===hoje).length;
+  const expHoje =cgExpedicoes.filter(r=>r.data===hoje).length;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('cg-stat-itens',cgItems.length);
+  set('cg-stat-pend',pendentes);
+  set('cg-stat-desc-hoje',descHoje);
+  set('cg-stat-exp-hoje',expHoje);
+  set('home-cg-itens',cgItems.length);
+  set('home-cg-pend',pendentes);
+}
+
+// ── Banco ─────────────────────────────────────────────────────
+function renderCgBanco(){
+  const fBl     =(document.getElementById('cg-f-bl')?.value||'').toLowerCase();
+  const fNav    =(document.getElementById('cg-f-navio')?.value||'').toLowerCase();
+  const fCli    =(document.getElementById('cg-f-cliente')?.value||'').toLowerCase();
+  const fProd   = document.getElementById('cg-f-produto')?.value||'';
+  const fStatus = document.getElementById('cg-f-status')?.value||'';
+  const filtered=cgItems.filter(it=>{
+    if(fBl  && !(it.bl||'').toLowerCase().includes(fBl)) return false;
+    if(fNav && !(it.navio||'').toLowerCase().includes(fNav)) return false;
+    if(fCli && !(it.cliente||'').toLowerCase().includes(fCli)) return false;
+    if(fProd && it.produto!==fProd) return false;
+    const pend=cgSaldoDescarga(it)>0;
+    if(fStatus==='pendente'&&!pend) return false;
+    if(fStatus==='completo'&&pend) return false;
+    return true;
+  });
+  const el=document.getElementById('cg-banco-list');
+  if(!el) return;
+  if(!filtered.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📦</span>Nenhum item encontrado.</div>'; return; }
+  el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1100px;">
+    <thead><tr>
+      <th>BL</th><th>NAVIO</th><th>ARMAZÉM</th><th>CLIENTE</th><th>PRODUTO</th>
+      <th>DESCRIÇÃO / CHAVE</th><th>PESO (kg)</th>
+      <th>QTD TOTAL</th><th>DESCARREGADO</th><th>SALDO DESC.</th><th>EM ARMAZÉM</th><th>EXPEDIDO</th><th>STATUS</th><th></th>
+    </tr></thead>
+    <tbody>${filtered.map((it,i)=>{
+      const desc =cgQtdDescarregada(it.bl,it.descricao);
+      const exp  =cgQtdExpedida(it.bl,it.descricao);
+      const sDesc=Math.max(0,it.qtd_total-desc);
+      const sArm =Math.max(0,desc-exp);
+      const pct  =it.qtd_total>0?Math.round(desc/it.qtd_total*100):0;
+      const pctBar=Math.min(100,pct);
+      const fillCls=pct>=100?'cg-progress-fill ok':pct>=50?'cg-progress-fill':'cg-progress-fill warn';
+      const badge=sDesc===0?'<span class="cg-badge cg-badge-ok">✓ Completo</span>':
+                  desc>0?'<span class="cg-badge cg-badge-pend">Em descarga</span>':
+                  '<span class="cg-badge cg-badge-aberto">Aguardando</span>';
+      return `<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${it.bl}</td>
+        <td>${it.navio||'—'}</td>
+        <td>${it.armazem||'—'}</td>
+        <td>${it.cliente||'—'}</td>
+        <td><span style="font-weight:700;color:#f97316;">${it.produto||'—'}</span></td>
+        <td style="max-width:200px;">${it.descricao}</td>
+        <td style="font-family:'JetBrains Mono',monospace;">${it.peso?Number(it.peso).toLocaleString('pt-BR'):'—'}</td>
+        <td style="font-weight:700;">${it.qtd_total} ${it.unidade||'UN'}</td>
+        <td>${desc} <span style="font-size:10px;color:var(--muted);">(${pct}%)</span>
+          <div class="cg-progress-bar" style="margin-top:3px;"><div class="${fillCls}" style="width:${pctBar}%"></div></div></td>
+        <td style="font-weight:700;color:${sDesc>0?'#f97316':'#22c55e'};">${sDesc} ${it.unidade||'UN'}</td>
+        <td style="font-weight:700;color:var(--info);">${sArm} ${it.unidade||'UN'}</td>
+        <td>${exp} ${it.unidade||'UN'}</td>
+        <td>${badge}</td>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-secondary" style="margin-right:.25rem;" onclick="abrirModalCgItem('${it.id}')">✏</button>
+          <button class="btn btn-sm btn-danger" onclick="excluirCgItem('${it.id}')">✕</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+// ── Modal Item ────────────────────────────────────────────────
+function abrirModalCgItem(id){
+  _cgEditId=id||null;
+  const modal=document.getElementById('modal-cg-item');
+  const title=document.getElementById('modal-cg-item-title');
+  if(id){
+    const it=cgItems.find(x=>x.id===id); if(!it) return;
+    title.textContent='✏ EDITAR ITEM';
+    document.getElementById('cg-item-bl').value       =it.bl;
+    document.getElementById('cg-item-navio').value    =it.navio||'';
+    document.getElementById('cg-item-cliente').value  =it.cliente||'';
+    document.getElementById('cg-item-produto').value  =it.produto||'';
+    document.getElementById('cg-item-descricao').value=it.descricao;
+    document.getElementById('cg-item-qtd').value      =it.qtd_total;
+    document.getElementById('cg-item-unidade').value  =it.unidade||'UN';
+    document.getElementById('cg-item-armazem').value  =it.armazem||'';
+    document.getElementById('cg-item-peso').value     =it.peso||'';
+  } else {
+    title.textContent='📦 NOVO ITEM';
+    ['cg-item-bl','cg-item-navio','cg-item-cliente','cg-item-descricao','cg-item-qtd','cg-item-armazem','cg-item-peso'].forEach(id=>{
+      const el=document.getElementById(id); if(el) el.value='';
+    });
+    document.getElementById('cg-item-produto').value='';
+    document.getElementById('cg-item-unidade').value='UN';
+  }
+  modal.classList.add('open');
+}
+
+function salvarCgItem(){
+  const bl      =(document.getElementById('cg-item-bl')?.value||'').trim().toUpperCase();
+  const navio   =(document.getElementById('cg-item-navio')?.value||'').trim();
+  const cliente =(document.getElementById('cg-item-cliente')?.value||'').trim();
+  const produto = document.getElementById('cg-item-produto')?.value||'';
+  const descricao=(document.getElementById('cg-item-descricao')?.value||'').trim();
+  const qtd_total=parseFloat(document.getElementById('cg-item-qtd')?.value||0);
+  const unidade = document.getElementById('cg-item-unidade')?.value||'UN';
+  const armazem =(document.getElementById('cg-item-armazem')?.value||'').trim();
+  const peso    =parseFloat(document.getElementById('cg-item-peso')?.value||0)||0;
+
+  if(!bl||!descricao||!produto||!qtd_total){
+    showToast('⚠ Preencha BL, Produto, Descrição e Quantidade.','#f59e0b','#000'); return;
+  }
+  if(_cgEditId){
+    const idx=cgItems.findIndex(x=>x.id===_cgEditId);
+    if(idx>=0) cgItems[idx]={...cgItems[idx],bl,navio,cliente,produto,descricao,qtd_total,unidade,armazem,peso};
+  } else {
+    cgItems.push({id:crypto.randomUUID(),bl,navio,cliente,produto,descricao,qtd_total,unidade,armazem,peso,created_at:new Date().toISOString()});
+  }
+  saveCgItems();
+  closeModal('modal-cg-item');
+  cgPopulateBLSelects();
+  renderCgBanco();
+  updateCgStats();
+  if(SUPA_URL&&SUPA_KEY){
+    const item=_cgEditId?cgItems.find(x=>x.id===_cgEditId):cgItems[cgItems.length-1];
+    if(item){
+      _cgSetSyncStatus('syncing');
+      supa('bulk_items?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify([item])})
+        .then(()=>_cgSetSyncStatus('ok'))
+        .catch(e=>{ _cgSetSyncStatus('error'); showToast('⚠ Erro ao salvar no servidor: '+e.message,'#e05c1a','#fff'); });
+    }
+  }
+  showToast('✓ Item salvo!','#22c55e','#000');
+}
+
+function excluirCgItem(id){
+  const it=cgItems.find(x=>x.id===id);
+  if(!it||!confirm(`Excluir item "${it.descricao}" do BL ${it.bl}? Os registros de descarga/expedição não serão apagados.`)) return;
+  cgItems=cgItems.filter(x=>x.id!==id);
+  saveCgItems();
+  if(SUPA_URL&&SUPA_KEY){
+    supa(`bulk_items?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(e=>console.warn('CG delete:',e));
+  }
+  cgPopulateBLSelects();
+  renderCgBanco();
+  updateCgStats();
+  showToast('Item excluído.','#6b7280','#fff');
+}
+
+// ── Selects de BL ─────────────────────────────────────────────
+function cgPopulateBLSelects(){
+  const bls=[...new Set(cgItems.map(it=>it.bl))].sort();
+  ['cg-desc-bl','cg-exp-bl'].forEach(id=>{
+    const el=document.getElementById(id); if(!el) return;
+    const cur=el.value;
+    el.innerHTML='<option value="">— Selecione o BL —</option>'+bls.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');
+  });
+}
+
+function cgLoadDescricoes(modo){
+  const blId =modo==='desc'?'cg-desc-bl':'cg-exp-bl';
+  const selId=modo==='desc'?'cg-desc-descricao':'cg-exp-descricao';
+  const bl=(document.getElementById(blId)?.value||'').toUpperCase();
+  const el=document.getElementById(selId); if(!el) return;
+  const items=cgItems.filter(it=>it.bl.toUpperCase()===bl);
+  el.innerHTML='<option value="">— Selecione a descrição —</option>'+items.map(it=>{
+    const saldo=cgSaldoDescarga(it);
+    return `<option value="${it.descricao}">${it.descricao} [saldo: ${saldo} ${it.unidade||'UN'}]</option>`;
+  }).join('');
+  if(modo==='desc') cgUpdateSaldoDesc(); else cgUpdateSaldoExp();
+}
+
+function cgGetItemByBlDesc(bl,descricao){
+  const _bl=String(bl||'').toUpperCase(), _d=String(descricao||'').toUpperCase();
+  return cgItems.find(it=>it.bl.toUpperCase()===_bl&&it.descricao.toUpperCase()===_d);
+}
+
+function cgUpdateSaldoDesc(){
+  const bl  =(document.getElementById('cg-desc-bl')?.value||'');
+  const desc=(document.getElementById('cg-desc-descricao')?.value||'');
+  const qtdInput=parseFloat(document.getElementById('cg-desc-qtd')?.value||0);
+  const box=document.getElementById('cg-saldo-desc');
+  if(!bl||!desc){ if(box) box.style.display='none'; return; }
+  const item=cgGetItemByBlDesc(bl,desc);
+  if(!item){ if(box) box.style.display='none'; return; }
+  const saldo=cgSaldoDescarga(item);
+  const pct=item.qtd_total>0?Math.round((item.qtd_total-saldo)/item.qtd_total*100):0;
+  if(box) box.style.display='';
+  document.getElementById('cg-saldo-num').textContent=saldo;
+  document.getElementById('cg-saldo-unidade').textContent=item.unidade||'UN';
+  document.getElementById('cg-saldo-label').textContent=`Descarregado: ${item.qtd_total-saldo} / ${item.qtd_total} (${pct}%)`;
+  const bar=document.getElementById('cg-saldo-bar');
+  if(bar){ bar.style.width=Math.min(100,pct)+'%'; bar.className='cg-progress-fill'+(pct>=100?' ok':pct>=70?' warn':''); }
+  // Alerta se vai ultrapassar
+  if(qtdInput>saldo&&saldo>=0){
+    document.getElementById('cg-saldo-num').style.color='var(--danger)';
+  } else {
+    document.getElementById('cg-saldo-num').style.color='#f97316';
+  }
+}
+
+function cgUpdateSaldoExp(){
+  const bl  =(document.getElementById('cg-exp-bl')?.value||'');
+  const desc=(document.getElementById('cg-exp-descricao')?.value||'');
+  const box=document.getElementById('cg-saldo-exp');
+  if(!bl||!desc){ if(box) box.style.display='none'; return; }
+  const item=cgGetItemByBlDesc(bl,desc);
+  if(!item){ if(box) box.style.display='none'; return; }
+  const saldoArm=cgSaldoArmazem(item);
+  const totalDesc=cgQtdDescarregada(item.bl,item.descricao);
+  const pct=totalDesc>0?Math.round((totalDesc-saldoArm)/totalDesc*100):0;
+  if(box) box.style.display='';
+  document.getElementById('cg-saldo-exp-num').textContent=saldoArm;
+  document.getElementById('cg-saldo-exp-unidade').textContent=item.unidade||'UN';
+  document.getElementById('cg-saldo-exp-label').textContent=`Expedido: ${totalDesc-saldoArm} / ${totalDesc} descarregados (${pct}%)`;
+  const bar=document.getElementById('cg-saldo-exp-bar');
+  if(bar){ bar.style.width=Math.min(100,pct)+'%'; bar.className='cg-progress-fill'+(pct>=100?' ok':''); }
+}
+
+// ── Descarga ──────────────────────────────────────────────────
+function registrarCgDescarga(){
+  const bl      =(document.getElementById('cg-desc-bl')?.value||'').toUpperCase();
+  const descricao= document.getElementById('cg-desc-descricao')?.value||'';
+  const qtd     = parseFloat(document.getElementById('cg-desc-qtd')?.value||0);
+  const data    = document.getElementById('cg-desc-data')?.value||'';
+  const periodo = document.getElementById('cg-desc-periodo')?.value||'';
+  const veiculo =(document.getElementById('cg-desc-veiculo')?.value||'').trim();
+  const motorista=(document.getElementById('cg-desc-motorista')?.value||'').trim();
+  const armazem =(document.getElementById('cg-desc-armazem')?.value||'').trim();
+  const obs     =(document.getElementById('cg-desc-obs')?.value||'').trim();
+
+  if(!bl||!descricao||!qtd||!data){ showToast('⚠ Preencha BL, Descrição, Quantidade e Data.','#f59e0b','#000'); return; }
+  const item=cgGetItemByBlDesc(bl,descricao);
+  if(!item){ showToast('⚠ Item não encontrado no banco.','#e05c1a','#fff'); return; }
+  const saldo=cgSaldoDescarga(item);
+  if(qtd>saldo){ showToast(`⚠ Quantidade (${qtd}) excede o saldo disponível (${saldo} ${item.unidade||'UN'}).`,'#e05c1a','#fff'); return; }
+
+  const reg={id:crypto.randomUUID(),bl,descricao,quantidade:qtd,data,periodo,veiculo,motorista,armazem,obs,
+    navio:item.navio||'',cliente:item.cliente||'',produto:item.produto||'',unidade:item.unidade||'UN',
+    created_at:new Date().toISOString(),created_by:session?.nome||''};
+  cgDescargas.push(reg);
+  saveCgDescargas();
+
+  // Registra na auditoria
+  addAuditLog('CG_DESCARGA',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
+
+  // Sync Supabase
+  if(SUPA_URL&&SUPA_KEY){
+    supa('bulk_descargas',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)}).catch(e=>console.warn(e));
+  }
+
+  // Reset form
+  document.getElementById('cg-desc-qtd').value='';
+  document.getElementById('cg-desc-veiculo').value='';
+  document.getElementById('cg-desc-motorista').value='';
+  document.getElementById('cg-desc-obs').value='';
+  document.getElementById('cg-saldo-desc').style.display='none';
+
+  renderCgDescHoje();
+  renderCgBanco();
+  updateCgStats();
+  cgLoadDescricoes('desc'); // atualiza saldo no select
+  showToast(`✓ Descarga registrada: ${qtd} ${item.unidade||'UN'} de ${descricao}`,'#22c55e','#000');
+}
+
+function renderCgDescHoje(){
+  const filtroData=document.getElementById('cg-desc-filtro-data')?.value||new Date().toISOString().split('T')[0];
+  const lista=cgDescargas.filter(r=>r.data===filtroData).sort((a,b)=>b.created_at>a.created_at?1:-1);
+  const el=document.getElementById('cg-desc-hoje-list'); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📥</span>Nenhuma descarga para esta data.</div>'; return; }
+  el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
+    <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>ARMAZÉM</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
+    <tbody>${lista.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
+      <td>${r.navio||'—'}</td>
+      <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
+      <td>${r.descricao}</td>
+      <td style="font-weight:700;color:var(--info);">${r.quantidade} ${r.unidade||'UN'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;">${r.peso_kg?Number(r.peso_kg).toLocaleString('pt-BR'):'—'}</td>
+      <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
+      <td>${r.armazem||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
+      <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function excluirCgDescarga(id){
+  if(!confirm('Excluir este registro de descarga?')) return;
+  cgDescargas=cgDescargas.filter(r=>r.id!==id);
+  saveCgDescargas();
+  if(SUPA_URL&&SUPA_KEY){
+    _cgSetSyncStatus('syncing');
+    supa(`bulk_descargas?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':'return=minimal'}})
+      .then(()=>_cgSetSyncStatus('ok'))
+      .catch(e=>{ _cgSetSyncStatus('error'); console.warn('CG delete desc:',e); });
+  }
+  renderCgDescHoje(); renderCgBanco(); updateCgStats(); cgLoadDescricoes('desc');
+  showToast('Registro excluído.','#6b7280','#fff');
+}
+
+// ── Expedição ─────────────────────────────────────────────────
+function registrarCgExpedicao(){
+  const bl      =(document.getElementById('cg-exp-bl')?.value||'').toUpperCase();
+  const descricao= document.getElementById('cg-exp-descricao')?.value||'';
+  const qtd     = parseFloat(document.getElementById('cg-exp-qtd')?.value||0);
+  const data    = document.getElementById('cg-exp-data')?.value||'';
+  const periodo = document.getElementById('cg-exp-periodo')?.value||'';
+  const veiculo =(document.getElementById('cg-exp-veiculo')?.value||'').trim();
+  const motorista=(document.getElementById('cg-exp-motorista')?.value||'').trim();
+  const obs     =(document.getElementById('cg-exp-obs')?.value||'').trim();
+
+  if(!bl||!descricao||!qtd||!data){ showToast('⚠ Preencha BL, Descrição, Quantidade e Data.','#f59e0b','#000'); return; }
+  const item=cgGetItemByBlDesc(bl,descricao);
+  if(!item){ showToast('⚠ Item não encontrado no banco.','#e05c1a','#fff'); return; }
+  const saldoArm=cgSaldoArmazem(item);
+  if(qtd>saldoArm){ showToast(`⚠ Quantidade (${qtd}) excede o saldo em armazém (${saldoArm} ${item.unidade||'UN'}).`,'#e05c1a','#fff'); return; }
+
+  const reg={id:crypto.randomUUID(),bl,descricao,quantidade:qtd,data,periodo,veiculo,motorista,obs,
+    navio:item.navio||'',cliente:item.cliente||'',produto:item.produto||'',unidade:item.unidade||'UN',
+    created_at:new Date().toISOString(),created_by:session?.nome||''};
+  cgExpedicoes.push(reg);
+  saveCgExpedicoes();
+
+  addAuditLog('CG_EXPEDICAO',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
+
+  if(SUPA_URL&&SUPA_KEY){
+    supa('bulk_expedicoes',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)}).catch(e=>console.warn(e));
+  }
+
+  document.getElementById('cg-exp-qtd').value='';
+  document.getElementById('cg-exp-veiculo').value='';
+  document.getElementById('cg-exp-motorista').value='';
+  document.getElementById('cg-exp-obs').value='';
+  document.getElementById('cg-saldo-exp').style.display='none';
+
+  renderCgExpHoje(); renderCgBanco(); updateCgStats(); cgLoadDescricoes('exp');
+  showToast(`✓ Expedição registrada: ${qtd} ${item.unidade||'UN'} de ${descricao}`,'#22c55e','#000');
+}
+
+function renderCgExpHoje(){
+  const filtroData=document.getElementById('cg-exp-filtro-data')?.value||new Date().toISOString().split('T')[0];
+  const lista=cgExpedicoes.filter(r=>r.data===filtroData).sort((a,b)=>b.created_at>a.created_at?1:-1);
+  const el=document.getElementById('cg-exp-hoje-list'); if(!el) return;
+  if(!lista.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📤</span>Nenhuma expedição para esta data.</div>'; return; }
+  el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
+    <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>DESTINO</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
+    <tbody>${lista.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
+      <td>${r.navio||'—'}</td>
+      <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
+      <td>${r.descricao}</td>
+      <td style="font-weight:700;color:var(--exp);">${r.quantidade} ${r.unidade||'UN'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;">${r.peso_kg?Number(r.peso_kg).toLocaleString('pt-BR'):'—'}</td>
+      <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
+      <td>${r.destino||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
+      <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="excluirCgExpedicao('${r.id}')">✕</button></td>
+    </tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function excluirCgExpedicao(id){
+  if(!confirm('Excluir este registro de expedição?')) return;
+  cgExpedicoes=cgExpedicoes.filter(r=>r.id!==id);
+  saveCgExpedicoes();
+  if(SUPA_URL&&SUPA_KEY){
+    _cgSetSyncStatus('syncing');
+    supa(`bulk_expedicoes?id=eq.${id}`,{method:'DELETE',headers:{'Prefer':'return=minimal'}})
+      .then(()=>_cgSetSyncStatus('ok'))
+      .catch(e=>{ _cgSetSyncStatus('error'); console.warn('CG delete exp:',e); });
+  }
+  renderCgExpHoje(); renderCgBanco(); updateCgStats(); cgLoadDescricoes('exp');
+  showToast('Registro excluído.','#6b7280','#fff');
+}
+
+// ── Histórico ─────────────────────────────────────────────────
+function renderCgHistorico(){
+  const fBl  =(document.getElementById('cg-h-bl')?.value||'').toLowerCase();
+  const fTipo= document.getElementById('cg-h-tipo')?.value||'';
+  const fIni = document.getElementById('cg-h-ini')?.value||'';
+  const fFim = document.getElementById('cg-h-fim')?.value||'';
+  let todos=[];
+  if(!fTipo||fTipo==='descarga') cgDescargas.forEach(r=>todos.push({...r,_tipo:'DESCARGA'}));
+  if(!fTipo||fTipo==='expedicao') cgExpedicoes.forEach(r=>todos.push({...r,_tipo:'EXPEDIÇÃO'}));
+  todos=todos.filter(r=>{
+    if(fBl&&!r.bl.toLowerCase().includes(fBl)) return false;
+    if(fIni&&r.data<fIni) return false;
+    if(fFim&&r.data>fFim) return false;
+    return true;
+  }).sort((a,b)=>b.data>a.data?1:b.data<a.data?-1:b.created_at>a.created_at?1:-1);
+  const el=document.getElementById('cg-historico-list'); if(!el) return;
+  if(!todos.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">🕐</span>Nenhum registro encontrado.</div>'; return; }
+  el.innerHTML=`<table>
+    <thead><tr><th>TIPO</th><th>DATA</th><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>VEÍCULO</th><th>MOTORISTA</th><th>ARMAZÉM</th><th>OBS</th></tr></thead>
+    <tbody>${todos.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+      <td><span style="font-weight:700;color:${r._tipo==='DESCARGA'?'var(--info)':'var(--exp)'};">${r._tipo}</span></td>
+      <td>${r.data?r.data.split('-').reverse().join('/'):'—'}</td>
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
+      <td>${r.navio||'—'}</td>
+      <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
+      <td>${r.descricao}</td>
+      <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
+      <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
+      <td>${r.armazem||'—'}</td><td>${r.obs||'—'}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+// ── Export Excel ──────────────────────────────────────────────
+function exportCgXLSX(){
+  const wb=XLSX.utils.book_new();
+  // Sheet 1: Banco de Itens
+  const s1=[['BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD TOTAL','UNIDADE','DESCARREGADO','SALDO DESC.','EM ARMAZÉM','EXPEDIDO','PESO (kg)','ARMAZÉM']];
+  cgItems.forEach(it=>{
+    const desc=cgQtdDescarregada(it.bl,it.descricao), exp=cgQtdExpedida(it.bl,it.descricao);
+    s1.push([it.bl,it.navio||'',it.cliente||'',it.produto||'',it.descricao,it.qtd_total,it.unidade||'UN',
+      desc,Math.max(0,it.qtd_total-desc),Math.max(0,desc-exp),exp,it.peso||0,it.armazem||'']);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s1),'Banco de Itens');
+  // Sheet 2: Descargas
+  const s2=[['DATA','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QUANTIDADE','UNIDADE','VEÍCULO','MOTORISTA','ARMAZÉM','PERÍODO','OBS']];
+  cgDescargas.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
+    s2.push([r.data,r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.veiculo||'',r.motorista||'',r.armazem||'',r.periodo||'',r.obs||'']);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s2),'Descargas');
+  // Sheet 3: Expedições
+  const s3=[['DATA','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QUANTIDADE','UNIDADE','VEÍCULO','MOTORISTA','PERÍODO','OBS']];
+  cgExpedicoes.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
+    s3.push([r.data,r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.veiculo||'',r.motorista||'',r.periodo||'',r.obs||'']);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(s3),'Expedicoes');
+  XLSX.writeFile(wb,'4SIDES_CargaGeral_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  showToast('✓ Excel exportado!','#22c55e','#000');
+}
+
+// ── Multi-item form (Descarga / Expedição) ────────────────────
+let _cgFormItems = {desc:[], exp:[]};
+
+function cgAutoFillPeriodo(){
+  const h=new Date().getHours();
+  const p=h>=7&&h<13?'07x13':h>=13&&h<19?'13x19':h>=19?'19x01':'01x07';
+  ['cg-desc-periodo','cg-exp-periodo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=p;});
+}
+
+function cgAddItem(modo){
+  const idx=_cgFormItems[modo].length;
+  _cgFormItems[modo].push({bl:'',descricao:'',qtd:''});
+  const container=document.getElementById(`cg-${modo}-itens-list`); if(!container) return;
+  if(idx===0) container.innerHTML='';
+  const div=document.createElement('div');
+  div.id=`cg-${modo}-row-${idx}`;
+  div.style.cssText='background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.75rem 1rem;margin-bottom:.5rem;';
+  div.innerHTML=_cgItemRowInner(modo,idx,{bl:'',descricao:'',qtd:''});
+  container.appendChild(div);
+}
+
+function cgRemoveItem(modo,idx){
+  _cgFormItems[modo].splice(idx,1);
+  cgRenderItems(modo);
+}
+
+function _cgItemBlChange(modo,idx,val){
+  if(!_cgFormItems[modo][idx]) return;
+  _cgFormItems[modo][idx].bl=val;
+  _cgFormItems[modo][idx].descricao='';
+  _cgFormItems[modo][idx].qtd='';
+  const descSel=document.getElementById(`cg-${modo}-desc-${idx}`);
+  if(descSel){
+    const descs=val?cgItems.filter(x=>x.bl===val).map(x=>x.descricao):[];
+    descSel.innerHTML='<option value="">— Descrição —</option>'+descs.map(d=>`<option value="${d}">${d}</option>`).join('');
+  }
+  const qtdEl=document.getElementById(`cg-${modo}-qtd-${idx}`); if(qtdEl) qtdEl.value='';
+  _cgUpdateItemSaldo(modo,idx);
+}
+
+function _cgItemDescChange(modo,idx,val){
+  if(_cgFormItems[modo][idx]) _cgFormItems[modo][idx].descricao=val;
+  _cgUpdateItemSaldo(modo,idx);
+}
+
+function _cgItemQtdChange(modo,idx,val){
+  if(_cgFormItems[modo][idx]) _cgFormItems[modo][idx].qtd=val;
+  _cgUpdateItemSaldo(modo,idx);
+}
+
+function _cgUpdateItemSaldo(modo,idx){
+  const it=_cgFormItems[modo]?.[idx]; if(!it) return;
+  const el=document.getElementById(`cg-${modo}-saldo-${idx}`); if(!el) return;
+  if(!it.bl||!it.descricao){ el.innerHTML=''; return; }
+  const item=cgGetItemByBlDesc(it.bl,it.descricao);
+  if(!item){ el.innerHTML='<span style="font-size:11px;color:var(--danger);">⚠ Item não encontrado no banco</span>'; return; }
+  const saldo=modo==='desc'?cgSaldoDescarga(item):cgSaldoArmazem(item);
+  const qtd=parseFloat(it.qtd)||0;
+  const over=qtd>0&&qtd>saldo;
+  const lbl=modo==='desc'?'Saldo disponível':'Em armazém';
+  el.innerHTML=`<span style="font-size:11px;font-family:'JetBrains Mono',monospace;padding:.15rem .5rem;border-radius:4px;background:${over?'rgba(239,68,68,.1)':'rgba(34,197,94,.1)'};color:${over?'var(--danger)':'var(--success)'};">${lbl}: <strong>${saldo}</strong> ${item.unidade||'UN'}${over?' ⚠ Excede saldo':''}</span>`;
+}
+
+function _cgItemRowInner(modo,idx,it){
+  const S='background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;';
+  const bls=[...new Set(cgItems.map(x=>x.bl))].sort();
+  const descs=it.bl?cgItems.filter(x=>x.bl===it.bl).map(x=>x.descricao):[];
+  const blOpts='<option value="">— BL —</option>'+bls.map(b=>`<option value="${b}"${b===it.bl?' selected':''}>${b}</option>`).join('');
+  const descOpts='<option value="">— Descrição —</option>'+descs.map(d=>`<option value="${d}"${d===it.descricao?' selected':''}>${d}</option>`).join('');
+  return `<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem;">
+    <select id="cg-${modo}-bl-${idx}" style="${S}flex:0 0 160px;width:auto;" onchange="_cgItemBlChange('${modo}',${idx},this.value)">${blOpts}</select>
+    <select id="cg-${modo}-desc-${idx}" style="${S}flex:1;min-width:180px;width:auto;" onchange="_cgItemDescChange('${modo}',${idx},this.value)">${descOpts}</select>
+    <input type="number" id="cg-${modo}-qtd-${idx}" min="1" step="1" placeholder="Qtd" value="${it.qtd||''}" oninput="_cgItemQtdChange('${modo}',${idx},this.value)" style="${S}width:80px;flex:0 0 80px;">
+    <button class="btn btn-sm btn-danger" onclick="cgRemoveItem('${modo}',${idx})">✕</button>
+  </div>
+  <div id="cg-${modo}-saldo-${idx}" style="padding-left:.25rem;min-height:20px;"></div>`;
+}
+
+function cgRenderItems(modo){
+  const container=document.getElementById(`cg-${modo}-itens-list`); if(!container) return;
+  const items=_cgFormItems[modo];
+  if(!items.length){
+    container.innerHTML='<div style="text-align:center;padding:1rem 1.5rem;color:var(--muted);font-size:13px;border:2px dashed var(--border);border-radius:8px;">Nenhum item adicionado. Clique em <strong>+ ADICIONAR ITEM</strong>.</div>';
+    return;
+  }
+  container.innerHTML=items.map((it,i)=>`<div id="cg-${modo}-row-${i}" style="background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:.75rem 1rem;margin-bottom:.5rem;">${_cgItemRowInner(modo,i,it)}</div>`).join('');
+  items.forEach((_,i)=>{ if(_cgFormItems[modo][i].bl&&_cgFormItems[modo][i].descricao) _cgUpdateItemSaldo(modo,i); });
+}
+
+function cgRevisar(modo){
+  const data=document.getElementById(`cg-${modo}-data`)?.value||'';
+  const periodo=document.getElementById(`cg-${modo}-periodo`)?.value||'';
+  const veiculo=(document.getElementById(`cg-${modo}-veiculo`)?.value||'').trim();
+  const motorista=(document.getElementById(`cg-${modo}-motorista`)?.value||'').trim();
+  const armazem=modo==='desc'?(document.getElementById('cg-desc-armazem')?.value||'').trim():'';
+  const obs=(document.getElementById(`cg-${modo}-obs`)?.value||'').trim();
+  if(!data){showToast('⚠ Preencha a Data.','#f59e0b','#000');return;}
+  const items=_cgFormItems[modo];
+  if(!items.length){showToast('⚠ Adicione pelo menos um item.','#f59e0b','#000');return;}
+  for(let i=0;i<items.length;i++){
+    const it=items[i];
+    if(!it.bl||!it.descricao){showToast(`⚠ Item ${i+1}: selecione BL e Descrição.`,'#f59e0b','#000');return;}
+    const qtd=parseFloat(it.qtd)||0;
+    if(qtd<=0){showToast(`⚠ Item ${i+1}: informe a quantidade.`,'#f59e0b','#000');return;}
+    const item=cgGetItemByBlDesc(it.bl,it.descricao);
+    if(!item){showToast(`⚠ Item ${i+1}: item não encontrado no banco.`,'#e05c1a','#fff');return;}
+    const saldo=modo==='desc'?cgSaldoDescarga(item):cgSaldoArmazem(item);
+    if(qtd>saldo){showToast(`⚠ Item ${i+1}: quantidade (${qtd}) excede saldo (${saldo} ${item.unidade||'UN'}).`,'#e05c1a','#fff');return;}
+  }
+  const dataFmt=data.split('-').reverse().join('/');
+  document.getElementById('cg-confirm-modal-title').textContent=modo==='desc'?'📥 CONFIRMAR DESCARGA':'📤 CONFIRMAR EXPEDIÇÃO';
+  const infoCols=[['DATA',dataFmt],['PERÍODO',periodo||'—'],['VEÍCULO',veiculo||'—'],['MOTORISTA',motorista||'—']];
+  if(modo==='desc') infoCols.push(['ARMAZÉM',armazem||'—']);
+  if(obs) infoCols.push(['OBS',obs]);
+  const infoHtml=`<div style="background:var(--surface2);border-radius:10px;padding:1rem;margin-bottom:1rem;display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:.75rem;">${infoCols.map(([k,v])=>`<div><span style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:.2rem;">${k}</span><strong style="font-size:13px;">${v}</strong></div>`).join('')}</div>`;
+  const tbody=items.map((it,i)=>{const item=cgGetItemByBlDesc(it.bl,it.descricao);return `<tr style="${i%2===0?'background:var(--surface2)':''}"><td style="padding:.4rem .75rem;font-weight:700;font-family:'JetBrains Mono',monospace;font-size:12px;">${it.bl}</td><td style="padding:.4rem .75rem;color:#f97316;font-weight:700;font-size:12px;">${item?.produto||'—'}</td><td style="padding:.4rem .75rem;font-size:12px;">${it.descricao}</td><td style="padding:.4rem .75rem;text-align:right;font-weight:700;font-size:12px;">${parseFloat(it.qtd)} ${item?.unidade||'UN'}</td></tr>`;}).join('');
+  document.getElementById('cg-confirm-modal-body').innerHTML=infoHtml+`<div style="overflow-x:auto;border:1px solid var(--border);border-radius:8px;margin-bottom:1rem;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${['BL','PRODUTO','DESCRIÇÃO','QTD'].map(h=>`<th style="padding:.5rem .75rem;background:var(--bg);font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);border-bottom:1px solid var(--border);text-align:left;white-space:nowrap;">${h}</th>`).join('')}</tr></thead><tbody>${tbody}</tbody></table></div><div style="padding:.5rem .75rem;background:rgba(34,197,94,.08);border:1px solid rgba(34,197,94,.2);border-radius:6px;font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--success);">✓ ${items.length} item(s) serão registrados</div>`;
+  document.getElementById('btn-cg-confirmar').setAttribute('data-modo',modo);
+  document.getElementById('modal-cg-confirm').classList.add('open');
+}
+
+async function cgConfirmar(){
+  const modo=document.getElementById('btn-cg-confirmar').getAttribute('data-modo');
+  const data=document.getElementById(`cg-${modo}-data`)?.value||'';
+  const periodo=document.getElementById(`cg-${modo}-periodo`)?.value||'';
+  const veiculo=(document.getElementById(`cg-${modo}-veiculo`)?.value||'').trim();
+  const motorista=(document.getElementById(`cg-${modo}-motorista`)?.value||'').trim();
+  const armazem=modo==='desc'?(document.getElementById('cg-desc-armazem')?.value||'').trim():'';
+  const destino=modo==='exp'?(document.getElementById('cg-exp-destino')?.value||'').trim():'';
+  const obs=(document.getElementById(`cg-${modo}-obs`)?.value||'').trim();
+  closeModal('modal-cg-confirm');
+  const regs=[];
+  for(const it of _cgFormItems[modo]){
+    const qtd=parseFloat(it.qtd)||0;
+    const item=cgGetItemByBlDesc(it.bl,it.descricao);
+    if(!item||!qtd) continue;
+    const pesoUnit=item.peso&&item.qtd_total?item.peso/item.qtd_total:0;
+    const peso_kg=pesoUnit?Math.round(pesoUnit*qtd):0;
+    const reg={id:crypto.randomUUID(),bl:it.bl,descricao:it.descricao,quantidade:qtd,peso_kg,data,periodo,veiculo,motorista,
+      armazem:modo==='desc'?armazem:'',destino:modo==='exp'?destino:'',obs,
+      navio:item.navio||'',cliente:item.cliente||'',produto:item.produto||'',unidade:item.unidade||'UN',
+      created_at:new Date().toISOString(),created_by:session?.nome||''};
+    regs.push(reg);
+  }
+  const total=regs.length;
+  if(modo==='desc'){cgDescargas.push(...regs);saveCgDescargas();}
+  else{cgExpedicoes.push(...regs);saveCgExpedicoes();}
+  if(SUPA_URL&&SUPA_KEY){
+    const tbl=modo==='desc'?'bulk_descargas':'bulk_expedicoes';
+    _cgSetSyncStatus('syncing');
+    const _postRegs=async(rows)=>Promise.all(rows.map(r=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(r)})));
+    try{
+      await _postRegs(regs);
+      _cgSetSyncStatus('ok');
+    }catch(e){
+      if(e.message&&(e.message.includes('column')||e.message.includes('does not exist'))){
+        try{
+          const safeRegs=regs.map(({peso_kg,destino,...r})=>r);
+          await _postRegs(safeRegs);
+          _cgSetSyncStatus('ok');
+          showToast('Salvo sem campo peso/destino. Execute o SQL de atualizacao no Supabase.','#f59e0b','#000');
+        }catch(e2){
+          _cgSetSyncStatus('error');
+          showToast('Erro ao salvar no servidor: '+e2.message+'. Dado salvo localmente.','#e05c1a','#fff');
+        }
+      } else {
+        _cgSetSyncStatus('error');
+        showToast('Erro ao salvar no servidor: '+e.message+'. Dado salvo localmente.','#e05c1a','#fff');
+      }
+    }
+  }
+  if(modo==='exp') printTicketCgExpedicao(regs,veiculo,motorista,destino,data,periodo,obs);
+  _cgFormItems[modo]=[];
+  cgRenderItems(modo);
+  ['veiculo','motorista','obs'].forEach(f=>{const el=document.getElementById(`cg-${modo}-${f}`);if(el)el.value='';});
+  if(modo==='desc'){const el=document.getElementById('cg-desc-armazem');if(el)el.value='';}
+  if(modo==='exp'){const el=document.getElementById('cg-exp-destino');if(el)el.value='';}
+  if(modo==='desc') renderCgDescHoje(); else renderCgExpHoje();
+  renderCgBanco(); updateCgStats();
+  showToast(`✓ ${total} item(s) registrado(s) com sucesso!`,'#22c55e','#000');
+}
+
+// ── Import Banco CG ──────────────────────────────────────────
+let _cgImportRows = [];
+
+function openCgImportModal(){ resetCgImport(); document.getElementById('modal-cg-import').classList.add('open'); }
+
+function resetCgImport(){
+  _cgImportRows=[];
+  const dz=document.getElementById('cg-drop-zone'); if(dz){ dz.style.borderColor='var(--border)'; dz.style.background=''; dz.style.display=''; }
+  const inp=document.getElementById('cg-xls-input'); if(inp) inp.value='';
+  ['cg-import-preview','cg-import-warn'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
+  const btn=document.getElementById('btn-confirm-cg-import'); if(btn) btn.style.display='none';
+}
+
+function cgDzOver(e){ e.preventDefault(); const dz=document.getElementById('cg-drop-zone'); dz.style.borderColor='var(--accent)'; dz.style.background='rgba(240,165,0,.05)'; }
+function cgDzLeave(){ const dz=document.getElementById('cg-drop-zone'); dz.style.borderColor='var(--border)'; dz.style.background=''; }
+function cgDzDrop(e){ e.preventDefault(); cgDzLeave(); if(e.dataTransfer.files[0]) handleCgXLSFile(e.dataTransfer.files[0]); }
+
+function handleCgXLSFile(file){
+  if(!file) return;
+  if(!file.name.match(/\.(xlsx|xls)$/i)){ showToast('Use .xlsx ou .xls','#e05c1a','#fff'); return; }
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const wb=XLSX.read(e.target.result,{type:'array'}),ws=wb.Sheets[wb.SheetNames[0]],raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:true});
+      // Find header row
+      let hr=0;
+      for(let i=0;i<Math.min(5,raw.length);i++){
+        const j=raw[i].join('|').toLowerCase();
+        if(j.includes('bl')||j.includes('descri')||j.includes('qtd')||j.includes('chave')){ hr=i; break; }
+      }
+      const dr=raw.slice(hr+1).filter(r=>r.some(c=>c!==''));
+      if(!dr.length){ showToast('Nenhum dado encontrado.','#e05c1a','#fff'); return; }
+      _cgImportRows=dr.map(r=>({
+        bl:       String(r[0]||'').trim(),
+        navio:    String(r[1]||'').trim(),
+        cliente:  String(r[2]||'').trim(),
+        produto:  String(r[3]||'').trim(),
+        descricao:String(r[4]||'').trim(),
+        qtd_total:parseFloat(String(r[5]||'0').replace(',','.'))||0,
+        unidade:  String(r[6]||'UN').trim()||'UN',
+        armazem:  String(r[7]||'').trim(),
+        peso:     parseFloat(String(r[8]||'0').replace(',','.'))||0,
+      })).filter(r=>r.bl&&r.descricao&&r.qtd_total>0);
+      if(!_cgImportRows.length){ showToast('Nenhum item válido. BL, Descrição e Qtd Total são obrigatórios.','#e05c1a','#fff'); return; }
+      const dups=_cgImportRows.filter(r=>cgItems.find(x=>x.bl===r.bl&&x.descricao===r.descricao)).length;
+      document.getElementById('cg-drop-zone').style.display='none';
+      document.getElementById('cg-import-preview').style.display='';
+      document.getElementById('btn-confirm-cg-import').style.display='';
+      document.getElementById('cg-import-preview-title').textContent=`✓ ${_cgImportRows.length} item(s) — ${file.name}`;
+      if(dups>0){ const w=document.getElementById('cg-import-warn'); w.style.display=''; w.textContent=`⚠ ${dups} item(s) já existem no banco (mesmo BL + Descrição) — serão atualizados.`; }
+      const hd=['BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO/CHAVE','QTD TOTAL','UNIDADE','ARMAZÉM','PESO (kg)'];
+      document.getElementById('cg-import-thead').innerHTML='<tr>'+hd.map(h=>`<th style="padding:.5rem .75rem;background:var(--bg);font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap">${h}</th>`).join('')+'</tr>';
+      document.getElementById('cg-import-tbody').innerHTML=_cgImportRows.slice(0,8).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td style="padding:.4rem .75rem;font-weight:700;font-family:'JetBrains Mono',monospace;font-size:11px">${r.bl}</td>
+        <td style="padding:.4rem .75rem;font-size:12px">${r.navio||'—'}</td>
+        <td style="padding:.4rem .75rem;font-size:12px">${r.cliente||'—'}</td>
+        <td style="padding:.4rem .75rem;font-size:12px;color:#f97316;font-weight:700">${r.produto||'—'}</td>
+        <td style="padding:.4rem .75rem;font-size:12px;color:var(--accent)">${r.descricao}</td>
+        <td style="padding:.4rem .75rem;font-size:12px;font-weight:700">${r.qtd_total}</td>
+        <td style="padding:.4rem .75rem;font-size:12px">${r.unidade}</td>
+        <td style="padding:.4rem .75rem;font-size:12px">${r.armazem||'—'}</td>
+        <td style="padding:.4rem .75rem;font-size:12px">${r.peso||0}</td>
+      </tr>`).join('')+(_cgImportRows.length>8?`<tr><td colspan="9" style="padding:.5rem;text-align:center;color:var(--muted);font-size:12px">... e mais ${_cgImportRows.length-8} itens</td></tr>`:'');
+    }catch(err){ showToast('Erro ao ler arquivo: '+err.message,'#e05c1a','#fff'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function confirmCgImport(){
+  if(!_cgImportRows.length) return;
+  closeModal('modal-cg-import');
+  showLoading(`Importando ${_cgImportRows.length} item(s)...`);
+  try{
+    let added=0, updated=0;
+    _cgImportRows.forEach(r=>{
+      const idx=cgItems.findIndex(x=>x.bl===r.bl&&x.descricao===r.descricao);
+      if(idx>=0){ cgItems[idx]={...cgItems[idx],...r}; updated++; }
+      else{ cgItems.push({id:crypto.randomUUID(),created_at:new Date().toISOString(),...r}); added++; }
+    });
+    saveCgItems();
+    cgPopulateBLSelects();
+    renderCgBanco();
+    updateCgStats();
+    await syncCgToSupabase();
+    hideLoading();
+    showToast(`✓ Importação concluída: ${added} novo(s), ${updated} atualizado(s).`,'#22c55e','#000');
+  }catch(err){ hideLoading(); showToast('Erro na importação: '+err.message,'#e05c1a','#fff'); }
+  resetCgImport();
+}
+
+function downloadCgTemplate(){
+  const wb=XLSX.utils.book_new();
+  const header=['BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO/CHAVE','QTD_TOTAL','UNIDADE','ARMAZÉM','PESO_KG'];
+  const ex1=['MAEU2024001234','MSC GÜLSÜN','Usiminas','BFM','BFM 10MM VERGALHÃO 12M',500,'TN','ARM-01',250000];
+  const ex2=['MAEU2024001234','MSC GÜLSÜN','Usiminas','Vergalhão','VERGALHÃO CA-50 16MM',300,'TN','ARM-01',150000];
+  const ex3=['BRGE2024009999','EVER GIVEN','Belgo','Cantoneira','CANTONEIRA 50x50x5MM',120,'TN','ARM-02',60000];
+  const ws=XLSX.utils.aoa_to_sheet([header,ex1,ex2,ex3]);
+  ws['!cols']=[{wch:20},{wch:18},{wch:16},{wch:14},{wch:28},{wch:12},{wch:10},{wch:12},{wch:12}];
+  XLSX.utils.book_append_sheet(wb,ws,'Banco Carga Geral');
+  const instr=XLSX.utils.aoa_to_sheet([
+    ['INSTRUÇÕES DE PREENCHIMENTO'],[''],
+    ['Coluna','Obrigatório','Exemplo'],
+    ['BL','✓ SIM','MAEU2024001234'],
+    ['NAVIO','Não','MSC GÜLSÜN'],
+    ['CLIENTE','Não','Usiminas'],
+    ['PRODUTO','Não','BFM'],
+    ['DESCRIÇÃO/CHAVE','✓ SIM','BFM 10MM VERGALHÃO 12M'],
+    ['QTD_TOTAL','✓ SIM (> 0)','500'],
+    ['UNIDADE','Não (padrão: UN)','TN'],
+    ['ARMAZÉM','Não','ARM-01'],
+    ['PESO_KG','Não','250000'],
+    [''],
+    ['DICAS:'],
+    ['- BL + DESCRIÇÃO/CHAVE identificam o item de forma única'],
+    ['- Se já existir um item com mesmo BL + Descrição, os dados serão atualizados'],
+    ['- Use ponto ou vírgula como separador decimal para QTD e PESO'],
+  ]);
+  instr['!cols']=[{wch:24},{wch:16},{wch:24}];
+  XLSX.utils.book_append_sheet(wb,instr,'Instruções');
+  XLSX.writeFile(wb,'4SIDES_CargaGeral_Modelo.xlsx');
+  showToast('✓ Modelo Excel baixado!','#22c55e','#000');
+}
+
+// ══════════════════════════════════════════════════════════════
+// FOLLOW-UP MODULE
+// ══════════════════════════════════════════════════════════════
+
+let followupConfigs = [];
+let followupHistory = [];
+let exchangeCfg = { client_id:'', tenant_id:'' };
+let _exchangeTokenData = null; // { access_token, refresh_token, expires_at, user_email }
+let _followupInterval = null;
+let _followupEditId = null;
+let _followupDestTemp = [];
+
+const FU_COL_LABELS = {
+  coil:'COIL NUMBER', navio:'NAVIO', bl:'B/L', cliente:'CLIENTE',
+  produto:'PRODUTO', armazem:'ARMAZÉM', pesob:'P.BRUTO (kg)',
+  pesol:'P.LÍQUIDO (kg)', data_desc:'DATA DESCARGA'
+};
+const FU_DEFAULT_COLS = ['coil','bl','navio','cliente','produto','armazem','pesob'];
+
+function escHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ── Storage ──────────────────────────────────────────────────
+function saveFollowupConfigs(){ localStorage.setItem('sp_followup_configs', JSON.stringify(followupConfigs)); }
+function loadFollowupConfigs(){
+  try{ followupConfigs = JSON.parse(localStorage.getItem('sp_followup_configs')||'[]'); }catch(e){ followupConfigs=[]; }
+  if(!Array.isArray(followupConfigs)) followupConfigs=[];
+}
+function saveExchangeCfg(){ localStorage.setItem('sp_exchange_cfg', JSON.stringify(exchangeCfg)); }
+function loadExchangeCfg(){
+  try{ exchangeCfg = JSON.parse(localStorage.getItem('sp_exchange_cfg')||'{}'); }catch(e){ exchangeCfg={}; }
+  exchangeCfg = Object.assign({client_id:'', tenant_id:''}, exchangeCfg);
+  try{ _exchangeTokenData = JSON.parse(localStorage.getItem('sp_exchange_tokens')||'null'); }catch(e){ _exchangeTokenData=null; }
+}
+function _saveExchangeTokens(){
+  if(_exchangeTokenData) localStorage.setItem('sp_exchange_tokens', JSON.stringify(_exchangeTokenData));
+  else localStorage.removeItem('sp_exchange_tokens');
+}
+function _fuSaveHistory(entry){
+  followupHistory.unshift(entry);
+  if(followupHistory.length>200) followupHistory=followupHistory.slice(0,200);
+  localStorage.setItem('sp_followup_hist', JSON.stringify(followupHistory));
+}
+function loadFollowupHistory(){
+  try{ followupHistory = JSON.parse(localStorage.getItem('sp_followup_hist')||'[]'); }catch(e){ followupHistory=[]; }
+}
+
+// ── Data ─────────────────────────────────────────────────────
+function _fuCalcEstoque(cfg){
+  const expSet = new Set(expedicoes.map(e=>e.coil));
+  let stock = records.filter(r=>!expSet.has(r.coil));
+  const f = cfg.filtros||{};
+  if(f.navios   && f.navios.length)   stock=stock.filter(r=>f.navios.includes(r.navio));
+  if(f.clientes && f.clientes.length) stock=stock.filter(r=>f.clientes.includes(r.cliente));
+  if(f.armazens && f.armazens.length) stock=stock.filter(r=>f.armazens.includes(r.armazem));
+  return stock;
+}
+function _fuCalcPendentes(cfg){
+  const recSet = new Set(records.map(r=>r.coil));
+  let pend = coilsDB.filter(c=>!recSet.has(c.coil));
+  const f = cfg.filtros||{};
+  if(f.navios   && f.navios.length)   pend=pend.filter(c=>f.navios.includes(c.navio));
+  if(f.clientes && f.clientes.length) pend=pend.filter(c=>f.clientes.includes(c.cliente));
+  if(f.armazens && f.armazens.length) pend=pend.filter(c=>f.armazens.includes(c.armazem));
+  return pend;
+}
+function _fuGetData(cfg){
+  return cfg.tipo_relatorio==='a_descarregar' ? _fuCalcPendentes(cfg) : _fuCalcEstoque(cfg);
+}
+
+// ── Excel generation ─────────────────────────────────────────
+function gerarExcelFollowUp(cfg){
+  const wb = XLSX.utils.book_new();
+  const dateStr = new Date().toLocaleDateString('pt-BR');
+  const timeStr = new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  const fmtN = v => v ? parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:0}) : '—';
+  const data = _fuGetData(cfg);
+  const tipo = cfg.tipo_relatorio||'estoque_bl';
+  const cols = (cfg.colunas&&cfg.colunas.length) ? cfg.colunas : FU_DEFAULT_COLS;
+
+  const titleRows = [
+    ['4SIDES · STEELPORT — GESTÃO DE BOBINAS'],
+    [cfg.nome.toUpperCase()],
+    ['Gerado em: '+dateStr+' às '+timeStr],
+    [''],
+  ];
+
+  const _buildDetailSheet = (sheetName)=>{
+    const hdr = cols.map(c=>FU_COL_LABELS[c]||c.toUpperCase());
+    const rows = data.map(r=>cols.map(c=>{
+      if(c==='pesob'||c==='pesol') return r[c]?parseFloat(r[c]):0;
+      return r[c]||'';
+    }));
+    const totIdx = titleRows.length + hdr.length + rows.length;
+    const totRow = cols.map((c,i)=>{
+      if(i===0) return 'TOTAL ('+rows.length+' bobinas)';
+      if(c==='pesob'||c==='pesol') return data.reduce((a,r)=>a+(parseFloat(r[c])||0),0);
+      return '';
+    });
+    const wsArr = [...titleRows, hdr, ...rows, [''], totRow];
+    const ws = XLSX.utils.aoa_to_sheet(wsArr);
+    _fuApplySheetStyle(ws, titleRows.length, hdr, rows.length, hdr.length);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  };
+
+  if(tipo==='a_descarregar'){
+    const hdr = ['COIL NUMBER','NAVIO','B/L','CLIENTE','PRODUTO','ARMAZÉM','P.BRUTO (kg)'];
+    const rows = data.map(c=>[c.coil,c.navio||'—',c.bl||'—',c.cliente||'—',c.produto||'—',c.armazem||'—',c.pesob?parseFloat(c.pesob):0]);
+    const totRow = ['TOTAL ('+rows.length+' bob.)','','','','','',data.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)];
+    const wsArr = [...titleRows, hdr, ...rows, [''], totRow];
+    const ws = XLSX.utils.aoa_to_sheet(wsArr);
+    _fuApplySheetStyle(ws, titleRows.length, hdr, rows.length, hdr.length);
+    XLSX.utils.book_append_sheet(wb, ws, 'A Descarregar');
+  } else if(tipo==='por_cliente'){
+    const clientes = [...new Set(data.map(r=>r.cliente).filter(Boolean))].sort();
+    const hdr = ['CLIENTE','BOBINAS EM ESTOQUE','P.BRUTO ESTOQUE (kg)'];
+    const rows = clientes.map(cli=>{ const it=data.filter(r=>r.cliente===cli); return [cli, it.length, it.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)]; });
+    const totRow = ['TOTAL',data.length, data.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)];
+    const wsArr = [...titleRows, hdr, ...rows, [''], totRow];
+    const ws = XLSX.utils.aoa_to_sheet(wsArr);
+    _fuApplySheetStyle(ws, titleRows.length, hdr, rows.length, hdr.length);
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumo por Cliente');
+    _buildDetailSheet('Detalhe por Cliente');
+  } else {
+    const bls = [...new Set(data.map(r=>r.bl).filter(Boolean))].sort();
+    const hdr = ['B/L','NAVIO','CLIENTE','BOBINAS EM ESTOQUE','P.BRUTO ESTOQUE (kg)'];
+    const rows = bls.map(bl=>{ const it=data.filter(r=>r.bl===bl); return [bl, it[0]?.navio||'—', it[0]?.cliente||'—', it.length, it.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)]; });
+    const totRow = ['TOTAL','','',data.length, data.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0)];
+    const wsArr = [...titleRows, hdr, ...rows, [''], totRow];
+    const ws = XLSX.utils.aoa_to_sheet(wsArr);
+    _fuApplySheetStyle(ws, titleRows.length, hdr, rows.length, hdr.length);
+    XLSX.utils.book_append_sheet(wb, ws, 'Resumo por BL');
+    _buildDetailSheet('Detalhe Bobinas');
+  }
+
+  return XLSX.write(wb, {type:'base64', bookType:'xlsx'});
+}
+
+function _fuApplySheetStyle(ws, hdrRowIdx, headers, dataRowCount, numCols){
+  ws['!cols'] = headers.map(h=>{
+    if(/COIL/i.test(h))           return {wch:20};
+    if(/NAVIO|CLIENTE/i.test(h))  return {wch:24};
+    if(/B\/L|BL/i.test(h))       return {wch:20};
+    if(/BRUTO|LÍQUIDO/i.test(h))  return {wch:20};
+    if(/DATA/i.test(h))           return {wch:16};
+    return {wch:18};
+  });
+  const rowProps = [];
+  for(let i=0;i<hdrRowIdx;i++) rowProps.push(i===0?{hpx:28}:{hpx:20});
+  rowProps.push({hpx:22});
+  for(let i=0;i<dataRowCount;i++) rowProps.push({hpx:17});
+  ws['!rows'] = rowProps;
+  if(!ws['!merges']) ws['!merges']=[];
+  const nc = Math.max(numCols-1,0);
+  ws['!merges'].push({s:{r:0,c:0},e:{r:0,c:nc}},{s:{r:1,c:0},e:{r:1,c:nc}},{s:{r:2,c:0},e:{r:2,c:nc}});
+  ws['!freeze'] = {xSplit:0, ySplit:hdrRowIdx+1};
+}
+
+// ── HTML email body ───────────────────────────────────────────
+function _fuGerarHtmlEmail(cfg, destNome){
+  const tipo = cfg.tipo_relatorio||'estoque_bl';
+  const data = _fuGetData(cfg);
+  const dateStr = new Date().toLocaleDateString('pt-BR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  const fmtKgE = v=>v?parseFloat(v).toLocaleString('pt-BR',{minimumFractionDigits:0})+' kg':'—';
+
+  const thStyle = 'background:#0a0c0f;color:#f0a500;padding:9px 12px;text-align:left;font-size:11px;letter-spacing:1px;white-space:nowrap;';
+  const tdStyle = 'padding:7px 12px;border-bottom:1px solid #e5e7eb;font-size:13px;';
+  const tdNum   = tdStyle+'text-align:right;font-variant-numeric:tabular-nums;';
+  const trEven  = 'background:#f8f9fa;';
+  const trOdd   = 'background:#fff;';
+
+  let tableHTML = '';
+  if(tipo==='a_descarregar'){
+    const ths = ['COIL NUMBER','NAVIO','B/L','CLIENTE','PRODUTO','ARMAZÉM','P.BRUTO'].map(h=>`<th style="${thStyle}">${h}</th>`).join('');
+    const trs = data.map((c,i)=>`<tr style="${i%2?trEven:trOdd}">
+      <td style="${tdStyle}font-family:monospace;font-weight:700;">${escHtml(c.coil)}</td>
+      <td style="${tdStyle}">${escHtml(c.navio||'—')}</td>
+      <td style="${tdStyle}">${escHtml(c.bl||'—')}</td>
+      <td style="${tdStyle}">${escHtml(c.cliente||'—')}</td>
+      <td style="${tdStyle}">${escHtml(c.produto||'—')}</td>
+      <td style="${tdStyle}">${escHtml(c.armazem||'—')}</td>
+      <td style="${tdNum}">${fmtKgE(c.pesob)}</td>
+    </tr>`).join('');
+    const pb = data.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
+    tableHTML=`<table style="width:100%;border-collapse:collapse;"><thead><tr>${ths}</tr></thead><tbody>${trs}
+      <tr style="background:#0a0c0f;">
+        <td colspan="5" style="padding:9px 12px;color:#f0a500;font-weight:700;font-size:12px;letter-spacing:1px;">TOTAL — ${data.length} bobinas pendentes</td>
+        <td style="${tdNum}color:#f0a500;font-weight:700;"></td>
+        <td style="${tdNum}color:#f0a500;font-weight:700;">${fmtKgE(pb)}</td>
+      </tr>
+    </tbody></table>`;
+  } else if(tipo==='por_cliente'){
+    const clientes=[...new Set(data.map(r=>r.cliente).filter(Boolean))].sort();
+    const ths=['CLIENTE','BOBINAS EM ESTOQUE','P.BRUTO EM ESTOQUE'].map(h=>`<th style="${thStyle}">${h}</th>`).join('');
+    const trs=clientes.map((cli,i)=>{ const it=data.filter(r=>r.cliente===cli); const pb=it.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      return `<tr style="${i%2?trEven:trOdd}"><td style="${tdStyle}font-weight:700;">${escHtml(cli)}</td><td style="${tdNum}">${it.length}</td><td style="${tdNum}">${fmtKgE(pb)}</td></tr>`;
+    }).join('');
+    const totPb=data.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+    tableHTML=`<table style="width:100%;border-collapse:collapse;"><thead><tr>${ths}</tr></thead><tbody>${trs}
+      <tr style="background:#0a0c0f;"><td style="padding:9px 12px;color:#f0a500;font-weight:700;font-size:12px;letter-spacing:1px;">TOTAL — ${clientes.length} clientes</td>
+      <td style="${tdNum}color:#f0a500;font-weight:700;">${data.length}</td><td style="${tdNum}color:#f0a500;font-weight:700;">${fmtKgE(totPb)}</td></tr>
+    </tbody></table>`;
+  } else {
+    const bls=[...new Set(data.map(r=>r.bl).filter(Boolean))].sort();
+    const ths=['B/L','NAVIO','CLIENTE','BOBINAS','P.BRUTO EM ESTOQUE'].map(h=>`<th style="${thStyle}">${h}</th>`).join('');
+    const trs=bls.map((bl,i)=>{ const it=data.filter(r=>r.bl===bl); const pb=it.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+      return `<tr style="${i%2?trEven:trOdd}"><td style="${tdStyle}font-family:monospace;font-weight:700;">${escHtml(bl)}</td>
+        <td style="${tdStyle}">${escHtml(it[0]?.navio||'—')}</td><td style="${tdStyle}">${escHtml(it[0]?.cliente||'—')}</td>
+        <td style="${tdNum}">${it.length}</td><td style="${tdNum}">${fmtKgE(pb)}</td></tr>`;
+    }).join('');
+    const totPb=data.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+    tableHTML=`<table style="width:100%;border-collapse:collapse;"><thead><tr>${ths}</tr></thead><tbody>${trs}
+      <tr style="background:#0a0c0f;"><td colspan="3" style="padding:9px 12px;color:#f0a500;font-weight:700;font-size:12px;letter-spacing:1px;">TOTAL — ${bls.length} BLs</td>
+      <td style="${tdNum}color:#f0a500;font-weight:700;">${data.length}</td><td style="${tdNum}color:#f0a500;font-weight:700;">${fmtKgE(totPb)}</td></tr>
+    </tbody></table>`;
+  }
+
+  const logoHtml = cfg.logo_b64
+    ? `<img src="${cfg.logo_b64}" style="max-height:56px;max-width:180px;object-fit:contain;" alt="Logo">`
+    : `<span style="font-size:20px;font-weight:900;letter-spacing:4px;color:#f0a500;">4SIDES · STEELPORT</span>`;
+  const msgBody = (cfg.mensagem||'Prezado(a) {nome},\n\nSegue o relatório de estoque.')
+    .replace(/\{nome\}/g, escHtml(destNome)).replace(/\{data\}/g, dateStr);
+  const TIPO_LABELS = {estoque_bl:'Estoque por BL', por_bl:'Estoque por BL', por_cliente:'Estoque por Cliente', a_descarregar:'A Descarregar'};
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="margin:0;padding:0;background:#f0f2f5;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:820px;margin:20px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12);">
+  <div style="background:#0a0c0f;padding:24px 32px;display:flex;align-items:center;justify-content:space-between;">${logoHtml}
+    <div style="text-align:right;"><div style="font-size:10px;color:#6b7280;font-family:monospace;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">RELATÓRIO AUTOMÁTICO</div>
+    <div style="font-size:13px;color:#e8eaf0;">${new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}</div></div>
+  </div>
+  <div style="height:3px;background:linear-gradient(90deg,#f0a500,#ffd060,#f0a500);"></div>
+  <div style="padding:28px 32px;">
+    <div style="font-size:15px;color:#374151;line-height:1.75;margin-bottom:24px;white-space:pre-line;">${msgBody}</div>
+    <div style="background:#0a0c0f;color:#f0a500;font-size:12px;font-weight:700;letter-spacing:2px;padding:11px 16px;border-radius:8px 8px 0 0;text-transform:uppercase;">${escHtml(cfg.nome)} — ${TIPO_LABELS[cfg.tipo_relatorio]||cfg.tipo_relatorio}</div>
+    <div style="border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px;overflow:hidden;">${tableHTML}</div>
+  </div>
+  <div style="background:#f8f9fa;border-top:1px solid #e5e7eb;padding:14px 32px;display:flex;align-items:center;justify-content:space-between;">
+    <div style="font-size:11px;color:#9ca3af;">STEELPORT · Sistema de Gestão de Bobinas · 4SIDES</div>
+    <div style="font-size:11px;color:#9ca3af;">Enviado em ${new Date().toLocaleString('pt-BR')}</div>
+  </div>
+</div></body></html>`;
+}
+
+// ── Microsoft Exchange / Graph API ────────────────────────────
+
+// ── OAuth2 PKCE nativo — sem dependência externa ──────────────────────────────
+
+async function _pkceGen(){
+  const buf = crypto.getRandomValues(new Uint8Array(48));
+  const verifier = btoa(String.fromCharCode(...buf)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+  const challenge = btoa(String.fromCharCode(...new Uint8Array(digest))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=/g,'');
+  return { verifier, challenge };
+}
+
+function _oauthPopup(url){
+  return new Promise((resolve, reject)=>{
+    const W=500, H=660, left=Math.round(screen.width/2-W/2), top=Math.round(screen.height/2-H/2);
+    const popup = window.open(url,'steelport_oauth',
+      'width='+W+',height='+H+',top='+top+',left='+left+',toolbar=no,menubar=no,scrollbars=yes');
+    if(!popup||popup.closed){
+      reject(new Error('Popup bloqueado. Permita popups para este site e tente novamente.')); return;
+    }
+    const REDIRECT = 'https://app.4sides.com.br/';
+    const timer = setInterval(()=>{
+      try {
+        if(popup.closed){ clearInterval(timer); reject(new Error('Autenticação cancelada.')); return; }
+        const href = popup.location.href;
+        if(href && href.startsWith(REDIRECT)){
+          clearInterval(timer); popup.close();
+          const params = new URL(href).searchParams;
+          const code = params.get('code'), err = params.get('error_description')||params.get('error');
+          if(code) resolve(code); else reject(new Error('Microsoft recusou: '+(err||'erro desconhecido')));
+        }
+      } catch(e){ /* cross-origin enquanto redireciona — aguardar */ }
+    }, 300);
+  });
+}
+
+async function autenticarExchange(){
+  if(!exchangeCfg.client_id || !exchangeCfg.tenant_id){
+    showToast('Salve o Client ID e Tenant ID antes de autenticar.','#e05c1a','#fff'); return;
+  }
+  try {
+    const { verifier, challenge } = await _pkceGen();
+    const scopes = 'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access';
+    const authUrl = 'https://login.microsoftonline.com/' + exchangeCfg.tenant_id + '/oauth2/v2.0/authorize'
+      + '?client_id='              + encodeURIComponent(exchangeCfg.client_id)
+      + '&response_type=code'
+      + '&redirect_uri='           + encodeURIComponent('https://app.4sides.com.br/')
+      + '&response_mode=query'
+      + '&scope='                  + encodeURIComponent(scopes)
+      + '&code_challenge='         + challenge
+      + '&code_challenge_method=S256'
+      + '&prompt=select_account';
+
+    showToast('Aguardando login Microsoft…','#3b82f6','#fff');
+    const code = await _oauthPopup(authUrl);
+
+    const body = new URLSearchParams({
+      client_id:     exchangeCfg.client_id,
+      grant_type:    'authorization_code',
+      code,
+      redirect_uri:  'https://app.4sides.com.br/',
+      code_verifier: verifier,
+      scope:         scopes
+    });
+    const resp = await fetch(
+      'https://login.microsoftonline.com/' + exchangeCfg.tenant_id + '/oauth2/v2.0/token',
+      { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body }
+    );
+    const tok = await resp.json();
+    if(tok.error) throw new Error((tok.error_description||tok.error).split('\r')[0]);
+
+    let userEmail = '';
+    try {
+      const me = await fetch('https://graph.microsoft.com/v1.0/me',
+        { headers:{ Authorization:'Bearer '+tok.access_token } }).then(r=>r.json());
+      userEmail = me.userPrincipalName || me.mail || '';
+    } catch(e){}
+
+    _exchangeTokenData = {
+      access_token:  tok.access_token,
+      refresh_token: tok.refresh_token || null,
+      expires_at:    Date.now() + (tok.expires_in||3600)*1000 - 60000,
+      user_email:    userEmail
+    };
+    _saveExchangeTokens();
+    renderExchangeStatus();
+    showToast('✓ Autenticado como '+(userEmail||'conta Microsoft'),'#22c55e','#000');
+  } catch(e){
+    showToast('✗ '+e.message,'#e05c1a','#fff');
+  }
+}
+
+function desautenticarExchange(){
+  _exchangeTokenData = null;
+  _saveExchangeTokens();
+  renderExchangeStatus();
+  showToast('Sessão Microsoft encerrada.','#6b7280','#fff');
+}
+
+async function _getGraphToken(){
+  if(!_exchangeTokenData?.access_token)
+    throw new Error('Não autenticado. Acesse Follow-UP → Configurar E-mail → Autenticar.');
+
+  if(Date.now() >= _exchangeTokenData.expires_at){
+    if(!_exchangeTokenData.refresh_token)
+      throw new Error('Sessão expirada. Autentique novamente.');
+    const body = new URLSearchParams({
+      client_id:     exchangeCfg.client_id,
+      grant_type:    'refresh_token',
+      refresh_token: _exchangeTokenData.refresh_token,
+      scope:         'https://graph.microsoft.com/Mail.Send https://graph.microsoft.com/User.Read offline_access'
+    });
+    const resp = await fetch(
+      'https://login.microsoftonline.com/' + exchangeCfg.tenant_id + '/oauth2/v2.0/token',
+      { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body }
+    );
+    const tok = await resp.json();
+    if(tok.error) throw new Error('Sessão expirada: '+(tok.error_description||tok.error).split('\r')[0]);
+    _exchangeTokenData.access_token = tok.access_token;
+    _exchangeTokenData.expires_at   = Date.now() + (tok.expires_in||3600)*1000 - 60000;
+    if(tok.refresh_token) _exchangeTokenData.refresh_token = tok.refresh_token;
+    _saveExchangeTokens();
+  }
+  return _exchangeTokenData.access_token;
+}
+
+function renderExchangeStatus(){
+  const dot  = document.getElementById('fu-exchange-status-dot');
+  const txt  = document.getElementById('fu-exchange-status-text');
+  const sub  = document.getElementById('fu-exchange-status-sub');
+  const btnA = document.getElementById('fu-btn-auth');
+  const btnS = document.getElementById('fu-btn-signout');
+  if(!dot) return;
+  const authed = !!(_exchangeTokenData?.access_token);
+  dot.style.background = authed ? 'var(--success)' : 'var(--danger)';
+  txt.textContent      = authed ? '✓ Autenticado: '+(_exchangeTokenData.user_email||'conta Microsoft') : 'Não autenticado';
+  sub.textContent      = authed
+    ? 'E-mails serão enviados a partir desta conta. Token renovado automaticamente.'
+    : 'Salve o Client ID e Tenant ID e clique em Autenticar.';
+  if(btnA) btnA.style.display = authed ? 'none' : '';
+  if(btnS) btnS.style.display = authed ? '' : 'none';
+  renderFollowupStats();
+}
+
+async function _fuEnviarParaDest(cfg, dest){
+  const token = await _getGraphToken();
+  const dateStr = new Date().toLocaleDateString('pt-BR');
+  const subj = (cfg.assunto||'Relatório de Estoque STEELPORT — {data}').replace(/\{data\}/g,dateStr).replace(/\{nome\}/g,dest.nome);
+  const htmlBody = _fuGerarHtmlEmail(cfg, dest.nome);
+
+  // Gera Excel como anexo
+  let attachments = [];
+  try {
+    const b64 = gerarExcelFollowUp(cfg);
+    const fname = 'estoque_' + cfg.nome.replace(/[^a-z0-9]/gi,'_') + '_' + new Date().toISOString().split('T')[0] + '.xlsx';
+    attachments = [{
+      '@odata.type': '#microsoft.graph.fileAttachment',
+      name: fname,
+      contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      contentBytes: b64
+    }];
+  } catch(e){ console.warn('Follow-UP: erro ao gerar Excel para anexo:', e); }
+
+  const message = {
+    subject: subj,
+    body: { contentType:'HTML', content: htmlBody },
+    toRecipients: [{ emailAddress:{ address:dest.email, name:dest.nome } }],
+  };
+  if(attachments.length) message.attachments = attachments;
+
+  const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail', {
+    method:'POST',
+    headers:{ 'Authorization':'Bearer '+token, 'Content-Type':'application/json' },
+    body: JSON.stringify({ message, saveToSentItems:'true' })
+  });
+  if(!res.ok){
+    const err = await res.json().catch(()=>null);
+    throw new Error('Graph API ' + res.status + ': ' + (err?.error?.message || res.statusText));
+  }
+}
+
+async function dispararFollowUp(cfg, manual=false){
+  if(!cfg) return;
+  const dateKey = new Date().toISOString().split('T')[0];
+  const sentKey = 'sp_fu_sent_'+dateKey+'_'+cfg.id;
+  if(!manual && localStorage.getItem(sentKey)) return;
+
+  const dests = cfg.destinatarios||[];
+  if(!dests.length){ if(manual) showToast('⚠ Sem destinatários na regra "'+cfg.nome+'".','#f59e0b','#000'); return; }
+
+  if(manual) showToast('Enviando Follow-UP "'+cfg.nome+'"…','#3b82f6','#fff');
+
+  let okCount=0, failCount=0, firstErr='';
+  for(const dest of dests){
+    try{
+      await _fuEnviarParaDest(cfg, dest);
+      okCount++;
+      _fuSaveHistory({ts:new Date().toISOString(), cfg_id:cfg.id, cfg_nome:cfg.nome, dest_email:dest.email, dest_nome:dest.nome, status:'ok', manual});
+    }catch(e){
+      failCount++;
+      if(!firstErr) firstErr=e.message;
+      _fuSaveHistory({ts:new Date().toISOString(), cfg_id:cfg.id, cfg_nome:cfg.nome, dest_email:dest.email, dest_nome:dest.nome, status:'erro', erro:e.message, manual});
+    }
+  }
+
+  if(okCount>0) localStorage.setItem(sentKey, new Date().toISOString());
+
+  if(okCount>0) showToast('✓ Follow-UP "'+cfg.nome+'": '+okCount+' e-mail'+(okCount>1?'s':'')+' enviado'+(okCount>1?'s':'')+' (Excel em anexo)!','#22c55e','#000');
+  if(failCount>0) showToast('⚠ '+failCount+' envio'+(failCount>1?'s':'')+' falhou: '+firstErr,'#e05c1a','#fff');
+
+  renderFollowupStats();
+  if(document.getElementById('fu-panel-historico')?.style.display!=='none') renderFollowupHistory();
+}
+
+// ── Scheduler ────────────────────────────────────────────────
+function startFollowupScheduler(){
+  if(_followupInterval) clearInterval(_followupInterval);
+  _followupInterval = setInterval(()=>{
+    if(!session) return;
+    const now = new Date();
+    const hhmm = String(now.getHours()).padStart(2,'0')+':'+String(now.getMinutes()).padStart(2,'0');
+    const dow = now.getDay();
+    followupConfigs.forEach(cfg=>{
+      if(!cfg.ativo) return;
+      if(cfg.horario!==hhmm) return;
+      if(cfg.dias_semana&&cfg.dias_semana.length&&!cfg.dias_semana.includes(dow)) return;
+      dispararFollowUp(cfg, false);
+    });
+  }, 60000);
+}
+
+// ── UI ────────────────────────────────────────────────────────
+function showFuTab(tab){
+  ['regras','email','historico'].forEach(t=>{
+    document.getElementById('fu-panel-'+t).style.display = t===tab?'':'none';
+    const btn=document.getElementById('fu-tab-'+t);
+    if(btn) btn.classList.toggle('active', t===tab);
+  });
+  if(tab==='historico') renderFollowupHistory();
+  if(tab==='email') _fuLoadExchangeFields();
+}
+
+function _fuLoadExchangeFields(){
+  const ci = document.getElementById('fu-exchange-client-id');
+  const ti = document.getElementById('fu-exchange-tenant-id');
+  if(ci) ci.value = exchangeCfg.client_id||'';
+  if(ti) ti.value = exchangeCfg.tenant_id||'';
+  renderExchangeStatus();
+}
+
+function renderFollowupStats(){
+  const ativos=followupConfigs.filter(c=>c.ativo).length;
+  const today=new Date().toISOString().split('T')[0];
+  const todayH=followupHistory.filter(h=>h.ts.startsWith(today)&&h.status==='ok');
+  const errosH=followupHistory.filter(h=>h.ts.startsWith(today)&&h.status==='erro');
+  const isAuth = !!(_exchangeTokenData?.access_token);
+
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('fu-stat-ativos', ativos);
+  set('fu-stat-hoje',   todayH.length);
+  set('fu-stat-erros',  errosH.length);
+  set('fu-stat-email',  isAuth ? '✓ Exchange' : (exchangeCfg.client_id ? '⚠ Autenticar' : '✗ Pendente'));
+  const emailEl=document.getElementById('fu-stat-email');
+  if(emailEl) emailEl.style.color=isAuth?'var(--success)':exchangeCfg.client_id?'var(--warning)':'var(--danger)';
+  set('home-followup-ativos', ativos);
+  set('home-followup-hoje',   todayH.length);
+}
+
+function renderFollowup(){
+  renderFollowupStats();
+  renderFollowupRules();
+  renderFollowupHistory();
+}
+
+function renderFollowupRules(){
+  const el=document.getElementById('fu-rules-list'); if(!el) return;
+  if(!followupConfigs.length){
+    el.innerHTML=`<div class="empty-state"><span class="empty-icon">📧</span>Nenhuma regra de Follow-UP configurada.<br>Clique em <strong>+ NOVA REGRA</strong> para começar.</div>`;
+    return;
+  }
+  const TIPO_LBL={estoque_bl:'Estoque por BL',por_bl:'Estoque por BL',por_cliente:'Estoque por Cliente',a_descarregar:'A Descarregar'};
+  const DOW_LBL=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  el.innerHTML = followupConfigs.map(cfg=>{
+    const lastH=followupHistory.find(h=>h.cfg_id===cfg.id&&h.status==='ok');
+    const lastStr=lastH?new Date(lastH.ts).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+    const dias=(cfg.dias_semana||[1,2,3,4,5]).map(d=>DOW_LBL[d]).join(' · ');
+    const nadv=cfg.ativo?'fu-badge fu-badge-on':'fu-badge fu-badge-off';
+    return `<div class="fu-card ${cfg.ativo?'fu-card-active':'fu-card-inactive'}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:1rem;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem;flex-wrap:wrap;">
+            <span style="font-size:17px;font-weight:900;color:${cfg.ativo?'var(--info)':'var(--muted)'};">${escHtml(cfg.nome)}</span>
+            <span class="${nadv}">${cfg.ativo?'● ATIVO':'○ INATIVO'}</span>
+          </div>
+          <div style="display:flex;gap:1.25rem;flex-wrap:wrap;font-size:13px;color:var(--muted);line-height:1.8;">
+            <span>📊 ${TIPO_LBL[cfg.tipo_relatorio]||cfg.tipo_relatorio}</span>
+            <span>🕐 ${cfg.horario||'—'}</span>
+            <span>📅 ${dias}</span>
+            <span>👤 ${(cfg.destinatarios||[]).length} destinatário${(cfg.destinatarios||[]).length!==1?'s':''}</span>
+            <span style="color:var(--success);">✓ Último: ${lastStr}</span>
+          </div>
+          <div style="margin-top:.5rem;font-size:12px;color:var(--muted);">
+            ${(cfg.destinatarios||[]).map(d=>`<span style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;padding:1px 7px;margin-right:4px;font-size:11px;">${escHtml(d.nome)} &lt;${escHtml(d.email)}&gt;</span>`).join('')}
+          </div>
+        </div>
+        <div style="display:flex;gap:.45rem;align-items:center;flex-shrink:0;flex-wrap:wrap;">
+          <button class="btn btn-sm" style="background:rgba(34,197,94,.15);color:var(--success);border:1px solid rgba(34,197,94,.3);"
+            onclick="dispararFollowUp(followupConfigs.find(c=>c.id==='${cfg.id}'),true)">▶ ENVIAR AGORA</button>
+          <button class="btn btn-sm" style="background:rgba(59,130,246,.12);color:var(--info);border:1px solid rgba(59,130,246,.3);"
+            onclick="downloadExcelFollowUp('${cfg.id}')">↓ EXCEL</button>
+          <button class="btn btn-sm btn-secondary" onclick="openFollowupEdit('${cfg.id}')">✎ EDITAR</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteFollowupCfg('${cfg.id}')">✕</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderFollowupHistory(){
+  const el=document.getElementById('fu-history-list'); if(!el) return;
+  if(!followupHistory.length){
+    el.innerHTML=`<div class="empty-state"><span class="empty-icon">📋</span>Nenhum envio registrado ainda.</div>`;
+    return;
+  }
+  el.innerHTML=`<table class="data-table" style="width:100%;">
+    <thead><tr><th>DATA/HORA</th><th>REGRA</th><th>DESTINATÁRIO</th><th>STATUS</th><th>TIPO</th></tr></thead>
+    <tbody>${followupHistory.slice(0,150).map(h=>`<tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">${new Date(h.ts).toLocaleString('pt-BR')}</td>
+      <td>${escHtml(h.cfg_nome)}</td>
+      <td>${escHtml(h.dest_nome||'')} <span style="color:var(--muted);font-size:12px;">&lt;${escHtml(h.dest_email)}&gt;</span></td>
+      <td>${h.status==='ok'?'<span style="color:var(--success);">✓ Enviado</span>':'<span style="color:var(--danger);" title="'+escHtml(h.erro||'')+'">✗ Erro</span>'}</td>
+      <td style="font-size:11px;color:var(--muted);">${h.manual?'Manual':'Automático'}</td>
+    </tr>`).join('')}</tbody>
+  </table>`;
+}
+
+// ── Edit modal ────────────────────────────────────────────────
+function openFollowupEdit(id){
+  const cfg = id ? followupConfigs.find(c=>c.id===id) : null;
+  _followupEditId = id||null;
+  _followupDestTemp = cfg ? JSON.parse(JSON.stringify(cfg.destinatarios||[])) : [];
+
+  const f = cfg || {
+    nome:'', tipo_relatorio:'estoque_bl', filtros:{navios:[],clientes:[],armazens:[]},
+    colunas:[...FU_DEFAULT_COLS], horario:'08:00', dias_semana:[1,2,3,4,5],
+    assunto:'Relatório de Estoque STEELPORT — {data}',
+    mensagem:'Prezado(a) {nome},\n\nSegue o relatório de estoque atualizado.\n\nAtt,\n4SIDES · STEELPORT',
+    logo_b64:null, ativo:true
+  };
+
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.value=v; };
+  set('fu-edit-nome', f.nome);
+  set('fu-edit-tipo', f.tipo_relatorio||'estoque_bl');
+  set('fu-edit-horario', f.horario||'08:00');
+  set('fu-edit-assunto', f.assunto||'');
+  set('fu-edit-mensagem', f.mensagem||'');
+  const atvEl=document.getElementById('fu-edit-ativo');
+  if(atvEl) atvEl.checked=f.ativo!==false;
+
+  [0,1,2,3,4,5,6].forEach(d=>{ const cb=document.getElementById('fu-dow-'+d); if(cb) cb.checked=(f.dias_semana||[1,2,3,4,5]).includes(d); });
+  Object.keys(FU_COL_LABELS).forEach(c=>{ const cb=document.getElementById('fu-col-'+c); if(cb) cb.checked=(f.colunas||FU_DEFAULT_COLS).includes(c); });
+
+  const lp=document.getElementById('fu-logo-preview');
+  if(lp){
+    lp.dataset.b64=f.logo_b64||'';
+    lp.innerHTML=f.logo_b64
+      ?`<img src="${f.logo_b64}" style="max-height:50px;max-width:150px;object-fit:contain;"><button onclick="_fuClearLogo()" style="font-size:11px;background:none;border:none;color:var(--danger);cursor:pointer;margin-left:8px;">✕</button>`
+      :`<span style="font-size:12px;color:var(--muted);">Sem logo</span>`;
+  }
+
+  _buildFuFilterOptions();
+  setTimeout(()=>{
+    const selN=document.getElementById('fu-filter-navios');
+    const selC=document.getElementById('fu-filter-clientes');
+    const selA=document.getElementById('fu-filter-armazens');
+    if(selN&&f.filtros?.navios?.length) [...selN.options].forEach(o=>o.selected=f.filtros.navios.includes(o.value));
+    if(selC&&f.filtros?.clientes?.length) [...selC.options].forEach(o=>o.selected=f.filtros.clientes.includes(o.value));
+    if(selA&&f.filtros?.armazens?.length) [...selA.options].forEach(o=>o.selected=f.filtros.armazens.includes(o.value));
+  },0);
+
+  renderFuDestList();
+  document.getElementById('modal-followup-edit').classList.add('open');
+}
+
+function _buildFuFilterOptions(){
+  const fill=(id,items)=>{ const el=document.getElementById(id); if(!el) return; el.innerHTML=items.map(v=>`<option value="${escHtml(v)}">${escHtml(v)}</option>`).join(''); };
+  fill('fu-filter-navios',   [...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort());
+  fill('fu-filter-clientes', [...new Set(coilsDB.map(c=>c.cliente).filter(Boolean))].sort());
+  fill('fu-filter-armazens', [...new Set(coilsDB.map(c=>c.armazem).filter(Boolean))].sort());
+}
+
+function renderFuDestList(){
+  const el=document.getElementById('fu-dest-list'); if(!el) return;
+  if(!_followupDestTemp.length){
+    el.innerHTML=`<div style="font-size:12px;color:var(--muted);padding:.4rem 0;">Nenhum destinatário. Adicione abaixo.</div>`;
+    return;
+  }
+  el.innerHTML=_followupDestTemp.map((d,i)=>`<div class="fu-dest-item">
+    <div><span style="font-weight:700;font-size:14px;">${escHtml(d.nome)}</span>
+    <span style="font-size:12px;color:var(--muted);margin-left:.5rem;">&lt;${escHtml(d.email)}&gt;</span></div>
+    <button onclick="_fuRemoveDest(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;line-height:1;">✕</button>
+  </div>`).join('');
+}
+
+function _fuAddDest(){
+  const nome=(document.getElementById('fu-dest-nome')?.value||'').trim();
+  const email=(document.getElementById('fu-dest-email')?.value||'').trim().toLowerCase();
+  if(!nome||!email){ showToast('⚠ Preencha nome e e-mail.','#f59e0b','#000'); return; }
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){ showToast('⚠ E-mail inválido.','#e05c1a','#fff'); return; }
+  _followupDestTemp.push({nome,email});
+  document.getElementById('fu-dest-nome').value='';
+  document.getElementById('fu-dest-email').value='';
+  renderFuDestList();
+}
+
+function _fuRemoveDest(i){ _followupDestTemp.splice(i,1); renderFuDestList(); }
+
+function _fuClearLogo(){
+  const lp=document.getElementById('fu-logo-preview');
+  if(lp){ lp.innerHTML=`<span style="font-size:12px;color:var(--muted);">Sem logo</span>`; lp.dataset.b64=''; }
+}
+
+function _fuLogoUpload(file){
+  if(!file||!file.type.startsWith('image/')) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const b64=e.target.result;
+    const lp=document.getElementById('fu-logo-preview');
+    if(lp){
+      lp.dataset.b64=b64;
+      lp.innerHTML=`<img src="${b64}" style="max-height:50px;max-width:150px;object-fit:contain;"><button onclick="_fuClearLogo()" style="font-size:11px;background:none;border:none;color:var(--danger);cursor:pointer;margin-left:8px;">✕</button>`;
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+function salvarFollowupEdit(){
+  const nome=(document.getElementById('fu-edit-nome')?.value||'').trim();
+  if(!nome){ showToast('⚠ Nome da regra é obrigatório.','#f59e0b','#000'); return; }
+  if(!_followupDestTemp.length){ showToast('⚠ Adicione pelo menos um destinatário.','#f59e0b','#000'); return; }
+  const colunas=Object.keys(FU_COL_LABELS).filter(c=>document.getElementById('fu-col-'+c)?.checked);
+  if(!colunas.length){ showToast('⚠ Selecione pelo menos uma coluna.','#f59e0b','#000'); return; }
+  const dias=[0,1,2,3,4,5,6].filter(d=>document.getElementById('fu-dow-'+d)?.checked);
+  const getMulti=id=>{ const el=document.getElementById(id); return el?[...el.selectedOptions].map(o=>o.value):[]; };
+  const lp=document.getElementById('fu-logo-preview');
+
+  const cfg={
+    id: _followupEditId||('fu_'+Date.now()),
+    nome,
+    tipo_relatorio: document.getElementById('fu-edit-tipo')?.value||'estoque_bl',
+    filtros: { navios:getMulti('fu-filter-navios'), clientes:getMulti('fu-filter-clientes'), armazens:getMulti('fu-filter-armazens') },
+    colunas,
+    horario: document.getElementById('fu-edit-horario')?.value||'08:00',
+    dias_semana: dias,
+    assunto: document.getElementById('fu-edit-assunto')?.value||'',
+    mensagem: document.getElementById('fu-edit-mensagem')?.value||'',
+    logo_b64: lp?.dataset.b64||null,
+    ativo: document.getElementById('fu-edit-ativo')?.checked!==false,
+    destinatarios: [..._followupDestTemp],
+  };
+
+  if(_followupEditId){ const idx=followupConfigs.findIndex(c=>c.id===_followupEditId); if(idx>=0) followupConfigs[idx]=cfg; else followupConfigs.push(cfg); }
+  else followupConfigs.push(cfg);
+
+  saveFollowupConfigs();
+  closeModal('modal-followup-edit');
+  renderFollowupRules();
+  renderFollowupStats();
+  showToast(`✓ Follow-UP "${nome}" salvo!`,'#22c55e','#000');
+}
+
+function deleteFollowupCfg(id){
+  const cfg=followupConfigs.find(c=>c.id===id);
+  if(!cfg||!confirm(`Excluir a regra de Follow-UP "${cfg.nome}"?`)) return;
+  followupConfigs=followupConfigs.filter(c=>c.id!==id);
+  saveFollowupConfigs();
+  renderFollowupRules();
+  renderFollowupStats();
+  showToast('Regra excluída.','#6b7280','#fff');
+}
+
+function downloadExcelFollowUp(id){
+  const cfg=followupConfigs.find(c=>c.id===id); if(!cfg) return;
+  try{
+    const b64=gerarExcelFollowUp(cfg);
+    const fname='followup_'+cfg.nome.replace(/[^a-z0-9]/gi,'_')+'_'+new Date().toISOString().split('T')[0]+'.xlsx';
+    const a=document.createElement('a'); a.href='data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,'+b64; a.download=fname; a.click();
+    showToast('✓ Excel gerado!','#22c55e','#000');
+  }catch(e){ showToast('Erro ao gerar Excel: '+e.message,'#e05c1a','#fff'); }
+}
+
+// ── Exchange config ───────────────────────────────────────────
+function salvarExchangeCfg(){
+  exchangeCfg.client_id = (document.getElementById('fu-exchange-client-id')?.value||'').trim();
+  exchangeCfg.tenant_id = (document.getElementById('fu-exchange-tenant-id')?.value||'').trim();
+  if(!exchangeCfg.client_id || !exchangeCfg.tenant_id){
+    showToast('⚠ Preencha Client ID e Tenant ID.','#f59e0b','#000'); return;
+  }
+  _exchangeTokenData = null;
+  _saveExchangeTokens();
+  saveExchangeCfg();
+  renderExchangeStatus();
+  showToast('✓ IDs salvos! Clique em "Autenticar com Microsoft".','#22c55e','#000');
+}
+
+async function testarExchangeEmail(){
+  const to = (document.getElementById('fu-exchange-test-email')?.value||'').trim();
+  if(!to){ showToast('⚠ Informe um e-mail para teste.','#f59e0b','#000'); return; }
+  showToast('Enviando e-mail de teste via Exchange…','#3b82f6','#fff');
+  try {
+    const token = await _getGraphToken();
+    const html = '<div style="font-family:Arial;padding:24px;max-width:600px;">'
+      + '<div style="background:#0a0c0f;padding:20px;border-radius:8px 8px 0 0;">'
+      + '<span style="font-size:20px;font-weight:900;letter-spacing:3px;color:#f0a500;">4SIDES · STEELPORT</span></div>'
+      + '<div style="height:3px;background:linear-gradient(90deg,#f0a500,#ffd060,#f0a500);margin-bottom:20px;"></div>'
+      + '<h2 style="color:#22c55e;">✓ Configuração funcionando!</h2>'
+      + '<p>Este é um e-mail de teste do sistema <strong>STEELPORT Follow-UP</strong> via Microsoft Exchange.</p>'
+      + '<p style="color:#6b7280;font-size:12px;">Enviado em '+new Date().toLocaleString('pt-BR')+'</p></div>';
+    const res = await fetch('https://graph.microsoft.com/v1.0/me/sendMail',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body: JSON.stringify({
+        message:{
+          subject:'✓ Teste STEELPORT Follow-UP — '+new Date().toLocaleDateString('pt-BR'),
+          body:{ contentType:'HTML', content:html },
+          toRecipients:[{ emailAddress:{ address:to, name:'Teste STEELPORT' } }]
+        },
+        saveToSentItems:'true'
+      })
+    });
+    if(res.ok || res.status===202){
+      showToast('✓ E-mail de teste enviado para '+to+'!','#22c55e','#000');
+    } else {
+      const err=await res.json().catch(()=>null);
+      showToast('✗ Erro '+res.status+': '+(err?.error?.message||res.statusText),'#e05c1a','#fff');
+    }
+  } catch(e){ showToast('✗ '+e.message,'#e05c1a','#fff'); }
+}
+
 </script>
 
 
@@ -8394,13 +10525,24 @@ alter table users add column if not exists email text;
   </div>
 </div>
 
-<!-- ═══════════════════ REIMPRIMIR TICKET ═══════════════════════ -->
+<!-- ═══════════════════ REIMPRIMIR TICKET ════════════════════════ -->
 <div class="modal-overlay" id="modal-reprint">
-  <div class="modal" style="max-width:680px;">
-    <div class="modal-title">🖨 REIMPRIMIR TICKET DE EXPEDIÇÃO</div>
+  <div class="modal" style="max-width:720px;">
+    <div class="modal-title">🖨 TICKETS DE EXPEDIÇÃO</div>
     <div class="modal-body">
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;align-items:center;">
+        <input type="text" id="reprint-search" placeholder="Buscar por nº do ticket, veículo, motorista ou BL…"
+          oninput="filterReprintList(this.value)"
+          style="flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:8px;font-size:13px;outline:none;">
+        <select id="reprint-tipo" onchange="filterReprintList(document.getElementById('reprint-search').value)"
+          style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;">
+          <option value="">Todos</option>
+          <option value="EXP">Bobinas (EXP)</option>
+          <option value="CGX">Carga Geral (CGX)</option>
+        </select>
+      </div>
       <div id="reprint-list" style="display:flex;flex-direction:column;gap:.5rem;max-height:440px;overflow-y:auto;"></div>
-      <div id="reprint-empty" style="display:none;text-align:center;color:var(--muted);padding:2rem;font-size:14px;">Nenhum ticket emitido neste dispositivo.</div>
+      <div id="reprint-empty" style="display:none;text-align:center;color:var(--muted);padding:2rem;font-size:14px;">Nenhum ticket encontrado.</div>
     </div>
     <div style="border-top:1px solid var(--border);padding-top:1rem;display:flex;justify-content:space-between;align-items:center;margin-top:1rem;">
       <button class="btn btn-danger btn-sm" onclick="clearTicketHistory()">🗑 LIMPAR HISTÓRICO</button>
@@ -8782,6 +10924,443 @@ alter table users add column if not exists email text;
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: CARGA GERAL
+═══════════════════════════════════════════════════ -->
+<div id="screen-carga-geral" class="screen">
+  <div class="container">
+
+    <!-- STAT CARDS -->
+    <div class="rpt-summary-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:1.5rem;">
+      <div class="rpt-summary-card"><div class="rpt-sum-label">ITENS CADASTRADOS</div><div class="rpt-sum-value" id="cg-stat-itens">0</div><div class="rpt-sum-unit">BL × descrição</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">SALDO PENDENTE</div><div class="rpt-sum-value" style="color:#f97316;" id="cg-stat-pend">0</div><div class="rpt-sum-unit">itens com qtd restante</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">DESCARGAS HOJE</div><div class="rpt-sum-value" style="color:var(--info);" id="cg-stat-desc-hoje">0</div><div class="rpt-sum-unit">registros</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">EXPEDIÇÕES HOJE</div><div class="rpt-sum-value" style="color:var(--exp);" id="cg-stat-exp-hoje">0</div><div class="rpt-sum-unit">registros</div></div>
+    </div>
+
+    <!-- SYNC INDICATOR -->
+    <div style="display:flex;align-items:center;justify-content:flex-end;margin-bottom:.6rem;gap:.6rem;">
+      <span id="cg-sync-badge" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;display:flex;align-items:center;gap:.35rem;">
+        <span id="cg-sync-dot" style="width:7px;height:7px;border-radius:50%;background:var(--muted);display:inline-block;flex-shrink:0;transition:background .3s;"></span>
+        <span id="cg-sync-label">Aguardando sync...</span>
+      </span>
+      <button class="btn btn-sm btn-secondary" onclick="cgSyncNow()" style="font-size:11px;padding:.25rem .6rem;" title="Sincronizar agora">&#8635; SYNC</button>
+    </div>
+
+    <!-- TABS -->
+    <div class="cg-tab-bar">
+      <div class="cg-tab active" id="cg-tab-banco"    onclick="showCgTab('banco')">🗄 BANCO DE ITENS</div>
+      <div class="cg-tab"        id="cg-tab-descarga" onclick="showCgTab('descarga')">📥 DESCARGA</div>
+      <div class="cg-tab"        id="cg-tab-expedicao"onclick="showCgTab('expedicao')">📤 EXPEDIÇÃO</div>
+      <div class="cg-tab"        id="cg-tab-historico"onclick="showCgTab('historico')">🕐 HISTÓRICO</div>
+    </div>
+
+    <!-- ── TAB: BANCO ── -->
+    <div id="cg-panel-banco" class="cg-panel active">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">📦 ITENS POR BL</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="downloadCgTemplate()">↓ MODELO EXCEL</button>
+            <button class="btn btn-info btn-sm" onclick="openCgImportModal()">↑ IMPORTAR EXCEL</button>
+            <button class="btn btn-primary btn-sm" onclick="abrirModalCgItem()">+ NOVO ITEM</button>
+          </div>
+        </div>
+        <!-- Filtros -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem;">
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">BL</label>
+            <input type="text" id="cg-f-bl" placeholder="Filtrar…" oninput="renderCgBanco()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Navio</label>
+            <input type="text" id="cg-f-navio" placeholder="Filtrar…" oninput="renderCgBanco()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Cliente</label>
+            <input type="text" id="cg-f-cliente" placeholder="Filtrar…" oninput="renderCgBanco()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Produto</label>
+            <select id="cg-f-produto" onchange="renderCgBanco()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:6px;font-size:13px;outline:none;">
+              <option value="">Todos</option>
+              <option>BFM</option><option>Vergalhão</option><option>Cantoneira</option><option>Outros</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Status</label>
+            <select id="cg-f-status" onchange="renderCgBanco()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:6px;font-size:13px;outline:none;">
+              <option value="">Todos</option>
+              <option value="pendente">Com saldo</option>
+              <option value="completo">Completo</option>
+            </select>
+          </div>
+        </div>
+        <div id="cg-banco-list"><div class="empty-state"><span class="empty-icon">📦</span>Nenhum item cadastrado ainda.</div></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: DESCARGA ── -->
+    <div id="cg-panel-descarga" class="cg-panel">
+      <div class="rpt-section">
+        <div class="rpt-section-title">📥 REGISTRAR DESCARGA</div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;text-transform:uppercase;">Dados do Veículo</div>
+        <div class="cg-form-grid" style="margin-bottom:1.2rem;">
+          <div class="form-group">
+            <label>Data *</label>
+            <input type="date" id="cg-desc-data" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group">
+            <label>Período</label>
+            <select id="cg-desc-periodo" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+              <option value="">—</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Veículo / Placa</label>
+            <input type="text" id="cg-desc-veiculo" placeholder="ex: ABC-1234" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group">
+            <label>Motorista</label>
+            <input type="text" id="cg-desc-motorista" placeholder="Nome do motorista" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group">
+            <label>Armazém</label>
+            <input type="text" id="cg-desc-armazem" placeholder="ex: CD-01" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group" style="grid-column:1/-1;">
+            <label>Observação</label>
+            <input type="text" id="cg-desc-obs" placeholder="Observação opcional" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;">Itens Deste Veículo</div>
+          <button class="btn btn-secondary btn-sm" onclick="cgAddItem('desc')">+ ADICIONAR ITEM</button>
+        </div>
+        <div id="cg-desc-itens-list" style="margin-bottom:1rem;"></div>
+        <button class="btn btn-primary" onclick="cgRevisar('desc')">✓ REVISAR E REGISTRAR</button>
+      </div>
+
+      <!-- Histórico do dia -->
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+          <div class="rpt-section-title" style="margin:0;">📋 DESCARGAS DE HOJE</div>
+          <input type="date" id="cg-desc-filtro-data" onchange="renderCgDescHoje()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+        </div>
+        <div id="cg-desc-hoje-list"><div class="empty-state"><span class="empty-icon">📥</span>Nenhuma descarga registrada hoje.</div></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: EXPEDIÇÃO ── -->
+    <div id="cg-panel-expedicao" class="cg-panel">
+      <div class="rpt-section">
+        <div class="rpt-section-title">📤 REGISTRAR EXPEDIÇÃO</div>
+        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;text-transform:uppercase;">Dados do Veículo</div>
+        <div class="cg-form-grid" style="margin-bottom:1.2rem;">
+          <div class="form-group">
+            <label>Data *</label>
+            <input type="date" id="cg-exp-data" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group">
+            <label>Período</label>
+            <select id="cg-exp-periodo" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+              <option value="">—</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Veículo / Placa</label>
+            <input type="text" id="cg-exp-veiculo" placeholder="ex: ABC-1234" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group">
+            <label>Motorista</label>
+            <input type="text" id="cg-exp-motorista" placeholder="Nome do motorista" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group">
+            <label>Destino</label>
+            <input type="text" id="cg-exp-destino" placeholder="ex: CD do Cliente" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div class="form-group" style="grid-column:1/-1;">
+            <label>Observação</label>
+            <input type="text" id="cg-exp-obs" placeholder="Observação opcional" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
+          <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;">Itens Deste Veículo</div>
+          <button class="btn btn-secondary btn-sm" onclick="cgAddItem('exp')">+ ADICIONAR ITEM</button>
+        </div>
+        <div id="cg-exp-itens-list" style="margin-bottom:1rem;"></div>
+        <button class="btn btn-primary" onclick="cgRevisar('exp')">✓ REVISAR E REGISTRAR</button>
+      </div>
+
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+          <div class="rpt-section-title" style="margin:0;">📋 EXPEDIÇÕES DE HOJE</div>
+          <input type="date" id="cg-exp-filtro-data" onchange="renderCgExpHoje()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+        </div>
+        <div id="cg-exp-hoje-list"><div class="empty-state"><span class="empty-icon">📤</span>Nenhuma expedição registrada hoje.</div></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: HISTÓRICO ── -->
+    <div id="cg-panel-historico" class="cg-panel">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">🕐 HISTÓRICO COMPLETO</div>
+          <button class="btn btn-primary btn-sm" onclick="exportCgXLSX()">↓ EXCEL</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem;">
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">BL</label>
+            <input type="text" id="cg-h-bl" placeholder="Filtrar…" oninput="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Tipo</label>
+            <select id="cg-h-tipo" onchange="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+              <option value="">Todos</option><option value="descarga">Descarga</option><option value="expedicao">Expedição</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Data Início</label>
+            <input type="date" id="cg-h-ini" onchange="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Data Fim</label>
+            <input type="date" id="cg-h-fim" onchange="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+        </div>
+        <div id="cg-historico-list"><div class="empty-state"><span class="empty-icon">🕐</span>Nenhum registro encontrado.</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL: ITEM CARGA GERAL -->
+<div class="modal-overlay" id="modal-cg-item">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title" id="modal-cg-item-title">📦 NOVO ITEM</div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="form-group">
+          <label>BL *</label>
+          <input type="text" id="cg-item-bl" placeholder="Número do BL" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Navio *</label>
+          <input type="text" id="cg-item-navio" placeholder="Nome do navio" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Cliente</label>
+          <input type="text" id="cg-item-cliente" placeholder="Nome do cliente" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Produto *</label>
+          <select id="cg-item-produto" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+            <option value="">Selecione…</option>
+            <option>BFM</option><option>Vergalhão</option><option>Cantoneira</option><option>Outros</option>
+          </select>
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Descrição / Chave *</label>
+          <input type="text" id="cg-item-descricao" placeholder="ex: Vergalhão CA-50 12.5mm" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Quantidade Total no BL *</label>
+          <input type="number" id="cg-item-qtd" min="1" step="1" placeholder="0" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Unidade</label>
+          <select id="cg-item-unidade" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+            <option value="UN">UN — Unidades</option>
+            <option value="PC">PC — Peças</option>
+            <option value="KG">KG — Quilogramas</option>
+            <option value="TON">TON — Toneladas</option>
+            <option value="M">M — Metros</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Armazém</label>
+          <input type="text" id="cg-item-armazem" placeholder="ex: CD-01" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Peso Total (kg)</label>
+          <input type="number" id="cg-item-peso" min="0" step="0.01" placeholder="0" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cg-item')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="salvarCgItem()">✓ SALVAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CONFIRMAR DESCARGA / EXPEDIÇÃO -->
+<div class="modal-overlay" id="modal-cg-confirm">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-title" id="cg-confirm-modal-title">✓ CONFIRMAR REGISTRO</div>
+    <div class="modal-body" id="cg-confirm-modal-body" style="margin-bottom:1.2rem;"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cg-confirm')">VOLTAR</button>
+      <button class="btn btn-primary" id="btn-cg-confirmar" onclick="cgConfirmar()">✓ CONFIRMAR REGISTRO</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: IMPORTAR BANCO CARGA GERAL -->
+<div class="modal-overlay" id="modal-cg-import">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title">↑ IMPORTAR BANCO CARGA GERAL VIA EXCEL</div>
+    <div class="modal-body" style="margin-bottom:1.2rem;">
+      <div id="cg-drop-zone" style="border:2px dashed var(--border);border-radius:10px;padding:2.5rem 1.5rem;text-align:center;cursor:pointer;transition:border .2s,background .2s;margin-bottom:1.2rem;" ondragover="cgDzOver(event)" ondragleave="cgDzLeave()" ondrop="cgDzDrop(event)" onclick="document.getElementById('cg-xls-input').click()">
+        <div style="font-size:36px;margin-bottom:.75rem;">📊</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);">Arraste o arquivo Excel aqui</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:.4rem;">ou clique para selecionar — .xlsx / .xls</div>
+        <input type="file" id="cg-xls-input" accept=".xlsx,.xls" style="display:none;" onchange="handleCgXLSFile(this.files[0])">
+      </div>
+      <div id="cg-import-preview" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem;">
+          <span id="cg-import-preview-title" style="font-size:13px;font-weight:700;color:var(--success);"></span>
+          <button class="btn btn-secondary btn-sm" onclick="resetCgImport()">✕ LIMPAR</button>
+        </div>
+        <div style="overflow-x:auto;max-height:240px;border:1px solid var(--border);border-radius:8px;">
+          <table style="width:100%;border-collapse:collapse;font-size:12px;"><thead id="cg-import-thead"></thead><tbody id="cg-import-tbody"></tbody></table>
+        </div>
+        <div id="cg-import-warn" style="display:none;margin-top:.75rem;padding:.6rem 1rem;background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.3);border-radius:6px;font-size:12px;color:var(--accent);"></div>
+      </div>
+    </div>
+    <div style="border-top:1px solid var(--border);padding-top:1.2rem;display:flex;flex-direction:column;gap:.75rem;">
+      <div style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;">📌 Colunas: <span style="color:var(--accent)">BL · NAVIO · CLIENTE · PRODUTO · DESCRIÇÃO/CHAVE · QTD_TOTAL · UNIDADE · ARMAZÉM · PESO_KG</span></div>
+      <div style="display:flex;justify-content:space-between;gap:1rem;">
+        <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-cg-import');resetCgImport();">CANCELAR</button>
+        <button class="btn btn-primary" id="btn-confirm-cg-import" style="display:none;" onclick="confirmCgImport()">✓ IMPORTAR ITENS</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: FOLLOW-UP
+═══════════════════════════════════════════════════ -->
+<div id="screen-followup" class="screen">
+  <div class="container">
+
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;margin-bottom:1.5rem;">
+      <div>
+        <h2 style="font-size:22px;font-weight:900;letter-spacing:2px;color:#60a5fa;">📧 FOLLOW-UP AUTOMÁTICO</h2>
+        <div style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:2px;">Envio diário de relatórios de estoque por e-mail</div>
+      </div>
+      <div style="display:flex;gap:.6rem;flex-wrap:wrap;">
+        <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);" onclick="openFollowupEdit(null)">+ NOVA REGRA</button>
+        <button class="btn btn-sm btn-secondary" onclick="showFuTab('email')">⚙ CONFIGURAR E-MAIL</button>
+        <button class="btn btn-sm btn-secondary" onclick="showFuTab('historico')">📋 HISTÓRICO</button>
+      </div>
+    </div>
+
+    <!-- STATUS CARDS -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1rem;margin-bottom:1.5rem;" id="fu-stats-bar">
+      <div class="rpt-summary-card">
+        <div class="rpt-sum-label">REGRAS ATIVAS</div>
+        <div class="rpt-sum-value" id="fu-stat-ativos" style="color:var(--info);">0</div>
+        <div class="rpt-sum-unit">configuradas</div>
+      </div>
+      <div class="rpt-summary-card">
+        <div class="rpt-sum-label">ENVIADOS HOJE</div>
+        <div class="rpt-sum-value" id="fu-stat-hoje" style="color:var(--success);">0</div>
+        <div class="rpt-sum-unit">e-mails com sucesso</div>
+      </div>
+      <div class="rpt-summary-card">
+        <div class="rpt-sum-label">ERROS HOJE</div>
+        <div class="rpt-sum-value" id="fu-stat-erros" style="color:var(--danger);">0</div>
+        <div class="rpt-sum-unit">falhas de envio</div>
+      </div>
+      <div class="rpt-summary-card">
+        <div class="rpt-sum-label">EMAIL CONFIG.</div>
+        <div class="rpt-sum-value" id="fu-stat-email" style="font-size:16px;">—</div>
+        <div class="rpt-sum-unit">serviço de envio</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div style="display:flex;gap:.5rem;margin-bottom:1.2rem;border-bottom:1px solid var(--border);padding-bottom:.75rem;">
+      <button class="tab active" id="fu-tab-regras"  onclick="showFuTab('regras')">📋 REGRAS</button>
+      <button class="tab"        id="fu-tab-email"   onclick="showFuTab('email')">⚙ CONFIGURAR E-MAIL</button>
+      <button class="tab"        id="fu-tab-historico" onclick="showFuTab('historico')">🕐 HISTÓRICO DE ENVIOS</button>
+    </div>
+
+    <!-- PANEL: REGRAS -->
+    <div id="fu-panel-regras">
+      <div id="fu-rules-list">
+        <div class="empty-state"><span class="empty-icon">📧</span>Nenhuma regra de Follow-UP configurada.<br>Clique em <strong>+ NOVA REGRA</strong> para começar.</div>
+      </div>
+    </div>
+
+    <!-- PANEL: EMAIL CONFIG (Microsoft Exchange / Graph API) -->
+    <div id="fu-panel-email" style="display:none;">
+      <div class="rpt-section">
+        <div class="rpt-section-title">⚙ CONFIGURAÇÃO — MICROSOFT EXCHANGE (Microsoft 365)</div>
+
+        <!-- Status -->
+        <div id="fu-exchange-status-bar" style="display:flex;align-items:center;gap:1rem;padding:.9rem 1.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;margin-bottom:1.5rem;flex-wrap:wrap;">
+          <div id="fu-exchange-status-dot" style="width:10px;height:10px;border-radius:50%;background:var(--danger);flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div id="fu-exchange-status-text" style="font-weight:700;font-size:14px;">Não autenticado</div>
+            <div id="fu-exchange-status-sub" style="font-size:12px;color:var(--muted);">Salve o Client ID e Tenant ID e clique em Autenticar.</div>
+          </div>
+          <button class="btn btn-sm" id="fu-btn-auth" style="background:rgba(0,120,212,.15);color:#2563eb;border:1px solid rgba(0,120,212,.3);white-space:nowrap;" onclick="autenticarExchange()">🔑 AUTENTICAR COM MICROSOFT</button>
+          <button class="btn btn-sm btn-danger" id="fu-btn-signout" style="display:none;" onclick="desautenticarExchange()">↩ SAIR</button>
+        </div>
+
+        <!-- Guia Azure -->
+        <div class="fu-ejs-guide" style="margin-bottom:1.5rem;">
+          <div style="font-weight:700;color:var(--info);margin-bottom:.75rem;font-size:14px;">Como configurar no Azure (uma vez só — ~5 minutos):</div>
+          <div class="fu-ejs-step"><div class="fu-ejs-num">1</div><div>Acesse <strong>portal.azure.com</strong> → <em>Microsoft Entra ID</em> → <em>Registros de aplicativo</em> → <strong>Novo registro</strong>. Nome: <em>STEELPORT Follow-UP</em>, conta: <em>"Apenas esta organização"</em>, URI de redirecionamento: <strong>Web</strong> → <code style="background:var(--surface2);padding:1px 6px;border-radius:3px;font-size:12px;">https://app.4sides.com.br/</code>. Clique em <strong>Registrar</strong>.</div></div>
+          <div class="fu-ejs-step"><div class="fu-ejs-num">2</div><div>Copie o <strong>ID do Aplicativo (Client ID)</strong> e o <strong>ID do Diretório (Tenant ID)</strong> e cole nos campos abaixo.</div></div>
+          <div class="fu-ejs-step"><div class="fu-ejs-num">3</div><div>Vá em <em>Permissões de API</em> → <em>Adicionar permissão</em> → <em>Microsoft Graph</em> → <strong>Permissões delegadas</strong> → adicione <strong>Mail.Send</strong> e <strong>User.Read</strong> → clique em <strong>Conceder consentimento do administrador</strong>.</div></div>
+          <div class="fu-ejs-step"><div class="fu-ejs-num">4</div><div>Cole os IDs abaixo, clique em <strong>Salvar</strong> e depois em <strong>Autenticar com Microsoft</strong>. O login será solicitado apenas uma vez — o token é renovado automaticamente.</div></div>
+        </div>
+
+        <!-- Campos -->
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;">
+          <div class="form-group">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Application (Client) ID *</label>
+            <input type="text" id="fu-exchange-client-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Directory (Tenant) ID *</label>
+            <input type="text" id="fu-exchange-tenant-id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:13px;font-family:'JetBrains Mono',monospace;outline:none;">
+          </div>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="salvarExchangeCfg()">✓ SALVAR</button>
+          <div style="display:flex;align-items:center;gap:.5rem;flex:1;min-width:260px;">
+            <input type="email" id="fu-exchange-test-email" placeholder="E-mail para enviar teste..."
+              style="flex:1;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.6rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+            <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);white-space:nowrap;" onclick="testarExchangeEmail()">▶ TESTAR ENVIO</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL: HISTÓRICO -->
+    <div id="fu-panel-historico" style="display:none;">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;">
+          <div class="rpt-section-title" style="margin-bottom:0;">🕐 HISTÓRICO DE ENVIOS</div>
+          <button class="btn btn-sm btn-danger" onclick="if(confirm('Limpar histórico de envios?')){followupHistory=[];localStorage.removeItem('sp_followup_hist');renderFollowupHistory();renderFollowupStats();}">🗑 LIMPAR</button>
+        </div>
+        <div id="fu-history-list">
+          <div class="empty-state"><span class="empty-icon">📋</span>Nenhum envio registrado.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- ═══════════════════ CONFIRMAR ROLLBACK ═══════════════════ -->
 <div class="modal-overlay" id="modal-rollback">
   <div class="modal" style="max-width:560px;">
@@ -8875,6 +11454,167 @@ alter table users add column if not exists email text;
 <!-- ═══════════════════════════════════════════════════
      GLOBAL SEARCH (Ctrl+K)
 ═══════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════
+     MODAL: FOLLOW-UP EDIT
+═══════════════════════════════════════════════════ -->
+<div class="modal-overlay" id="modal-followup-edit">
+  <div class="modal" style="max-width:860px;width:96%;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-title" style="color:var(--info);flex-shrink:0;">📧 CONFIGURAR REGRA DE FOLLOW-UP</div>
+
+    <div class="modal-body" style="flex:1;overflow-y:auto;padding:1.2rem 1.5rem;display:flex;flex-direction:column;gap:1.5rem;">
+
+      <!-- IDENTIFICAÇÃO -->
+      <div class="fu-section">
+        <div class="fu-section-title">Identificação</div>
+        <div style="display:flex;gap:1rem;align-items:flex-end;flex-wrap:wrap;">
+          <div style="flex:1;min-width:220px;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Nome da Regra *</label>
+            <input type="text" id="fu-edit-nome" placeholder="ex: Estoque ARMTEK diário"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:15px;outline:none;">
+          </div>
+          <div style="flex:1;min-width:200px;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Tipo de Relatório *</label>
+            <select id="fu-edit-tipo" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:15px;outline:none;">
+              <option value="estoque_bl">Estoque por BL</option>
+              <option value="por_cliente">Estoque por Cliente</option>
+              <option value="a_descarregar">A Descarregar (Pendentes)</option>
+            </select>
+          </div>
+          <div class="fu-toggle-wrap" style="padding-bottom:.7rem;">
+            <label class="fu-toggle">
+              <input type="checkbox" id="fu-edit-ativo" checked>
+              <span class="fu-toggle-slider"></span>
+            </label>
+            <span style="font-size:14px;font-weight:700;">Ativo</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DESTINATÁRIOS -->
+      <div class="fu-section">
+        <div class="fu-section-title">Destinatários</div>
+        <div id="fu-dest-list" style="margin-bottom:.75rem;"></div>
+        <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:flex-end;">
+          <div style="flex:1;min-width:160px;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:4px;">NOME</label>
+            <input type="text" id="fu-dest-nome" placeholder="Nome do destinatário"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.6rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+          </div>
+          <div style="flex:2;min-width:220px;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:4px;">E-MAIL</label>
+            <input type="email" id="fu-dest-email" placeholder="email@empresa.com"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.6rem .9rem;border-radius:8px;font-size:14px;outline:none;"
+              onkeydown="if(event.key==='Enter'){event.preventDefault();_fuAddDest();}">
+          </div>
+          <button class="btn btn-sm" style="background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);height:36px;" onclick="_fuAddDest()">+ ADICIONAR</button>
+        </div>
+      </div>
+
+      <!-- AGENDAMENTO -->
+      <div class="fu-section">
+        <div class="fu-section-title">Agendamento</div>
+        <div style="display:flex;gap:1.5rem;align-items:flex-end;flex-wrap:wrap;">
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Horário de Envio *</label>
+            <input type="time" id="fu-edit-horario" value="08:00"
+              style="background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:18px;font-weight:700;outline:none;font-family:'JetBrains Mono',monospace;">
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:8px;">Dias da Semana</label>
+            <div class="fu-dow-grid">
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-0"> Dom</label>
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-1" checked> Seg</label>
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-2" checked> Ter</label>
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-3" checked> Qua</label>
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-4" checked> Qui</label>
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-5" checked> Sex</label>
+              <label class="fu-dow-btn"><input type="checkbox" id="fu-dow-6"> Sáb</label>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:.75rem;font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;">
+          ⚠ O envio automático funciona somente enquanto o sistema estiver aberto no navegador.
+        </div>
+      </div>
+
+      <!-- FILTROS -->
+      <div class="fu-section">
+        <div class="fu-section-title">Filtros de Dados (opcional — sem seleção = todos)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;">
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Navios</label>
+            <select id="fu-filter-navios" class="fu-multiselect" multiple size="4"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Clientes</label>
+            <select id="fu-filter-clientes" class="fu-multiselect" multiple size="4"></select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Armazéns</label>
+            <select id="fu-filter-armazens" class="fu-multiselect" multiple size="4"></select>
+          </div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:.4rem;">Ctrl+Clique para selecionar múltiplos. Sem seleção = inclui todos.</div>
+      </div>
+
+      <!-- COLUNAS DO EXCEL -->
+      <div class="fu-section">
+        <div class="fu-section-title">Colunas do Excel</div>
+        <div class="fu-col-grid">
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-coil" checked> COIL NUMBER</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-bl" checked> B/L</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-navio" checked> NAVIO</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-cliente" checked> CLIENTE</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-produto" checked> PRODUTO</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-armazem" checked> ARMAZÉM</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-pesob" checked> P.BRUTO (kg)</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-pesol"> P.LÍQUIDO (kg)</label>
+          <label class="fu-col-item"><input type="checkbox" id="fu-col-data_desc"> DATA DESCARGA</label>
+        </div>
+      </div>
+
+      <!-- TEMPLATE DO E-MAIL -->
+      <div class="fu-section">
+        <div class="fu-section-title">Template do E-mail</div>
+        <div style="display:flex;flex-direction:column;gap:.75rem;">
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Assunto</label>
+            <input type="text" id="fu-edit-assunto" placeholder="Relatório de Estoque STEELPORT — {data}"
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;">
+            <div style="font-size:11px;color:var(--muted);margin-top:3px;">Use <code style="background:var(--surface2);padding:1px 4px;border-radius:3px;">{data}</code> e <code style="background:var(--surface2);padding:1px 4px;border-radius:3px;">{nome}</code> como variáveis.</div>
+          </div>
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Corpo da mensagem</label>
+            <textarea id="fu-edit-mensagem" rows="4" placeholder="Prezado(a) {nome},&#10;&#10;Segue abaixo o relatório de estoque."
+              style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:.7rem 1rem;border-radius:8px;font-size:14px;outline:none;resize:vertical;font-family:'Barlow Condensed',sans-serif;line-height:1.5;"></textarea>
+          </div>
+
+          <!-- LOGO -->
+          <div>
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Logo da empresa</label>
+            <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+              <div id="fu-logo-preview" data-b64="" style="display:flex;align-items:center;min-height:52px;padding:.5rem .75rem;background:var(--surface2);border:1px solid var(--border);border-radius:8px;min-width:180px;">
+                <span style="font-size:12px;color:var(--muted);">Sem logo</span>
+              </div>
+              <label class="btn btn-sm btn-secondary" style="cursor:pointer;">
+                📷 CARREGAR LOGO
+                <input type="file" accept="image/*" style="display:none" onchange="_fuLogoUpload(this.files[0])">
+              </label>
+              <div style="font-size:11px;color:var(--muted);">PNG ou JPG recomendado. Aparece no cabeçalho do e-mail e do Excel.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end modal-body -->
+
+    <div class="modal-actions" style="flex-shrink:0;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-followup-edit')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="salvarFollowupEdit()">✓ SALVAR REGRA</button>
+    </div>
+  </div>
+</div>
+
 <div class="search-overlay" id="global-search-overlay" onclick="if(event.target===this)closeGlobalSearch()">
   <div class="search-box">
     <div class="search-input-wrap">
