@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1238,6 +1238,9 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-carga-geral" style="accent-color:#f97316;width:16px;height:16px;"> 📦 Carga Geral
             </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-cg-relatorio" style="accent-color:#f97316;width:16px;height:16px;"> 📊 CG · Relatório
+            </label>
           </div>
         </div>
         <!-- ARMAZÉNS PERMITIDOS -->
@@ -1422,7 +1425,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 // ══════════════════════════════════════════
 // AUTH & USERS
 // ══════════════════════════════════════════
-const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',mustChange:true,perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true,faturamento:true,mapeamento:true,followup:true,cargaGeral:true}};
+const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',mustChange:true,perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true,faturamento:true,mapeamento:true,followup:true,cargaGeral:true,cgRelatorio:true}};
 
 // ── SHA-256 via Web Crypto API ──────────────────────────────────
 async function hashPass(str){
@@ -1643,7 +1646,7 @@ function applySessionUI(){
     const mapCard=document.getElementById('card-mapeamento');
     if(mapCard) mapCard.style.display=(perms.mapeamento===true)?'':'none';
     const cgCard3=document.getElementById('card-carga-geral');
-    if(cgCard3) cgCard3.style.display=(perms.cargaGeral===true)?'':'none';
+    if(cgCard3) cgCard3.style.display=(perms.cargaGeral===true||perms.cgRelatorio===true)?'':'none';
   }
 }
 
@@ -1661,7 +1664,7 @@ function canAccess(mod){
   if(mod==='dash-fat')   return (perms.faturamento === true);
   if(mod==='mapeamento') return (perms.mapeamento  === true);
   if(mod==='followup')   return (perms.followup    === true);
-  if(mod==='carga-geral')return (perms.cargaGeral  === true);
+  if(mod==='carga-geral')return (perms.cargaGeral===true || perms.cgRelatorio===true);
   return false;
 }
 
@@ -1741,7 +1744,8 @@ async function saveUser(){
         consultaDB:  document.getElementById('perm-consulta-db').checked,
         faturamento: document.getElementById('perm-faturamento').checked,
         mapeamento:  document.getElementById('perm-mapeamento').checked,
-        cargaGeral:  document.getElementById('perm-carga-geral').checked
+        cargaGeral:  document.getElementById('perm-carga-geral').checked,
+        cgRelatorio: document.getElementById('perm-cg-relatorio').checked
       };
   // Armazéns permitidos (vazio = todos)
   const armSel = document.getElementById('uf-armazens');
@@ -1787,7 +1791,8 @@ function editUser(id){
     document.getElementById('perm-consulta-db').checked= u.perms?.consultaDB === true;
     document.getElementById('perm-faturamento').checked= u.perms?.faturamento === true;
     document.getElementById('perm-mapeamento').checked  = u.perms?.mapeamento  === true;
-    document.getElementById('perm-carga-geral').checked = u.perms?.cargaGeral  === true;
+    document.getElementById('perm-carga-geral').checked   = u.perms?.cargaGeral  === true;
+    document.getElementById('perm-cg-relatorio').checked  = u.perms?.cgRelatorio === true;
   }
   // Populate armazens
   const armSel = document.getElementById('uf-armazens');
@@ -1828,6 +1833,7 @@ function clearUserForm(){
   document.getElementById('perm-faturamento').checked=false;
   document.getElementById('perm-mapeamento').checked=false;
   document.getElementById('perm-carga-geral').checked=false;
+  document.getElementById('perm-cg-relatorio').checked=false;
   // Deselect all armazens (= access to all)
   const sel=document.getElementById('uf-armazens');
   if(sel) [...sel.options].forEach(o=>o.selected=false);
@@ -2306,7 +2312,12 @@ function openModule(mod){
   if(mod==='historico')  { loadAuditFromSupabase().then(renderHistorico); renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
   if(mod==='followup')   { renderFollowup(); showFuTab('regras'); }
-  if(mod==='carga-geral'){ renderCargaGeral(); showCgTab('banco'); }
+  if(mod==='carga-geral'){
+    renderCargaGeral();
+    const _perms=session?.perms||{};
+    if(_perms.cargaGeral) showCgTab('descarga');
+    else if(_perms.cgRelatorio) showCgTab('relatorio');
+  }
 }
 
 // ── Retorna o período correspondente ao horário atual ──────────
@@ -8814,8 +8825,30 @@ function cgSaldoDescarga(item){ return Math.max(0,(item.qtd_total||0)-cgQtdDesca
 function cgSaldoArmazem(item){  return Math.max(0,cgQtdDescarregada(item.bl,item.descricao)-cgQtdExpedida(item.bl,item.descricao)); }
 
 // ── Init ─────────────────────────────────────────────────────
+function cgRelPopulateBLFilter(){
+  const sel=document.getElementById('cg-rel-bl'); if(!sel) return;
+  const cur=sel.value;
+  const bls=[...new Set([...cgDescargas,...cgExpedicoes].map(r=>r.bl).filter(Boolean))].sort();
+  sel.innerHTML='<option value="">Todos os BLs</option>'+bls.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');
+}
+
+function cgRelSetMonth(offset){
+  const d=new Date(); d.setMonth(d.getMonth()+offset);
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0');
+  const last=new Date(y,d.getMonth()+1,0).getDate();
+  document.getElementById('cg-rel-dt-ini').value=`${y}-${m}-01`;
+  document.getElementById('cg-rel-dt-fim').value=`${y}-${m}-${String(last).padStart(2,'0')}`;
+  renderCgRelatorio();
+}
+
 function renderCargaGeral(){
-  renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico(); updateCgStats();
+  const _perms=session?.perms||{};
+  const fullAccess=_perms.cargaGeral===true;
+  ['cg-tab-descarga','cg-tab-expedicao','cg-tab-banco','cg-tab-historico'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display=fullAccess?'':'none';
+  });
+  if(fullAccess){ renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico(); }
+  updateCgStats();
   cgPopulateBLSelects();
   cgStartSync();
   const hoje=new Date().toISOString().split('T')[0];
@@ -8828,31 +8861,44 @@ function renderCargaGeral(){
 }
 
 function showCgTab(tab){
-  ['banco','descarga','expedicao','historico'].forEach(t=>{
+  ['banco','descarga','expedicao','historico','relatorio'].forEach(t=>{
     document.getElementById('cg-tab-'+t)?.classList.toggle('active',t===tab);
     document.getElementById('cg-panel-'+t)?.classList.toggle('active',t===tab);
   });
   if(tab==='descarga')  { renderCgDescHoje(); cgRenderItems('desc'); }
   if(tab==='expedicao') { renderCgExpHoje();  cgRenderItems('exp'); }
   if(tab==='historico') renderCgHistorico();
+  if(tab==='relatorio') { cgRelPopulateBLFilter(); renderCgRelatorio(); }
 }
 
 function updateCgStats(){
   const hoje=new Date().toISOString().split('T')[0];
+  const h=new Date().getHours();
+  const turnoAtual=h>=7&&h<13?'07x13':h>=13&&h<19?'13x19':h>=19?'19x01':'01x07';
+  const usuario=session?.nome||'';
   const pendentes=cgItems.filter(it=>cgSaldoDescarga(it)>0).length;
-  const descHoje=cgDescargas.filter(r=>r.data===hoje).length;
-  const expHoje =cgExpedicoes.filter(r=>r.data===hoje).length;
+  const fmtTon=kg=>{const t=kg/1000;return t>=0.01?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t':'0 t';};
+  const pesoDesc=cgDescargas.filter(r=>r.data===hoje&&r.periodo===turnoAtual&&(!usuario||r.created_by===usuario)).reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
+  const pesoExp =cgExpedicoes.filter(r=>r.data===hoje&&r.periodo===turnoAtual&&(!usuario||r.created_by===usuario)).reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('cg-stat-itens',cgItems.length);
   set('cg-stat-pend',pendentes);
-  set('cg-stat-desc-hoje',descHoje);
-  set('cg-stat-exp-hoje',expHoje);
+  set('cg-stat-desc-hoje',fmtTon(pesoDesc));
+  set('cg-stat-exp-hoje',fmtTon(pesoExp));
   set('home-cg-itens',cgItems.length);
   set('home-cg-pend',pendentes);
+  const lbDesc=document.querySelector('#cg-stat-desc-hoje')?.closest('.rpt-summary-card')?.querySelector('.rpt-sum-unit');
+  const lbExp =document.querySelector('#cg-stat-exp-hoje')?.closest('.rpt-summary-card')?.querySelector('.rpt-sum-unit');
+  if(lbDesc) lbDesc.textContent=turnoAtual+' · '+(usuario||'todos');
+  if(lbExp)  lbExp.textContent =turnoAtual+' · '+(usuario||'todos');
 }
 
 // ── Banco ─────────────────────────────────────────────────────
 function renderCgBanco(){
+  const isAdmin = session?.role==='admin';
+  const abDiv = document.getElementById('cg-banco-admin-btns');
+  if(abDiv) abDiv.style.display = isAdmin ? '' : 'none';
+
   const fBl     =(document.getElementById('cg-f-bl')?.value||'').toLowerCase();
   const fNav    =(document.getElementById('cg-f-navio')?.value||'').toLowerCase();
   const fCli    =(document.getElementById('cg-f-cliente')?.value||'').toLowerCase();
@@ -8862,7 +8908,7 @@ function renderCgBanco(){
     if(fBl  && !(it.bl||'').toLowerCase().includes(fBl)) return false;
     if(fNav && !(it.navio||'').toLowerCase().includes(fNav)) return false;
     if(fCli && !(it.cliente||'').toLowerCase().includes(fCli)) return false;
-    if(fProd && it.produto!==fProd) return false;
+    if(fProd && (it.produto||'').toLowerCase()!==fProd.toLowerCase()) return false;
     const pend=cgSaldoDescarga(it)>0;
     if(fStatus==='pendente'&&!pend) return false;
     if(fStatus==='completo'&&pend) return false;
@@ -8875,7 +8921,7 @@ function renderCgBanco(){
     <thead><tr>
       <th>BL</th><th>NAVIO</th><th>ARMAZÉM</th><th>CLIENTE</th><th>PRODUTO</th>
       <th>DESCRIÇÃO / CHAVE</th><th>PESO (kg)</th>
-      <th>QTD TOTAL</th><th>DESCARREGADO</th><th>SALDO DESC.</th><th>EM ARMAZÉM</th><th>EXPEDIDO</th><th>STATUS</th><th></th>
+      <th>QTD TOTAL</th><th>DESCARREGADO</th><th>SALDO DESC.</th><th>EM ARMAZÉM</th><th>EXPEDIDO</th><th>STATUS</th>${isAdmin?'<th></th>':''}
     </tr></thead>
     <tbody>${filtered.map((it,i)=>{
       const desc =cgQtdDescarregada(it.bl,it.descricao);
@@ -8890,12 +8936,12 @@ function renderCgBanco(){
                   '<span class="cg-badge cg-badge-aberto">Aguardando</span>';
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
         <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${it.bl}</td>
-        <td>${it.navio||'—'}</td>
-        <td>${it.armazem||'—'}</td>
-        <td>${it.cliente||'—'}</td>
-        <td><span style="font-weight:700;color:#f97316;">${it.produto||'—'}</span></td>
+        <td>${it.navio||'-'}</td>
+        <td>${it.armazem||'-'}</td>
+        <td>${it.cliente||'-'}</td>
+        <td><span style="font-weight:700;color:#f97316;">${it.produto||'-'}</span></td>
         <td style="max-width:200px;">${it.descricao}</td>
-        <td style="font-family:'JetBrains Mono',monospace;">${it.peso?Number(it.peso).toLocaleString('pt-BR'):'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;">${it.peso?Number(it.peso).toLocaleString('pt-BR'):'-'}</td>
         <td style="font-weight:700;">${it.qtd_total} ${it.unidade||'UN'}</td>
         <td>${desc} <span style="font-size:10px;color:var(--muted);">(${pct}%)</span>
           <div class="cg-progress-bar" style="margin-top:3px;"><div class="${fillCls}" style="width:${pctBar}%"></div></div></td>
@@ -8903,10 +8949,10 @@ function renderCgBanco(){
         <td style="font-weight:700;color:var(--info);">${sArm} ${it.unidade||'UN'}</td>
         <td>${exp} ${it.unidade||'UN'}</td>
         <td>${badge}</td>
-        <td style="white-space:nowrap;">
-          <button class="btn btn-sm btn-secondary" style="margin-right:.25rem;" onclick="abrirModalCgItem('${it.id}')">✏</button>
+        ${isAdmin?`<td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-secondary" style="margin-right:.25rem;" onclick="abrirModalCgItem('${it.id}')">✎</button>
           <button class="btn btn-sm btn-danger" onclick="excluirCgItem('${it.id}')">✕</button>
-        </td>
+        </td>`:''}
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
@@ -8993,12 +9039,15 @@ function excluirCgItem(id){
 
 // ── Selects de BL ─────────────────────────────────────────────
 function cgPopulateBLSelects(){
-  const bls=[...new Set(cgItems.map(it=>it.bl))].sort();
-  ['cg-desc-bl','cg-exp-bl'].forEach(id=>{
+  const blsDesc=[...new Set(cgItems.filter(it=>cgSaldoDescarga(it)>0).map(it=>it.bl))].sort();
+  const blsExp =[...new Set(cgItems.filter(it=>cgSaldoArmazem(it)>0).map(it=>it.bl))].sort();
+  const upd=(id,bls)=>{
     const el=document.getElementById(id); if(!el) return;
     const cur=el.value;
     el.innerHTML='<option value="">— Selecione o BL —</option>'+bls.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');
-  });
+  };
+  upd('cg-desc-bl',blsDesc);
+  upd('cg-exp-bl', blsExp);
 }
 
 function cgLoadDescricoes(modo){
@@ -9006,9 +9055,14 @@ function cgLoadDescricoes(modo){
   const selId=modo==='desc'?'cg-desc-descricao':'cg-exp-descricao';
   const bl=(document.getElementById(blId)?.value||'').toUpperCase();
   const el=document.getElementById(selId); if(!el) return;
-  const items=cgItems.filter(it=>it.bl.toUpperCase()===bl);
-  el.innerHTML='<option value="">— Selecione a descrição —</option>'+items.map(it=>{
-    const saldo=cgSaldoDescarga(it);
+  const items=cgItems.filter(it=>{
+    if(it.bl.toUpperCase()!==bl) return false;
+    if(modo==='desc') return cgSaldoDescarga(it)>0;
+    if(modo==='exp')  return cgSaldoArmazem(it)>0;
+    return true;
+  });
+  el.innerHTML='<option value="">— Selecione a descricao —</option>'+items.map(it=>{
+    const saldo=modo==='desc'?cgSaldoDescarga(it):cgSaldoArmazem(it);
     return `<option value="${it.descricao}">${it.descricao} [saldo: ${saldo} ${it.unidade||'UN'}]</option>`;
   }).join('');
   if(modo==='desc') cgUpdateSaldoDesc(); else cgUpdateSaldoExp();
@@ -9112,9 +9166,12 @@ function renderCgDescHoje(){
   const lista=cgDescargas.filter(r=>r.data===filtroData).sort((a,b)=>b.created_at>a.created_at?1:-1);
   const el=document.getElementById('cg-desc-hoje-list'); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📥</span>Nenhuma descarga para esta data.</div>'; return; }
+  const isAdmin=session?.role==='admin';
   el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
     <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>ARMAZÉM</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
-    <tbody>${lista.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+    <tbody>${lista.map((r,i)=>{
+      const canDel=isAdmin||(r.created_by&&r.created_by===session?.nome);
+      return `<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
       <td>${r.navio||'—'}</td>
       <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
@@ -9124,12 +9181,16 @@ function renderCgDescHoje(){
       <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
       <td>${r.armazem||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
       <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button></td>
-    </tr>`).join('')}</tbody>
+      <td>${canDel?`<button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button>`:''}</td>
+    </tr>`;}).join('')}</tbody>
   </table></div>`;
 }
 
 function excluirCgDescarga(id){
+  const rec=cgDescargas.find(r=>r.id===id);
+  if(rec&&session?.role!=='admin'&&rec.created_by&&rec.created_by!==session?.nome){
+    showToast('Sem permissao: voce so pode excluir seus proprios registros.','#e05c1a','#fff'); return;
+  }
   if(!confirm('Excluir este registro de descarga?')) return;
   cgDescargas=cgDescargas.filter(r=>r.id!==id);
   saveCgDescargas();
@@ -9139,7 +9200,7 @@ function excluirCgDescarga(id){
       .then(()=>_cgSetSyncStatus('ok'))
       .catch(e=>{ _cgSetSyncStatus('error'); console.warn('CG delete desc:',e); });
   }
-  renderCgDescHoje(); renderCgBanco(); updateCgStats(); cgLoadDescricoes('desc');
+  renderCgDescHoje(); renderCgBanco(); updateCgStats(); cgPopulateBLSelects(); cgLoadDescricoes('desc');
   showToast('Registro excluído.','#6b7280','#fff');
 }
 
@@ -9187,9 +9248,12 @@ function renderCgExpHoje(){
   const lista=cgExpedicoes.filter(r=>r.data===filtroData).sort((a,b)=>b.created_at>a.created_at?1:-1);
   const el=document.getElementById('cg-exp-hoje-list'); if(!el) return;
   if(!lista.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📤</span>Nenhuma expedição para esta data.</div>'; return; }
+  const isAdmin=session?.role==='admin';
   el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
     <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>DESTINO</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
-    <tbody>${lista.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+    <tbody>${lista.map((r,i)=>{
+      const canDel=isAdmin||(r.created_by&&r.created_by===session?.nome);
+      return `<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
       <td>${r.navio||'—'}</td>
       <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
@@ -9199,13 +9263,26 @@ function renderCgExpHoje(){
       <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
       <td>${r.destino||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
       <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
-      <td><button class="btn btn-sm btn-danger" onclick="excluirCgExpedicao('${r.id}')">✕</button></td>
-    </tr>`).join('')}</tbody>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="reprintCgTicketByExpId('${r.id}')">🖨</button>
+        ${canDel?`<button class="btn btn-sm btn-danger" onclick="excluirCgExpedicao('${r.id}')">✕</button>`:''}
+      </td>
+    </tr>`;}).join('')}</tbody>
   </table></div>`;
 }
 
+function reprintCgTicketByExpId(expId){
+  const t=ticketHistory.find(tk=>(tk.regs||tk.entries||[]).some(r=>r.id===expId));
+  if(!t){ showToast('Ticket nao encontrado para esta expedicao.','#f59e0b','#000'); return; }
+  _renderCgTicketWindow(t);
+}
+
 function excluirCgExpedicao(id){
-  if(!confirm('Excluir este registro de expedição?')) return;
+  const rec=cgExpedicoes.find(r=>r.id===id);
+  if(rec&&session?.role!=='admin'&&rec.created_by&&rec.created_by!==session?.nome){
+    showToast('Sem permissao: voce so pode excluir seus proprios registros.','#e05c1a','#fff'); return;
+  }
+  if(!confirm('Excluir este registro de expedicao?')) return;
   cgExpedicoes=cgExpedicoes.filter(r=>r.id!==id);
   saveCgExpedicoes();
   if(SUPA_URL&&SUPA_KEY){
@@ -9214,16 +9291,26 @@ function excluirCgExpedicao(id){
       .then(()=>_cgSetSyncStatus('ok'))
       .catch(e=>{ _cgSetSyncStatus('error'); console.warn('CG delete exp:',e); });
   }
-  renderCgExpHoje(); renderCgBanco(); updateCgStats(); cgLoadDescricoes('exp');
+  renderCgExpHoje(); renderCgBanco(); updateCgStats(); cgPopulateBLSelects(); cgLoadDescricoes('exp');
   showToast('Registro excluído.','#6b7280','#fff');
 }
 
 // ── Histórico ─────────────────────────────────────────────────
+function cgHistSetMonth(offset){
+  const d=new Date(); d.setMonth(d.getMonth()+offset);
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0');
+  const last=new Date(y,d.getMonth()+1,0).getDate();
+  document.getElementById('cg-h-ini').value=`${y}-${m}-01`;
+  document.getElementById('cg-h-fim').value=`${y}-${m}-${String(last).padStart(2,'0')}`;
+  renderCgHistorico();
+}
+
 function renderCgHistorico(){
   const fBl  =(document.getElementById('cg-h-bl')?.value||'').toLowerCase();
   const fTipo= document.getElementById('cg-h-tipo')?.value||'';
   const fIni = document.getElementById('cg-h-ini')?.value||'';
   const fFim = document.getElementById('cg-h-fim')?.value||'';
+  const fPer = document.getElementById('cg-h-periodo')?.value||'';
   let todos=[];
   if(!fTipo||fTipo==='descarga') cgDescargas.forEach(r=>todos.push({...r,_tipo:'DESCARGA'}));
   if(!fTipo||fTipo==='expedicao') cgExpedicoes.forEach(r=>todos.push({...r,_tipo:'EXPEDIÇÃO'}));
@@ -9231,12 +9318,13 @@ function renderCgHistorico(){
     if(fBl&&!r.bl.toLowerCase().includes(fBl)) return false;
     if(fIni&&r.data<fIni) return false;
     if(fFim&&r.data>fFim) return false;
+    if(fPer&&r.periodo!==fPer) return false;
     return true;
   }).sort((a,b)=>b.data>a.data?1:b.data<a.data?-1:b.created_at>a.created_at?1:-1);
   const el=document.getElementById('cg-historico-list'); if(!el) return;
   if(!todos.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">🕐</span>Nenhum registro encontrado.</div>'; return; }
   el.innerHTML=`<table>
-    <thead><tr><th>TIPO</th><th>DATA</th><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>VEÍCULO</th><th>MOTORISTA</th><th>ARMAZÉM</th><th>OBS</th></tr></thead>
+    <thead><tr><th>TIPO</th><th>DATA</th><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>VEÍCULO</th><th>MOTORISTA</th><th>PRAÇA</th><th>OBS</th></tr></thead>
     <tbody>${todos.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td><span style="font-weight:700;color:${r._tipo==='DESCARGA'?'var(--info)':'var(--exp)'};">${r._tipo}</span></td>
       <td>${r.data?r.data.split('-').reverse().join('/'):'—'}</td>
@@ -9249,6 +9337,203 @@ function renderCgHistorico(){
       <td>${r.armazem||'—'}</td><td>${r.obs||'—'}</td>
     </tr>`).join('')}</tbody>
   </table>`;
+}
+
+// ── Relatório CG ──────────────────────────────────────────────
+function renderCgRelatorio(){
+  const dtI = document.getElementById('cg-rel-dt-ini')?.value || '';
+  const dtF = document.getElementById('cg-rel-dt-fim')?.value || '';
+  const fBl  = (document.getElementById('cg-rel-bl')?.value || '').toUpperCase();
+  const fPer = document.getElementById('cg-rel-periodo')?.value || '';
+
+  const inRange = d => (!dtI || d >= dtI) && (!dtF || d <= dtF);
+
+  const descs = cgDescargas.filter(r => inRange(r.data) && (!fBl || r.bl === fBl) && (!fPer || r.periodo === fPer));
+  const exps  = cgExpedicoes.filter(r => inRange(r.data) && (!fBl || r.bl === fBl) && (!fPer || r.periodo === fPer));
+
+  const sumKg = arr => arr.reduce((a,r) => a+(parseFloat(r.peso_kg)||0), 0);
+  const sumQt = arr => arr.reduce((a,r) => a+(parseFloat(r.quantidade)||0), 0);
+  const fmtT  = kg => { const t=kg/1000; return t>=0.01 ? t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t' : '0 t'; };
+  const fmtKg2 = kg => Number(kg).toLocaleString('pt-BR') + ' kg';
+
+  const viagensDesc = new Set(descs.filter(r=>r.veiculo).map(r=>r.data+'|'+r.veiculo)).size;
+  const viagensExp  = new Set(exps.filter(r=>r.veiculo).map(r=>r.data+'|'+r.veiculo)).size;
+
+  const kgDesc = sumKg(descs);
+  const kgExp  = sumKg(exps);
+  const qtDesc = sumQt(descs);
+  const qtExp  = sumQt(exps);
+
+  // --- cards ---
+  const el = document.getElementById('cg-rel-content');
+  if(!el) return;
+
+  // --- por BL ---
+  const bls = [...new Set([...descs.map(r=>r.bl), ...exps.map(r=>r.bl)])].sort();
+  const blRows = bls.map(bl => {
+    const d = descs.filter(r=>r.bl===bl);
+    const e = exps.filter(r=>r.bl===bl);
+    return { bl, qtD: sumQt(d), kgD: sumKg(d), qtE: sumQt(e), kgE: sumKg(e), saldo: Math.max(0,sumKg(d)-sumKg(e)) };
+  });
+
+  // --- por produto ---
+  const prods = [...new Set([...descs.map(r=>r.produto||'—'), ...exps.map(r=>r.produto||'—')])].filter(Boolean).sort();
+  const prodRows = prods.map(p => {
+    const d = descs.filter(r=>(r.produto||'—')===p);
+    const e = exps.filter(r=>(r.produto||'—')===p);
+    return { prod: p, qtD: sumQt(d), kgD: sumKg(d), qtE: sumQt(e), kgE: sumKg(e) };
+  });
+
+  // --- por veículo ---
+  const veics = [...new Set([...descs.map(r=>r.veiculo||'—'), ...exps.map(r=>r.veiculo||'—')])].filter(v=>v&&v!=='—').sort();
+  const veicRows = veics.map(v => {
+    const d = descs.filter(r=>r.veiculo===v);
+    const e = exps.filter(r=>r.veiculo===v);
+    return { veic: v, tripsD: new Set(d.map(r=>r.data)).size, kgD: sumKg(d), tripsE: new Set(e.map(r=>r.data)).size, kgE: sumKg(e) };
+  });
+
+  // --- por destino (expedições) ---
+  const dests = [...new Set(exps.map(r=>r.destino||'—'))].sort();
+  const destRows = dests.map(d => {
+    const e = exps.filter(r=>(r.destino||'—')===d);
+    return { dest: d, qtd: sumQt(e), kg: sumKg(e), viagens: new Set(e.filter(r=>r.veiculo).map(r=>r.data+'|'+r.veiculo)).size };
+  });
+
+  // --- diário ---
+  const dias = [...new Set([...descs.map(r=>r.data), ...exps.map(r=>r.data)])].sort();
+  const diaRows = dias.map(d => {
+    const desc2 = descs.filter(r=>r.data===d);
+    const exp2  = exps.filter(r=>r.data===d);
+    return { dia: d, regsD: desc2.length, kgD: sumKg(desc2), regsE: exp2.length, kgE: sumKg(exp2),
+      viagens: new Set([...desc2,...exp2].filter(r=>r.veiculo).map(r=>r.veiculo)).size };
+  });
+
+  const thS = 'style="background:var(--surface);padding:.5rem .75rem;text-align:left;font-size:11px;font-family:\'JetBrains Mono\',monospace;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);"';
+  const tdS = 'style="padding:.45rem .75rem;font-size:13px;border-bottom:1px solid var(--border);"';
+  const tdN = 'style="padding:.45rem .75rem;font-size:13px;border-bottom:1px solid var(--border);font-family:\'JetBrains Mono\',monospace;text-align:right;"';
+
+  el.innerHTML = `
+  <!-- STAT CARDS -->
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1.5rem;">
+    ${[
+      ['📥 Registros Desc.', descs.length, '#3b82f6'],
+      ['📤 Registros Exp.', exps.length, '#a855f7'],
+      ['🚛 Viagens Desc.', viagensDesc, '#f97316'],
+      ['🚛 Viagens Exp.', viagensExp, '#f97316'],
+      ['⚖ Ton. Desc.', fmtT(kgDesc), '#22c55e'],
+      ['⚖ Ton. Exp.', fmtT(kgExp), '#22c55e'],
+      ['📦 Qtd. Desc.', qtDesc, '#64748b'],
+      ['📦 Qtd. Exp.', qtExp, '#64748b'],
+    ].map(([label,val,color])=>`
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;">
+        <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:.35rem;">${label}</div>
+        <div style="font-size:22px;font-weight:700;color:${color};">${val}</div>
+      </div>`).join('')}
+  </div>
+
+  <!-- POR DIA -->
+  <div style="margin-bottom:1.5rem;">
+    <div class="rpt-section-title">📅 RESUMO DIÁRIO</div>
+    ${diaRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th ${thS}>Data</th><th ${thS}>Desc. (reg)</th><th ${thS}>Ton. Desc.</th>
+        <th ${thS}>Exp. (reg)</th><th ${thS}>Ton. Exp.</th><th ${thS}>Veículos</th>
+      </tr></thead>
+      <tbody>${diaRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td ${tdS} style="font-family:'JetBrains Mono',monospace;font-weight:700;">${r.dia.split('-').reverse().join('/')}</td>
+        <td ${tdN}>${r.regsD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
+        <td ${tdN}>${r.regsE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
+        <td ${tdN}>${r.viagens}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado no período.</div>'}
+  </div>
+
+  <!-- POR BL -->
+  <div style="margin-bottom:1.5rem;">
+    <div class="rpt-section-title">📋 POR BL</div>
+    ${blRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th ${thS}>BL</th><th ${thS}>Qtd. Desc.</th><th ${thS}>Ton. Desc.</th>
+        <th ${thS}>Qtd. Exp.</th><th ${thS}>Ton. Exp.</th><th ${thS}>Saldo (ton)</th>
+      </tr></thead>
+      <tbody>${blRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td ${tdS} style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
+        <td ${tdN}>${r.qtD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
+        <td ${tdN}>${r.qtE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
+        <td ${tdN} style="color:${r.saldo>0?'#f97316':'var(--muted)'};">${fmtT(r.saldo)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
+  </div>
+
+  <!-- POR PRODUTO -->
+  <div style="margin-bottom:1.5rem;">
+    <div class="rpt-section-title">🏷 POR PRODUTO</div>
+    ${prodRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th ${thS}>Produto</th><th ${thS}>Qtd. Desc.</th><th ${thS}>Ton. Desc.</th>
+        <th ${thS}>Qtd. Exp.</th><th ${thS}>Ton. Exp.</th>
+      </tr></thead>
+      <tbody>${prodRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td ${tdS} style="color:#f97316;font-weight:700;">${r.prod}</td>
+        <td ${tdN}>${r.qtD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
+        <td ${tdN}>${r.qtE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
+  </div>
+
+  <!-- POR VEÍCULO -->
+  <div style="margin-bottom:1.5rem;">
+    <div class="rpt-section-title">🚛 POR VEÍCULO</div>
+    ${veicRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th ${thS}>Veículo</th>
+        <th ${thS}>Dias c/ Desc.</th><th ${thS}>Ton. Desc.</th>
+        <th ${thS}>Dias c/ Exp.</th><th ${thS}>Ton. Exp.</th>
+        <th ${thS}>Total ton.</th>
+      </tr></thead>
+      <tbody>${veicRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td ${tdS} style="font-weight:700;">${r.veic}</td>
+        <td ${tdN}>${r.tripsD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
+        <td ${tdN}>${r.tripsE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
+        <td ${tdN} style="font-weight:700;">${fmtT(r.kgD+r.kgE)}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
+  </div>
+
+  <!-- POR DESTINO -->
+  <div style="margin-bottom:1.5rem;">
+    <div class="rpt-section-title">📍 EXPEDIÇÕES POR DESTINO</div>
+    ${destRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th ${thS}>Destino</th><th ${thS}>Qtd. Exp.</th><th ${thS}>Ton. Exp.</th><th ${thS}>Viagens</th>
+      </tr></thead>
+      <tbody>${destRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td ${tdS} style="font-weight:700;">${r.dest}</td>
+        <td ${tdN}>${r.qtd}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kg)}</td>
+        <td ${tdN}>${r.viagens}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
+  </div>`;
+}
+
+function exportCgRelatorio(){
+  const dtI = document.getElementById('cg-rel-dt-ini')?.value || '';
+  const dtF = document.getElementById('cg-rel-dt-fim')?.value || '';
+  const fBl = (document.getElementById('cg-rel-bl')?.value || '').toUpperCase();
+  const inRange = d => (!dtI || d >= dtI) && (!dtF || d <= dtF);
+  const descs = cgDescargas.filter(r => inRange(r.data) && (!fBl || r.bl === fBl));
+  const exps  = cgExpedicoes.filter(r => inRange(r.data) && (!fBl || r.bl === fBl));
+  if(!descs.length && !exps.length){ showToast('Nenhum dado para exportar no período.','#f59e0b','#000'); return; }
+  if(typeof XLSX === 'undefined'){ showToast('SheetJS não disponível.','#e05c1a','#fff'); return; }
+  const wb = XLSX.utils.book_new();
+  const hD = ['Data','BL','Navio','Produto','Descricao','Qtd','Peso(kg)','Veiculo','Motorista','Armazem','Periodo','Obs','Usuario','Criado em'];
+  const hE = ['Data','BL','Navio','Produto','Descricao','Qtd','Peso(kg)','Veiculo','Motorista','Destino','Periodo','Obs','Usuario','Criado em'];
+  const rowsD = descs.map(r=>[r.data,r.bl,r.navio||'',r.produto||'',r.descricao,r.quantidade,r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.periodo||'',r.obs||'',r.created_by||'',r.created_at||'']);
+  const rowsE = exps.map(r=>[r.data,r.bl,r.navio||'',r.produto||'',r.descricao,r.quantidade,r.peso_kg||0,r.veiculo||'',r.motorista||'',r.destino||'',r.periodo||'',r.obs||'',r.created_by||'',r.created_at||'']);
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([hD,...rowsD]), 'Descargas');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([hE,...rowsE]), 'Expedicoes');
+  const periodo = (dtI||'inicio')+'_a_'+(dtF||'fim');
+  XLSX.writeFile(wb, `CG_Relatorio_${periodo}.xlsx`);
 }
 
 // ── Export Excel ──────────────────────────────────────────────
@@ -9311,7 +9596,7 @@ function _cgItemBlChange(modo,idx,val){
   _cgFormItems[modo][idx].qtd='';
   const descSel=document.getElementById(`cg-${modo}-desc-${idx}`);
   if(descSel){
-    const descs=val?cgItems.filter(x=>x.bl===val).map(x=>x.descricao):[];
+    const descs=val?cgItems.filter(x=>x.bl===val&&(modo==='desc'?cgSaldoDescarga(x):cgSaldoArmazem(x))>0).map(x=>x.descricao):[];
     descSel.innerHTML='<option value="">— Descrição —</option>'+descs.map(d=>`<option value="${d}">${d}</option>`).join('');
   }
   const qtdEl=document.getElementById(`cg-${modo}-qtd-${idx}`); if(qtdEl) qtdEl.value='';
@@ -9343,8 +9628,8 @@ function _cgUpdateItemSaldo(modo,idx){
 
 function _cgItemRowInner(modo,idx,it){
   const S='background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;';
-  const bls=[...new Set(cgItems.map(x=>x.bl))].sort();
-  const descs=it.bl?cgItems.filter(x=>x.bl===it.bl).map(x=>x.descricao):[];
+  const bls=[...new Set(cgItems.filter(x=>(modo==='desc'?cgSaldoDescarga(x):cgSaldoArmazem(x))>0).map(x=>x.bl))].sort();
+  const descs=it.bl?cgItems.filter(x=>x.bl===it.bl&&(modo==='desc'?cgSaldoDescarga(x):cgSaldoArmazem(x))>0).map(x=>x.descricao):[];
   const blOpts='<option value="">— BL —</option>'+bls.map(b=>`<option value="${b}"${b===it.bl?' selected':''}>${b}</option>`).join('');
   const descOpts='<option value="">— Descrição —</option>'+descs.map(d=>`<option value="${d}"${d===it.descricao?' selected':''}>${d}</option>`).join('');
   return `<div style="display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-bottom:.4rem;">
@@ -9375,6 +9660,8 @@ function cgRevisar(modo){
   const armazem=modo==='desc'?(document.getElementById('cg-desc-armazem')?.value||'').trim():'';
   const obs=(document.getElementById(`cg-${modo}-obs`)?.value||'').trim();
   if(!data){showToast('⚠ Preencha a Data.','#f59e0b','#000');return;}
+  if(!veiculo){showToast('⚠ Preencha o Veículo / Placa.','#f59e0b','#000');return;}
+  if(!/^[A-Za-z]{3}-\d[A-Za-z0-9]\d{2}$/.test(veiculo)){showToast('⚠ Placa inválida. Use o padrão AAA-1234 ou AAA-1A34.','#e05c1a','#fff');return;}
   const items=_cgFormItems[modo];
   if(!items.length){showToast('⚠ Adicione pelo menos um item.','#f59e0b','#000');return;}
   for(let i=0;i<items.length;i++){
@@ -9435,7 +9722,7 @@ async function cgConfirmar(){
     }catch(e){
       if(e.message&&(e.message.includes('column')||e.message.includes('does not exist'))){
         try{
-          const safeRegs=regs.map(({peso_kg,destino,...r})=>r);
+          const safeRegs=modo==='desc'?regs.map(({peso_kg,destino,...r})=>r):regs.map(({peso_kg,armazem,...r})=>r);
           await _postRegs(safeRegs);
           _cgSetSyncStatus('ok');
           showToast('Salvo sem campo peso/destino. Execute o SQL de atualizacao no Supabase.','#f59e0b','#000');
@@ -9456,7 +9743,7 @@ async function cgConfirmar(){
   if(modo==='desc'){const el=document.getElementById('cg-desc-armazem');if(el)el.value='';}
   if(modo==='exp'){const el=document.getElementById('cg-exp-destino');if(el)el.value='';}
   if(modo==='desc') renderCgDescHoje(); else renderCgExpHoje();
-  renderCgBanco(); updateCgStats();
+  renderCgBanco(); updateCgStats(); cgPopulateBLSelects();
   showToast(`✓ ${total} item(s) registrado(s) com sucesso!`,'#22c55e','#000');
 }
 
@@ -10949,18 +11236,19 @@ alter table users add column if not exists email text;
 
     <!-- TABS -->
     <div class="cg-tab-bar">
-      <div class="cg-tab active" id="cg-tab-banco"    onclick="showCgTab('banco')">🗄 BANCO DE ITENS</div>
-      <div class="cg-tab"        id="cg-tab-descarga" onclick="showCgTab('descarga')">📥 DESCARGA</div>
+      <div class="cg-tab active" id="cg-tab-descarga" onclick="showCgTab('descarga')">📥 DESCARGA</div>
       <div class="cg-tab"        id="cg-tab-expedicao"onclick="showCgTab('expedicao')">📤 EXPEDIÇÃO</div>
+      <div class="cg-tab"        id="cg-tab-banco"    onclick="showCgTab('banco')">🗄 BANCO DE ITENS</div>
       <div class="cg-tab"        id="cg-tab-historico"onclick="showCgTab('historico')">🕐 HISTÓRICO</div>
+      <div class="cg-tab" id="cg-tab-relatorio" onclick="showCgTab('relatorio')">📊 RELATORIO</div>
     </div>
 
     <!-- ── TAB: BANCO ── -->
-    <div id="cg-panel-banco" class="cg-panel active">
+    <div id="cg-panel-banco" class="cg-panel">
       <div class="rpt-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
           <div class="rpt-section-title" style="margin:0;">📦 ITENS POR BL</div>
-          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+          <div id="cg-banco-admin-btns" style="display:flex;gap:.5rem;flex-wrap:wrap;">
             <button class="btn btn-secondary btn-sm" onclick="downloadCgTemplate()">↓ MODELO EXCEL</button>
             <button class="btn btn-info btn-sm" onclick="openCgImportModal()">↑ IMPORTAR EXCEL</button>
             <button class="btn btn-primary btn-sm" onclick="abrirModalCgItem()">+ NOVO ITEM</button>
@@ -11001,7 +11289,7 @@ alter table users add column if not exists email text;
     </div>
 
     <!-- ── TAB: DESCARGA ── -->
-    <div id="cg-panel-descarga" class="cg-panel">
+    <div id="cg-panel-descarga" class="cg-panel active">
       <div class="rpt-section">
         <div class="rpt-section-title">📥 REGISTRAR DESCARGA</div>
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;text-transform:uppercase;">Dados do Veículo</div>
@@ -11018,14 +11306,14 @@ alter table users add column if not exists email text;
           </div>
           <div class="form-group">
             <label>Veículo / Placa</label>
-            <input type="text" id="cg-desc-veiculo" placeholder="ex: ABC-1234" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+            <input type="text" id="cg-desc-veiculo" placeholder="ex: ABC-1234" maxlength="8" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').replace(/^([A-Z]{3})([0-9].*)$/,'$1-$2')" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;font-family:'JetBrains Mono',monospace;letter-spacing:1px;">
           </div>
           <div class="form-group">
             <label>Motorista</label>
             <input type="text" id="cg-desc-motorista" placeholder="Nome do motorista" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
           </div>
           <div class="form-group">
-            <label>Armazém</label>
+            <label>Praça</label>
             <input type="text" id="cg-desc-armazem" placeholder="ex: CD-01" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
           </div>
           <div class="form-group" style="grid-column:1/-1;">
@@ -11069,7 +11357,7 @@ alter table users add column if not exists email text;
           </div>
           <div class="form-group">
             <label>Veículo / Placa</label>
-            <input type="text" id="cg-exp-veiculo" placeholder="ex: ABC-1234" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+            <input type="text" id="cg-exp-veiculo" placeholder="ex: ABC-1234" maxlength="8" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').replace(/^([A-Z]{3})([0-9].*)$/,'$1-$2')" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;font-family:'JetBrains Mono',monospace;letter-spacing:1px;">
           </div>
           <div class="form-group">
             <label>Motorista</label>
@@ -11108,27 +11396,77 @@ alter table users add column if not exists email text;
           <div class="rpt-section-title" style="margin:0;">🕐 HISTÓRICO COMPLETO</div>
           <button class="btn btn-primary btn-sm" onclick="exportCgXLSX()">↓ EXCEL</button>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem;">
-          <div>
+        <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;margin-bottom:1rem;">
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">BL</label>
-            <input type="text" id="cg-h-bl" placeholder="Filtrar…" oninput="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <input type="text" id="cg-h-bl" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:130px;">
           </div>
-          <div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Tipo</label>
-            <select id="cg-h-tipo" onchange="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <select id="cg-h-tipo" onchange="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
               <option value="">Todos</option><option value="descarga">Descarga</option><option value="expedicao">Expedição</option>
             </select>
           </div>
-          <div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Período</label>
+            <select id="cg-h-periodo" onchange="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+              <option value="">Todos</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Data Início</label>
-            <input type="date" id="cg-h-ini" onchange="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <input type="date" id="cg-h-ini" onchange="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
           </div>
-          <div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Data Fim</label>
-            <input type="date" id="cg-h-fim" onchange="renderCgHistorico()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <input type="date" id="cg-h-fim" onchange="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;">
           </div>
+          <button class="btn btn-secondary btn-sm" onclick="cgHistSetMonth(0)">Mês atual</button>
+          <button class="btn btn-secondary btn-sm" onclick="cgHistSetMonth(-1)">Mês anterior</button>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cg-h-ini').value='';document.getElementById('cg-h-fim').value='';renderCgHistorico();">Tudo</button>
         </div>
         <div id="cg-historico-list"><div class="empty-state"><span class="empty-icon">🕐</span>Nenhum registro encontrado.</div></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: RELATÓRIO ── -->
+    <div id="cg-panel-relatorio" class="cg-panel">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem;">
+          <div class="rpt-section-title" style="margin:0;">📊 RELATÓRIO CARGA GERAL</div>
+          <button class="btn btn-secondary btn-sm" onclick="exportCgRelatorio()">↓ EXPORTAR EXCEL</button>
+        </div>
+        <!-- filtros -->
+        <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;margin-bottom:1.25rem;">
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Data início</span>
+            <input type="date" id="cg-rel-dt-ini" onchange="renderCgRelatorio()"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Data fim</span>
+            <input type="date" id="cg-rel-dt-fim" onchange="renderCgRelatorio()"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">BL (opcional)</span>
+            <select id="cg-rel-bl" onchange="renderCgRelatorio()"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:160px;">
+              <option value="">Todos os BLs</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Período</span>
+            <select id="cg-rel-periodo" onchange="renderCgRelatorio()"
+              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+              <option value="">Todos</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
+            </select>
+          </div>
+          <button class="btn btn-secondary btn-sm" onclick="cgRelSetMonth(0)">Mês atual</button>
+          <button class="btn btn-secondary btn-sm" onclick="cgRelSetMonth(-1)">Mês anterior</button>
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cg-rel-dt-ini').value='';document.getElementById('cg-rel-dt-fim').value='';renderCgRelatorio();">Tudo</button>
+        </div>
+        <div id="cg-rel-content"></div>
       </div>
     </div>
 
