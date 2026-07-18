@@ -1113,7 +1113,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         </div>
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Veículo / Placa</label>
-          <select id="rpt-veiculo" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <select id="rpt-veiculo" onchange="renderReport()"><option value="">Todos</option></select>
         </div>
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Data Início</label>
@@ -1422,6 +1422,15 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 <div id="toast"></div>
 
 <script>
+// Captura erros JS globais e mostra no console E como toast assim que showToast existir
+window.onerror = function(msg, src, line, col, err){
+  console.error('JS ERROR:', msg, 'at', src, line+':'+col, err);
+  if(typeof showToast==='function') showToast('Erro JS: '+msg+' (linha '+line+')','#e05c1a','#fff',8000);
+  return false;
+};
+window.onunhandledrejection = function(e){
+  console.error('Unhandled promise rejection:', e.reason);
+};
 // ══════════════════════════════════════════
 // AUTH & USERS
 // ══════════════════════════════════════════
@@ -1476,6 +1485,7 @@ async function doLogin(){
   const p     = document.getElementById('login-pass').value;
   const errEl = document.getElementById('login-error');
   const btnEl = document.getElementById('btn-login');
+  try {
 
   // 1. Try local cache first (fast path)
   users = loadUsers();
@@ -1520,7 +1530,7 @@ async function doLogin(){
   }
 
   session = found;
-  localStorage.setItem('sp_session', JSON.stringify(session));
+  try{ localStorage.setItem('sp_session', JSON.stringify(session)); }catch(e){ console.warn('localStorage indisponível:', e.message); }
   errEl.classList.remove('show');
   document.getElementById('login-user').classList.remove('err');
   document.getElementById('login-pass').classList.remove('err');
@@ -1555,6 +1565,11 @@ async function doLogin(){
     if(window._fatSyncInterval) clearInterval(window._fatSyncInterval);
     window._fatSyncInterval = setInterval(autoSyncFatConfig, 5*60*1000);
   }).catch(err=>{ showToast('⚠ Erro ao carregar dados: '+err.message,'#f59e0b','#000'); });
+  } catch(loginErr) {
+    console.error('Erro no doLogin:', loginErr);
+    if(errEl) { errEl.textContent = 'Erro técnico: ' + loginErr.message; errEl.classList.add('show'); }
+    if(btnEl) { btnEl.disabled=false; btnEl.textContent='ENTRAR'; }
+  }
 }
 
 function doLogout(){
@@ -1940,8 +1955,14 @@ function setPage(stateKey, page, refreshFn){ tableState[stateKey].page=page; ref
 // ══════════════════════════════════════════
 // CLOUD API — SUPABASE (REST direto, sem intermediário)
 // ══════════════════════════════════════════
-let SUPA_URL = localStorage.getItem('sp_supa_url') || 'https://vvkhjadutrmjjprsoooy.supabase.co';
-let SUPA_KEY = localStorage.getItem('sp_supa_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2hqYWR1dHJtampwcnNvb295Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTYzODAsImV4cCI6MjA4OTUzMjM4MH0.Pqd28EuifwCx41IC2XaWWqwC26c_IbbtzfvjyKsNFYw';
+let SUPA_URL, SUPA_KEY;
+try {
+  SUPA_URL = localStorage.getItem('sp_supa_url') || 'https://vvkhjadutrmjjprsoooy.supabase.co';
+  SUPA_KEY = localStorage.getItem('sp_supa_key') || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2hqYWR1dHJtampwcnNvb295Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTYzODAsImV4cCI6MjA4OTUzMjM4MH0.Pqd28EuifwCx41IC2XaWWqwC26c_IbbtzfvjyKsNFYw';
+} catch(e) {
+  SUPA_URL = 'https://vvkhjadutrmjjprsoooy.supabase.co';
+  SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2a2hqYWR1dHJtampwcnNvb295Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NTYzODAsImV4cCI6MjA4OTUzMjM4MH0.Pqd28EuifwCx41IC2XaWWqwC26c_IbbtzfvjyKsNFYw';
+}
 let API_URL  = SUPA_URL; // alias legado
 
 function setSupabase(url, key){
@@ -2992,6 +3013,7 @@ function addCoilLote(px){
   const already = src.find(r=>r.coil===coil);
 
 
+
   let status='ok', msg='';
   if(already){
     status='err';
@@ -3502,60 +3524,37 @@ function filterReprintList(term){
   _renderReprintList(term||'', tipo);
 }
 
-function _renderReprintList(term, tipo){
+function _renderReprintList(){
   const list  = document.getElementById('reprint-list');
   const empty = document.getElementById('reprint-empty');
   const isAdmin = session?.role==='admin';
-  const q = (term||'').toLowerCase().trim();
-
-  const filtered = ticketHistory.map((t,i)=>({t,i})).filter(({t})=>{
-    if(tipo && (t.tipo||'EXP')!==tipo) return false;
-    if(!q) return true;
-    const entries = t.entries||t.regs||[];
-    const bls = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(' ');
-    const hay = [t.ticketNum,t.veiculo,t.motorista,t.destino,bls,t.usuario].join(' ').toLowerCase();
-    return hay.includes(q);
-  });
-
-  if(!filtered.length){ list.innerHTML=''; empty.style.display=''; return; }
+  if(!ticketHistory.length){
+    list.innerHTML=''; empty.style.display='';
+    return;
+  }
   empty.style.display='none';
-
-  list.innerHTML = filtered.map(({t,i})=>{
-    const dt      = new Date(t.emitidoEm).toLocaleString('pt-BR');
-    const isCG    = t.tipo==='CGX'||t.tipo==='CG';
-    const entries = t.entries||t.regs||[];
-    const bl      = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(', ')||'--';
-    const tipoBadge = isCG
-      ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(249,115,22,.15);color:#f97316;border:1px solid rgba(249,115,22,.3);border-radius:4px;padding:1px 6px;">📦 CG</span>`
-      : `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(168,85,247,.15);color:var(--exp);border:1px solid rgba(168,85,247,.3);border-radius:4px;padding:1px 6px;">🔩 BOB</span>`;
+  list.innerHTML = ticketHistory.map((t,i)=>{
+    const dt     = new Date(t.emitidoEm).toLocaleString('pt-BR');
+    const nCoils = t.entries?.length||0;
+    const bl     = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
+    const totalPB= (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
     const usuarioBadge = isAdmin && t.usuario
       ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:1px 6px;">👤 ${t.usuario}</span>`
       : '';
-    let detail;
-    if(isCG){
-      const totalQtd = entries.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
-      const totalKg  = entries.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
-      detail = `<span>BL: <b style="color:var(--text)">${bl}</b></span>
-        <span>${entries.length} item(s)</span>
-        <span>${totalQtd} un${totalKg?' / '+Number(totalKg).toLocaleString('pt-BR')+' kg':''}</span>
-        <span>${t.data?t.data.split('-').reverse().join('/'):''} / ${t.periodo||'--'}</span>`;
-    } else {
-      const totalPB = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
-      detail = `<span>BL: <b style="color:var(--text)">${bl}</b></span>
-        <span>${entries.length} bobina(s)</span>
-        <span>${fmtKg(totalPB)} kg</span>
-        <span>${t.data?t.data.split('-').reverse().join('/'):''} / ${t.periodo||'--'}</span>`;
-    }
     return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;gap:1rem;">
       <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:14px;">${t.ticketNum||'--'}</span>
-          ${tipoBadge}
-          <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo||'--'}</span>
-          <span style="font-size:11px;color:var(--muted);">${t.motorista||'--'}</span>
+        <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${t.ticketNum}</span>
+          <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo||'—'}</span>
+          <span style="font-size:11px;color:var(--muted);">${t.motorista||'—'}</span>
           ${usuarioBadge}
         </div>
-        <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">${detail}</div>
+        <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
+          <span>BL: <b style="color:var(--text)">${bl}</b></span>
+          <span>${nCoils} bobina(s)</span>
+          <span>${fmtKg(totalPB)} kg</span>
+          <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo||'—'}</span>
+        </div>
         <div style="font-size:10px;color:var(--muted);margin-top:.2rem;">Emitido: ${dt}</div>
       </div>
       <button class="btn btn-secondary btn-sm" onclick="reprintTicket(${i});closeModal('modal-reprint');" style="flex-shrink:0;">🖨 IMPRIMIR</button>
@@ -4891,7 +4890,6 @@ function downloadTemplateMov(tipo){
 function _rptGetSelected(id){
   const el=document.getElementById(id);
   if(!el) return [];
-  // Ignora a opção em branco "— Todos —" (value="")
   return [...el.options].filter(o=>o.selected&&o.value).map(o=>o.value);
 }
 function _rptMatch(val, selected){ return !selected.length || selected.includes(val); }
@@ -4931,10 +4929,7 @@ function buildRptSelects(){
   const repopulate=(id, items, curSel)=>{
     const el=document.getElementById(id); if(!el) return;
     const scrollTop=el.scrollTop;
-    // Primeira opção em branco — permite não ter nenhum selecionado (= Todos)
-    const blankSel=(curSel.length===0)?' selected':'';
-    el.innerHTML=`<option value=""${blankSel}>— Todos —</option>`
-      +items.map(x=>`<option value="${x}"${curSel.includes(x)?' selected':''}>${x}</option>`).join('');
+    el.innerHTML=items.map(x=>`<option value="${x}"${curSel.includes(x)?' selected':''}>${x}</option>`).join('');
     el.scrollTop=scrollTop;
   };
 
@@ -4949,7 +4944,7 @@ function buildRptSelects(){
 function clearRptFilters(){
   ['rpt-navio','rpt-cliente','rpt-bl','rpt-armazem','rpt-veiculo','rpt-produto'].forEach(id=>{
     const el=document.getElementById(id); if(!el) return;
-    [...el.options].forEach(o=>{ o.selected = (o.value===''); });
+    [...el.options].forEach(o=>o.selected=false);
   });
   ['rpt-data-ini','rpt-data-fim','rpt-search','rpt-periodo','rpt-fat-status'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
@@ -5787,7 +5782,6 @@ function renderMapa(){
   const fa = document.getElementById('map-filter-armazem')?.value||'';
   const fb = document.getElementById('map-filter-bl')?.value||'';
   const fn = document.getElementById('map-filter-navio')?.value||'';
-  const fq = (document.getElementById('map-search-coil')?.value||'').trim().toUpperCase();
 
   // Filter coilsDB with normalized armazem comparison
   const normArm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
@@ -5795,8 +5789,7 @@ function renderMapa(){
 
   // Filter coilsDB
   const base = coilsDB.filter(c=>
-    (!fa||normArm(c.armazem)===normArm(fa)) && (!fb||c.bl===fb) && (!fn||c.navio===fn) &&
-    (!fq||c.coil.toUpperCase().includes(fq))
+    (!fa||normArm(c.armazem)===normArm(fa)) && (!fb||c.bl===fb) && (!fn||c.navio===fn)
   );
 
   // Sets for status lookup
@@ -8741,8 +8734,18 @@ async function loadCgFromSupabase(){
       supa('bulk_expedicoes?select=*&order=data.asc,created_at.asc').catch(()=>null)
     ]);
     if(items!==null){ cgItems=items; saveCgItems(); }
-    if(descs!==null){ cgDescargas=descs; saveCgDescargas(); }
-    if(exps!==null){  cgExpedicoes=exps; saveCgExpedicoes(); }
+    if(descs!==null){
+      const supaDescIds=new Set(descs.map(r=>r.id));
+      const localOnlyDescs=cgDescargas.filter(r=>!supaDescIds.has(r.id));
+      cgDescargas=[...descs,...localOnlyDescs].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      saveCgDescargas();
+    }
+    if(exps!==null){
+      const supaExpIds=new Set(exps.map(r=>r.id));
+      const localOnlyExps=cgExpedicoes.filter(r=>!supaExpIds.has(r.id));
+      cgExpedicoes=[...exps,...localOnlyExps].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      saveCgExpedicoes();
+    }
   }catch(e){ console.warn('CG load error:',e.message); }
 }
 
@@ -8778,18 +8781,8 @@ async function cgSyncNow(showFeedback=false){
       supa('bulk_expedicoes?select=*&order=data.asc,created_at.asc').catch(()=>null)
     ]);
     if(items!==null){ cgItems=items; saveCgItems(); }
-    if(descs!==null){
-      const _dIds=new Set(descs.map(r=>r.id));
-      const _dLocal=cgDescargas.filter(r=>!_dIds.has(r.id));
-      cgDescargas=[...descs,..._dLocal].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
-      saveCgDescargas();
-    }
-    if(exps!==null){
-      const _eIds=new Set(exps.map(r=>r.id));
-      const _eLocal=cgExpedicoes.filter(r=>!_eIds.has(r.id));
-      cgExpedicoes=[...exps,..._eLocal].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
-      saveCgExpedicoes();
-    }
+    if(descs!==null){ cgDescargas=descs; saveCgDescargas(); }
+    if(exps!==null){  cgExpedicoes=exps; saveCgExpedicoes(); }
     renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico();
     updateCgStats(); cgPopulateBLSelects();
     _cgSetSyncStatus('ok');
@@ -8895,10 +8888,6 @@ function updateCgStats(){
 
 // ── Banco ─────────────────────────────────────────────────────
 function renderCgBanco(){
-  const isAdmin = session?.role==='admin';
-  const abDiv = document.getElementById('cg-banco-admin-btns');
-  if(abDiv) abDiv.style.display = isAdmin ? '' : 'none';
-
   const fBl     =(document.getElementById('cg-f-bl')?.value||'').toLowerCase();
   const fNav    =(document.getElementById('cg-f-navio')?.value||'').toLowerCase();
   const fCli    =(document.getElementById('cg-f-cliente')?.value||'').toLowerCase();
@@ -8921,7 +8910,7 @@ function renderCgBanco(){
     <thead><tr>
       <th>BL</th><th>NAVIO</th><th>ARMAZÉM</th><th>CLIENTE</th><th>PRODUTO</th>
       <th>DESCRIÇÃO / CHAVE</th><th>PESO (kg)</th>
-      <th>QTD TOTAL</th><th>DESCARREGADO</th><th>SALDO DESC.</th><th>EM ARMAZÉM</th><th>EXPEDIDO</th><th>STATUS</th>${isAdmin?'<th></th>':''}
+      <th>QTD TOTAL</th><th>DESCARREGADO</th><th>SALDO DESC.</th><th>EM ARMAZÉM</th><th>EXPEDIDO</th><th>STATUS</th><th></th>
     </tr></thead>
     <tbody>${filtered.map((it,i)=>{
       const desc =cgQtdDescarregada(it.bl,it.descricao);
@@ -8936,12 +8925,12 @@ function renderCgBanco(){
                   '<span class="cg-badge cg-badge-aberto">Aguardando</span>';
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
         <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${it.bl}</td>
-        <td>${it.navio||'-'}</td>
-        <td>${it.armazem||'-'}</td>
-        <td>${it.cliente||'-'}</td>
-        <td><span style="font-weight:700;color:#f97316;">${it.produto||'-'}</span></td>
+        <td>${it.navio||'—'}</td>
+        <td>${it.armazem||'—'}</td>
+        <td>${it.cliente||'—'}</td>
+        <td><span style="font-weight:700;color:#f97316;">${it.produto||'—'}</span></td>
         <td style="max-width:200px;">${it.descricao}</td>
-        <td style="font-family:'JetBrains Mono',monospace;">${it.peso?Number(it.peso).toLocaleString('pt-BR'):'-'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;">${it.peso?Number(it.peso).toLocaleString('pt-BR'):'—'}</td>
         <td style="font-weight:700;">${it.qtd_total} ${it.unidade||'UN'}</td>
         <td>${desc} <span style="font-size:10px;color:var(--muted);">(${pct}%)</span>
           <div class="cg-progress-bar" style="margin-top:3px;"><div class="${fillCls}" style="width:${pctBar}%"></div></div></td>
@@ -8949,10 +8938,10 @@ function renderCgBanco(){
         <td style="font-weight:700;color:var(--info);">${sArm} ${it.unidade||'UN'}</td>
         <td>${exp} ${it.unidade||'UN'}</td>
         <td>${badge}</td>
-        ${isAdmin?`<td style="white-space:nowrap;">
-          <button class="btn btn-sm btn-secondary" style="margin-right:.25rem;" onclick="abrirModalCgItem('${it.id}')">✎</button>
+        <td style="white-space:nowrap;">
+          <button class="btn btn-sm btn-secondary" style="margin-right:.25rem;" onclick="abrirModalCgItem('${it.id}')">✏</button>
           <button class="btn btn-sm btn-danger" onclick="excluirCgItem('${it.id}')">✕</button>
-        </td>`:''}
+        </td>
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
@@ -9039,15 +9028,12 @@ function excluirCgItem(id){
 
 // ── Selects de BL ─────────────────────────────────────────────
 function cgPopulateBLSelects(){
-  const blsDesc=[...new Set(cgItems.filter(it=>cgSaldoDescarga(it)>0).map(it=>it.bl))].sort();
-  const blsExp =[...new Set(cgItems.filter(it=>cgSaldoArmazem(it)>0).map(it=>it.bl))].sort();
-  const upd=(id,bls)=>{
+  const bls=[...new Set(cgItems.map(it=>it.bl))].sort();
+  ['cg-desc-bl','cg-exp-bl'].forEach(id=>{
     const el=document.getElementById(id); if(!el) return;
     const cur=el.value;
     el.innerHTML='<option value="">— Selecione o BL —</option>'+bls.map(b=>`<option value="${b}"${b===cur?' selected':''}>${b}</option>`).join('');
-  };
-  upd('cg-desc-bl',blsDesc);
-  upd('cg-exp-bl', blsExp);
+  });
 }
 
 function cgLoadDescricoes(modo){
@@ -9055,14 +9041,9 @@ function cgLoadDescricoes(modo){
   const selId=modo==='desc'?'cg-desc-descricao':'cg-exp-descricao';
   const bl=(document.getElementById(blId)?.value||'').toUpperCase();
   const el=document.getElementById(selId); if(!el) return;
-  const items=cgItems.filter(it=>{
-    if(it.bl.toUpperCase()!==bl) return false;
-    if(modo==='desc') return cgSaldoDescarga(it)>0;
-    if(modo==='exp')  return cgSaldoArmazem(it)>0;
-    return true;
-  });
-  el.innerHTML='<option value="">— Selecione a descricao —</option>'+items.map(it=>{
-    const saldo=modo==='desc'?cgSaldoDescarga(it):cgSaldoArmazem(it);
+  const items=cgItems.filter(it=>it.bl.toUpperCase()===bl);
+  el.innerHTML='<option value="">— Selecione a descrição —</option>'+items.map(it=>{
+    const saldo=cgSaldoDescarga(it);
     return `<option value="${it.descricao}">${it.descricao} [saldo: ${saldo} ${it.unidade||'UN'}]</option>`;
   }).join('');
   if(modo==='desc') cgUpdateSaldoDesc(); else cgUpdateSaldoExp();
@@ -9170,7 +9151,7 @@ function renderCgDescHoje(){
   el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
     <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>ARMAZÉM</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
     <tbody>${lista.map((r,i)=>{
-      const canDel=isAdmin||(r.created_by&&r.created_by===session?.nome);
+      const canAct=isAdmin||(r.created_by&&r.created_by===session?.nome);
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
       <td>${r.navio||'—'}</td>
@@ -9181,7 +9162,7 @@ function renderCgDescHoje(){
       <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
       <td>${r.armazem||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
       <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
-      <td>${canDel?`<button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button>`:''}</td>
+      <td style="white-space:nowrap;">${canAct?`<button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="editarCgReg('desc','${r.id}')">✎</button>`:''} ${canAct?`<button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button>`:''}</td>
     </tr>`;}).join('')}</tbody>
   </table></div>`;
 }
@@ -9252,7 +9233,7 @@ function renderCgExpHoje(){
   el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
     <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>DESTINO</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
     <tbody>${lista.map((r,i)=>{
-      const canDel=isAdmin||(r.created_by&&r.created_by===session?.nome);
+      const canAct=isAdmin||(r.created_by&&r.created_by===session?.nome);
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
       <td>${r.navio||'—'}</td>
@@ -9265,7 +9246,8 @@ function renderCgExpHoje(){
       <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="reprintCgTicketByExpId('${r.id}')">🖨</button>
-        ${canDel?`<button class="btn btn-sm btn-danger" onclick="excluirCgExpedicao('${r.id}')">✕</button>`:''}
+        ${canAct?`<button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="editarCgReg('exp','${r.id}')">✎</button>`:''}
+        ${canAct?`<button class="btn btn-sm btn-danger" onclick="excluirCgExpedicao('${r.id}')">✕</button>`:''}
       </td>
     </tr>`;}).join('')}</tbody>
   </table></div>`;
@@ -9295,6 +9277,69 @@ function excluirCgExpedicao(id){
   showToast('Registro excluído.','#6b7280','#fff');
 }
 
+
+// ── Edição de registros CG ────────────────────────────────────
+function editarCgReg(modo,id){
+  const arr=modo==='desc'?cgDescargas:cgExpedicoes;
+  const rec=arr.find(r=>r.id===id);
+  if(!rec){showToast('Registro não encontrado.','#e05c1a','#fff');return;}
+  const isAdmin=session?.role==='admin';
+  if(!isAdmin&&rec.created_by&&rec.created_by!==session?.nome){
+    showToast('Sem permissão: você só pode editar seus próprios registros.','#e05c1a','#fff');return;
+  }
+  document.getElementById('cg-edit-id').value=id;
+  document.getElementById('cg-edit-modo').value=modo;
+  document.getElementById('cg-edit-data').value=rec.data||'';
+  document.getElementById('cg-edit-periodo').value=rec.periodo||'';
+  document.getElementById('cg-edit-veiculo').value=rec.veiculo||'';
+  document.getElementById('cg-edit-motorista').value=rec.motorista||'';
+  document.getElementById('cg-edit-obs').value=rec.obs||'';
+  const armazDiv=document.getElementById('cg-edit-armazem-row');
+  const destDiv=document.getElementById('cg-edit-destino-row');
+  if(modo==='desc'){
+    document.getElementById('cg-edit-armazem').value=rec.armazem||'';
+    if(armazDiv)armazDiv.style.display='';
+    if(destDiv)destDiv.style.display='none';
+  }else{
+    document.getElementById('cg-edit-destino').value=rec.destino||'';
+    if(armazDiv)armazDiv.style.display='none';
+    if(destDiv)destDiv.style.display='';
+  }
+  document.getElementById('modal-cg-edit').classList.add('open');
+}
+
+async function salvarEdicaoCgReg(){
+  const id=document.getElementById('cg-edit-id').value;
+  const modo=document.getElementById('cg-edit-modo').value;
+  const data=document.getElementById('cg-edit-data').value;
+  const periodo=document.getElementById('cg-edit-periodo').value;
+  const veiculo=(document.getElementById('cg-edit-veiculo').value||'').trim();
+  const motorista=(document.getElementById('cg-edit-motorista').value||'').trim();
+  const obs=(document.getElementById('cg-edit-obs').value||'').trim();
+  const armazem=(document.getElementById('cg-edit-armazem').value||'').trim();
+  const destino=(document.getElementById('cg-edit-destino').value||'').trim();
+  if(!data){showToast('⚠ Preencha a Data.','#f59e0b','#000');return;}
+  if(!veiculo){showToast('⚠ Preencha o Veículo / Placa.','#f59e0b','#000');return;}
+  if(!/^[A-Za-z]{3}-\d[A-Za-z0-9]\d{2}$/.test(veiculo)){showToast('⚠ Placa inválida. Use o padrão AAA-1234 ou AAA-1A34.','#e05c1a','#fff');return;}
+  const arr=modo==='desc'?cgDescargas:cgExpedicoes;
+  const idx=arr.findIndex(r=>r.id===id);
+  if(idx<0){showToast('Registro não encontrado.','#e05c1a','#fff');return;}
+  arr[idx]={...arr[idx],data,periodo,veiculo,motorista,obs,...(modo==='desc'?{armazem}:{destino})};
+  if(modo==='desc')saveCgDescargas();else saveCgExpedicoes();
+  closeModal('modal-cg-edit');
+  if(SUPA_URL&&SUPA_KEY){
+    const tbl=modo==='desc'?'bulk_descargas':'bulk_expedicoes';
+    _cgSetSyncStatus('syncing');
+    const patch={data,periodo,veiculo,motorista,obs,...(modo==='desc'?{armazem}:{destino})};
+    supa(`${tbl}?id=eq.${id}`,{method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify(patch)})
+      .then(()=>_cgSetSyncStatus('ok'))
+      .catch(e=>{_cgSetSyncStatus('error');showToast('Erro ao salvar no servidor: '+e.message,'#e05c1a','#fff');});
+  }
+  if(modo==='desc'){renderCgDescHoje();renderCgHistorico();}
+  else{renderCgExpHoje();renderCgHistorico();}
+  updateCgStats();
+  showToast('✓ Registro atualizado.','#22c55e','#000');
+}
 // ── Histórico ─────────────────────────────────────────────────
 function cgHistSetMonth(offset){
   const d=new Date(); d.setMonth(d.getMonth()+offset);
@@ -9339,201 +9384,81 @@ function renderCgHistorico(){
   </table>`;
 }
 
-// ── Relatório CG ──────────────────────────────────────────────
+// ── Relatório ─────────────────────────────────────────────────
 function renderCgRelatorio(){
-  const dtI = document.getElementById('cg-rel-dt-ini')?.value || '';
-  const dtF = document.getElementById('cg-rel-dt-fim')?.value || '';
-  const fBl  = (document.getElementById('cg-rel-bl')?.value || '').toUpperCase();
-  const fPer = document.getElementById('cg-rel-periodo')?.value || '';
-
-  const inRange = d => (!dtI || d >= dtI) && (!dtF || d <= dtF);
-
-  const descs = cgDescargas.filter(r => inRange(r.data) && (!fBl || r.bl === fBl) && (!fPer || r.periodo === fPer));
-  const exps  = cgExpedicoes.filter(r => inRange(r.data) && (!fBl || r.bl === fBl) && (!fPer || r.periodo === fPer));
-
-  const sumKg = arr => arr.reduce((a,r) => a+(parseFloat(r.peso_kg)||0), 0);
-  const sumQt = arr => arr.reduce((a,r) => a+(parseFloat(r.quantidade)||0), 0);
-  const fmtT  = kg => { const t=kg/1000; return t>=0.01 ? t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t' : '0 t'; };
-  const fmtKg2 = kg => Number(kg).toLocaleString('pt-BR') + ' kg';
-
-  const viagensDesc = new Set(descs.filter(r=>r.veiculo).map(r=>r.data+'|'+r.veiculo)).size;
-  const viagensExp  = new Set(exps.filter(r=>r.veiculo).map(r=>r.data+'|'+r.veiculo)).size;
-
-  const kgDesc = sumKg(descs);
-  const kgExp  = sumKg(exps);
-  const qtDesc = sumQt(descs);
-  const qtExp  = sumQt(exps);
-
-  // --- cards ---
-  const el = document.getElementById('cg-rel-content');
-  if(!el) return;
-
-  // --- por BL ---
-  const bls = [...new Set([...descs.map(r=>r.bl), ...exps.map(r=>r.bl)])].sort();
-  const blRows = bls.map(bl => {
-    const d = descs.filter(r=>r.bl===bl);
-    const e = exps.filter(r=>r.bl===bl);
-    return { bl, qtD: sumQt(d), kgD: sumKg(d), qtE: sumQt(e), kgE: sumKg(e), saldo: Math.max(0,sumKg(d)-sumKg(e)) };
-  });
-
-  // --- por produto ---
-  const prods = [...new Set([...descs.map(r=>r.produto||'—'), ...exps.map(r=>r.produto||'—')])].filter(Boolean).sort();
-  const prodRows = prods.map(p => {
-    const d = descs.filter(r=>(r.produto||'—')===p);
-    const e = exps.filter(r=>(r.produto||'—')===p);
-    return { prod: p, qtD: sumQt(d), kgD: sumKg(d), qtE: sumQt(e), kgE: sumKg(e) };
-  });
-
-  // --- por veículo ---
-  const veics = [...new Set([...descs.map(r=>r.veiculo||'—'), ...exps.map(r=>r.veiculo||'—')])].filter(v=>v&&v!=='—').sort();
-  const veicRows = veics.map(v => {
-    const d = descs.filter(r=>r.veiculo===v);
-    const e = exps.filter(r=>r.veiculo===v);
-    return { veic: v, tripsD: new Set(d.map(r=>r.data)).size, kgD: sumKg(d), tripsE: new Set(e.map(r=>r.data)).size, kgE: sumKg(e) };
-  });
-
-  // --- por destino (expedições) ---
-  const dests = [...new Set(exps.map(r=>r.destino||'—'))].sort();
-  const destRows = dests.map(d => {
-    const e = exps.filter(r=>(r.destino||'—')===d);
-    return { dest: d, qtd: sumQt(e), kg: sumKg(e), viagens: new Set(e.filter(r=>r.veiculo).map(r=>r.data+'|'+r.veiculo)).size };
-  });
-
-  // --- diário ---
-  const dias = [...new Set([...descs.map(r=>r.data), ...exps.map(r=>r.data)])].sort();
-  const diaRows = dias.map(d => {
-    const desc2 = descs.filter(r=>r.data===d);
-    const exp2  = exps.filter(r=>r.data===d);
-    return { dia: d, regsD: desc2.length, kgD: sumKg(desc2), regsE: exp2.length, kgE: sumKg(exp2),
-      viagens: new Set([...desc2,...exp2].filter(r=>r.veiculo).map(r=>r.veiculo)).size };
-  });
-
-  const thS = 'style="background:var(--surface);padding:.5rem .75rem;text-align:left;font-size:11px;font-family:\'JetBrains Mono\',monospace;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;border-bottom:1px solid var(--border);"';
-  const tdS = 'style="padding:.45rem .75rem;font-size:13px;border-bottom:1px solid var(--border);"';
-  const tdN = 'style="padding:.45rem .75rem;font-size:13px;border-bottom:1px solid var(--border);font-family:\'JetBrains Mono\',monospace;text-align:right;"';
-
-  el.innerHTML = `
-  <!-- STAT CARDS -->
-  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:.75rem;margin-bottom:1.5rem;">
-    ${[
-      ['📥 Registros Desc.', descs.length, '#3b82f6'],
-      ['📤 Registros Exp.', exps.length, '#a855f7'],
-      ['🚛 Viagens Desc.', viagensDesc, '#f97316'],
-      ['🚛 Viagens Exp.', viagensExp, '#f97316'],
-      ['⚖ Ton. Desc.', fmtT(kgDesc), '#22c55e'],
-      ['⚖ Ton. Exp.', fmtT(kgExp), '#22c55e'],
-      ['📦 Qtd. Desc.', qtDesc, '#64748b'],
-      ['📦 Qtd. Exp.', qtExp, '#64748b'],
-    ].map(([label,val,color])=>`
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;">
-        <div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;margin-bottom:.35rem;">${label}</div>
-        <div style="font-size:22px;font-weight:700;color:${color};">${val}</div>
-      </div>`).join('')}
-  </div>
-
-  <!-- POR DIA -->
-  <div style="margin-bottom:1.5rem;">
-    <div class="rpt-section-title">📅 RESUMO DIÁRIO</div>
-    ${diaRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-      <thead><tr>
-        <th ${thS}>Data</th><th ${thS}>Desc. (reg)</th><th ${thS}>Ton. Desc.</th>
-        <th ${thS}>Exp. (reg)</th><th ${thS}>Ton. Exp.</th><th ${thS}>Veículos</th>
-      </tr></thead>
-      <tbody>${diaRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td ${tdS} style="font-family:'JetBrains Mono',monospace;font-weight:700;">${r.dia.split('-').reverse().join('/')}</td>
-        <td ${tdN}>${r.regsD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
-        <td ${tdN}>${r.regsE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
-        <td ${tdN}>${r.viagens}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado no período.</div>'}
-  </div>
-
-  <!-- POR BL -->
-  <div style="margin-bottom:1.5rem;">
-    <div class="rpt-section-title">📋 POR BL</div>
-    ${blRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-      <thead><tr>
-        <th ${thS}>BL</th><th ${thS}>Qtd. Desc.</th><th ${thS}>Ton. Desc.</th>
-        <th ${thS}>Qtd. Exp.</th><th ${thS}>Ton. Exp.</th><th ${thS}>Saldo (ton)</th>
-      </tr></thead>
-      <tbody>${blRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td ${tdS} style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
-        <td ${tdN}>${r.qtD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
-        <td ${tdN}>${r.qtE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
-        <td ${tdN} style="color:${r.saldo>0?'#f97316':'var(--muted)'};">${fmtT(r.saldo)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
-  </div>
-
-  <!-- POR PRODUTO -->
-  <div style="margin-bottom:1.5rem;">
-    <div class="rpt-section-title">🏷 POR PRODUTO</div>
-    ${prodRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-      <thead><tr>
-        <th ${thS}>Produto</th><th ${thS}>Qtd. Desc.</th><th ${thS}>Ton. Desc.</th>
-        <th ${thS}>Qtd. Exp.</th><th ${thS}>Ton. Exp.</th>
-      </tr></thead>
-      <tbody>${prodRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td ${tdS} style="color:#f97316;font-weight:700;">${r.prod}</td>
-        <td ${tdN}>${r.qtD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
-        <td ${tdN}>${r.qtE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
-  </div>
-
-  <!-- POR VEÍCULO -->
-  <div style="margin-bottom:1.5rem;">
-    <div class="rpt-section-title">🚛 POR VEÍCULO</div>
-    ${veicRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-      <thead><tr>
-        <th ${thS}>Veículo</th>
-        <th ${thS}>Dias c/ Desc.</th><th ${thS}>Ton. Desc.</th>
-        <th ${thS}>Dias c/ Exp.</th><th ${thS}>Ton. Exp.</th>
-        <th ${thS}>Total ton.</th>
-      </tr></thead>
-      <tbody>${veicRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td ${tdS} style="font-weight:700;">${r.veic}</td>
-        <td ${tdN}>${r.tripsD}</td><td ${tdN} style="color:#22c55e;">${fmtT(r.kgD)}</td>
-        <td ${tdN}>${r.tripsE}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kgE)}</td>
-        <td ${tdN} style="font-weight:700;">${fmtT(r.kgD+r.kgE)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
-  </div>
-
-  <!-- POR DESTINO -->
-  <div style="margin-bottom:1.5rem;">
-    <div class="rpt-section-title">📍 EXPEDIÇÕES POR DESTINO</div>
-    ${destRows.length ? `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">
-      <thead><tr>
-        <th ${thS}>Destino</th><th ${thS}>Qtd. Exp.</th><th ${thS}>Ton. Exp.</th><th ${thS}>Viagens</th>
-      </tr></thead>
-      <tbody>${destRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td ${tdS} style="font-weight:700;">${r.dest}</td>
-        <td ${tdN}>${r.qtd}</td><td ${tdN} style="color:#a855f7;">${fmtT(r.kg)}</td>
-        <td ${tdN}>${r.viagens}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>` : '<div style="color:var(--muted);font-size:13px;padding:.5rem 0;">Nenhum dado.</div>'}
+  const fBl  = document.getElementById('cg-rel-bl')?.value||'';
+  const fPer = document.getElementById('cg-rel-periodo')?.value||'';
+  const fIni = document.getElementById('cg-rel-dt-ini')?.value||'';
+  const fFim = document.getElementById('cg-rel-dt-fim')?.value||'';
+  const inRange = d => (!fIni||d>=fIni) && (!fFim||d<=fFim);
+  const descs = cgDescargas.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
+  const exps  = cgExpedicoes.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
+  const el = document.getElementById('cg-rel-content'); if(!el) return;
+  if(!descs.length && !exps.length){
+    el.innerHTML='<div class="empty-state"><span class="empty-icon">📊</span>Nenhum registro no período selecionado.</div>'; return;
+  }
+  const fmtDate = d => d?d.split('-').reverse().join('/'):'—';
+  const totalDescPeso = descs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
+  const totalExpPeso  = exps.reduce((a,r) =>a+(parseFloat(r.peso_kg)||0),0);
+  const fmtTon = kg => { const t=kg/1000; return t>=0.01?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t':'0 t'; };
+  let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
+    <div class="rpt-summary-card"><div class="rpt-sum-val">${descs.length}</div><div class="rpt-sum-label">Descargas</div><div class="rpt-sum-unit">${fmtTon(totalDescPeso)}</div></div>
+    <div class="rpt-summary-card"><div class="rpt-sum-val">${exps.length}</div><div class="rpt-sum-label">Expedições</div><div class="rpt-sum-unit">${fmtTon(totalExpPeso)}</div></div>
   </div>`;
+  if(descs.length){
+    html+=`<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--info);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📥 DESCARGAS (${descs.length})</div>
+    <div style="overflow-x:auto;margin-bottom:1.5rem;"><table>
+      <thead><tr><th>DATA</th><th>PERÍODO</th><th>BL</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO</th><th>VEÍCULO</th><th>PRAÇA</th><th>OPERADOR</th></tr></thead>
+      <tbody>${descs.sort((a,b)=>a.data>b.data?1:-1).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td>${fmtDate(r.data)}</td><td>${r.periodo||'—'}</td>
+        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
+        <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
+        <td>${r.descricao}</td>
+        <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
+        <td>${r.peso_kg?fmtTon(parseFloat(r.peso_kg)):'—'}</td>
+        <td>${r.veiculo||'—'}</td><td>${r.armazem||'—'}</td><td>${r.created_by||'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+  if(exps.length){
+    html+=`<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--exp);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📤 EXPEDIÇÕES (${exps.length})</div>
+    <div style="overflow-x:auto;"><table>
+      <thead><tr><th>DATA</th><th>PERÍODO</th><th>BL</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO</th><th>VEÍCULO</th><th>DESTINO</th><th>OPERADOR</th></tr></thead>
+      <tbody>${exps.sort((a,b)=>a.data>b.data?1:-1).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td>${fmtDate(r.data)}</td><td>${r.periodo||'—'}</td>
+        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
+        <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
+        <td>${r.descricao}</td>
+        <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
+        <td>${r.peso_kg?fmtTon(parseFloat(r.peso_kg)):'—'}</td>
+        <td>${r.veiculo||'—'}</td><td>${r.destino||'—'}</td><td>${r.created_by||'—'}</td>
+      </tr>`).join('')}</tbody>
+    </table></div>`;
+  }
+  el.innerHTML = html;
 }
 
 function exportCgRelatorio(){
-  const dtI = document.getElementById('cg-rel-dt-ini')?.value || '';
-  const dtF = document.getElementById('cg-rel-dt-fim')?.value || '';
-  const fBl = (document.getElementById('cg-rel-bl')?.value || '').toUpperCase();
-  const inRange = d => (!dtI || d >= dtI) && (!dtF || d <= dtF);
-  const descs = cgDescargas.filter(r => inRange(r.data) && (!fBl || r.bl === fBl));
-  const exps  = cgExpedicoes.filter(r => inRange(r.data) && (!fBl || r.bl === fBl));
-  if(!descs.length && !exps.length){ showToast('Nenhum dado para exportar no período.','#f59e0b','#000'); return; }
-  if(typeof XLSX === 'undefined'){ showToast('SheetJS não disponível.','#e05c1a','#fff'); return; }
+  const fBl  = document.getElementById('cg-rel-bl')?.value||'';
+  const fPer = document.getElementById('cg-rel-periodo')?.value||'';
+  const fIni = document.getElementById('cg-rel-dt-ini')?.value||'';
+  const fFim = document.getElementById('cg-rel-dt-fim')?.value||'';
+  const inRange = d => (!fIni||d>=fIni) && (!fFim||d<=fFim);
+  const descs = cgDescargas.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
+  const exps  = cgExpedicoes.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
   const wb = XLSX.utils.book_new();
-  const hD = ['Data','BL','Navio','Produto','Descricao','Qtd','Peso(kg)','Veiculo','Motorista','Armazem','Periodo','Obs','Usuario','Criado em'];
-  const hE = ['Data','BL','Navio','Produto','Descricao','Qtd','Peso(kg)','Veiculo','Motorista','Destino','Periodo','Obs','Usuario','Criado em'];
-  const rowsD = descs.map(r=>[r.data,r.bl,r.navio||'',r.produto||'',r.descricao,r.quantidade,r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.periodo||'',r.obs||'',r.created_by||'',r.created_at||'']);
-  const rowsE = exps.map(r=>[r.data,r.bl,r.navio||'',r.produto||'',r.descricao,r.quantidade,r.peso_kg||0,r.veiculo||'',r.motorista||'',r.destino||'',r.periodo||'',r.obs||'',r.created_by||'',r.created_at||'']);
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([hD,...rowsD]), 'Descargas');
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([hE,...rowsE]), 'Expedicoes');
-  const periodo = (dtI||'inicio')+'_a_'+(dtF||'fim');
-  XLSX.writeFile(wb, `CG_Relatorio_${periodo}.xlsx`);
+  const hDesc=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','PRAÇA','OBS','OPERADOR']];
+  descs.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
+    hDesc.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.obs||'',r.created_by||'']);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hDesc),'Descargas');
+  const hExp=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','DESTINO','OBS','OPERADOR']];
+  exps.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
+    hExp.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.destino||'',r.obs||'',r.created_by||'']);
+  });
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hExp),'Expedicoes');
+  XLSX.writeFile(wb,'4SIDES_CargaGeral_Relatorio_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  showToast('✓ Excel exportado!','#22c55e','#000');
 }
 
 // ── Export Excel ──────────────────────────────────────────────
@@ -9715,25 +9640,12 @@ async function cgConfirmar(){
   if(SUPA_URL&&SUPA_KEY){
     const tbl=modo==='desc'?'bulk_descargas':'bulk_expedicoes';
     _cgSetSyncStatus('syncing');
-    const _postRegs=async(rows)=>Promise.all(rows.map(r=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(r)})));
     try{
-      await _postRegs(regs);
+      await Promise.all(regs.map(reg=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)})));
       _cgSetSyncStatus('ok');
     }catch(e){
-      if(e.message&&(e.message.includes('column')||e.message.includes('does not exist'))){
-        try{
-          const safeRegs=modo==='desc'?regs.map(({peso_kg,destino,...r})=>r):regs.map(({peso_kg,armazem,...r})=>r);
-          await _postRegs(safeRegs);
-          _cgSetSyncStatus('ok');
-          showToast('Salvo sem campo peso/destino. Execute o SQL de atualizacao no Supabase.','#f59e0b','#000');
-        }catch(e2){
-          _cgSetSyncStatus('error');
-          showToast('Erro ao salvar no servidor: '+e2.message+'. Dado salvo localmente.','#e05c1a','#fff');
-        }
-      } else {
-        _cgSetSyncStatus('error');
-        showToast('Erro ao salvar no servidor: '+e.message+'. Dado salvo localmente.','#e05c1a','#fff');
-      }
+      _cgSetSyncStatus('error');
+      showToast('⚠ Erro ao salvar no servidor: '+e.message+'. Dados salvos localmente.','#e05c1a','#fff');
     }
   }
   if(modo==='exp') printTicketCgExpedicao(regs,veiculo,motorista,destino,data,periodo,obs);
@@ -10113,6 +10025,7 @@ function _fuGerarHtmlEmail(cfg, destNome){
 }
 
 // ── Microsoft Exchange / Graph API ────────────────────────────
+
 
 // ── OAuth2 PKCE nativo — sem dependência externa ──────────────────────────────
 
@@ -11240,7 +11153,7 @@ alter table users add column if not exists email text;
       <div class="cg-tab"        id="cg-tab-expedicao"onclick="showCgTab('expedicao')">📤 EXPEDIÇÃO</div>
       <div class="cg-tab"        id="cg-tab-banco"    onclick="showCgTab('banco')">🗄 BANCO DE ITENS</div>
       <div class="cg-tab"        id="cg-tab-historico"onclick="showCgTab('historico')">🕐 HISTÓRICO</div>
-      <div class="cg-tab" id="cg-tab-relatorio" onclick="showCgTab('relatorio')">📊 RELATORIO</div>
+      <div class="cg-tab" id="cg-tab-relatorio" onclick="showCgTab('relatorio')">📊 RELATÓRIO</div>
     </div>
 
     <!-- ── TAB: BANCO ── -->
@@ -11436,29 +11349,24 @@ alter table users add column if not exists email text;
           <div class="rpt-section-title" style="margin:0;">📊 RELATÓRIO CARGA GERAL</div>
           <button class="btn btn-secondary btn-sm" onclick="exportCgRelatorio()">↓ EXPORTAR EXCEL</button>
         </div>
-        <!-- filtros -->
         <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;margin-bottom:1.25rem;">
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Data início</span>
-            <input type="date" id="cg-rel-dt-ini" onchange="renderCgRelatorio()"
-              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <input type="date" id="cg-rel-dt-ini" onchange="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Data fim</span>
-            <input type="date" id="cg-rel-dt-fim" onchange="renderCgRelatorio()"
-              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <input type="date" id="cg-rel-dt-fim" onchange="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">BL (opcional)</span>
-            <select id="cg-rel-bl" onchange="renderCgRelatorio()"
-              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:160px;">
+            <select id="cg-rel-bl" onchange="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:160px;">
               <option value="">Todos os BLs</option>
             </select>
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Período</span>
-            <select id="cg-rel-periodo" onchange="renderCgRelatorio()"
-              style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
+            <select id="cg-rel-periodo" onchange="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
               <option value="">Todos</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
             </select>
           </div>
@@ -11470,6 +11378,63 @@ alter table users add column if not exists email text;
       </div>
     </div>
 
+  </div>
+</div>
+
+
+<!-- MODAL: EDITAR REGISTRO CG -->
+<div class="modal-overlay" id="modal-cg-edit">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title">✎ EDITAR REGISTRO</div>
+    <div class="modal-body">
+      <input type="hidden" id="cg-edit-id">
+      <input type="hidden" id="cg-edit-modo">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+        <div class="form-group">
+          <label>Data *</label>
+          <input type="date" id="cg-edit-data" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group">
+          <label>Per
+í
+odo</label>
+          <select id="cg-edit-periodo" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+            <option value="">—</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Ve
+í
+culo / Placa *</label>
+          <input type="text" id="cg-edit-veiculo" maxlength="8" oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9-]/g,'').replace(/^([A-Z]{3})([0-9].*)$/,'$1-$2')" placeholder="ex: ABC-1234" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;font-family:'JetBrains Mono',monospace;letter-spacing:1px;">
+        </div>
+        <div class="form-group">
+          <label>Motorista</label>
+          <input type="text" id="cg-edit-motorista" placeholder="Nome do motorista" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group" id="cg-edit-armazem-row">
+          <label>Pra
+ç
+a</label>
+          <input type="text" id="cg-edit-armazem" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group" id="cg-edit-destino-row">
+          <label>Destino</label>
+          <input type="text" id="cg-edit-destino" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+        <div class="form-group" style="grid-column:1/-1;">
+          <label>Observa
+ç
+ã
+o</label>
+          <input type="text" id="cg-edit-obs" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:14px;outline:none;">
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cg-edit')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="salvarEdicaoCgReg()">✓ SALVAR</button>
+    </div>
   </div>
 </div>
 
