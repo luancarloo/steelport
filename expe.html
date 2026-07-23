@@ -8781,6 +8781,22 @@ function _cgSetSyncStatus(status){
   }
 }
 
+// A tabela bulk_expedicoes NÃO possui a coluna 'armazem' (apenas descargas usam praça).
+// Enviar 'armazem' faz o PostgREST rejeitar o INSERT inteiro (42703) → nada sincroniza.
+function _cgSanitizeReg(tbl, reg){
+  if(tbl==='bulk_expedicoes'){ const {armazem:_omit, ...rest}=reg; return rest; }
+  return reg;
+}
+// Reenvia ao servidor (upsert por id) registros locais que ainda não chegaram lá.
+// Cura registros presos por falha anterior de POST e saves feitos offline.
+async function _cgPushMissing(tbl, missing){
+  if(!SUPA_URL||!SUPA_KEY||!missing||!missing.length) return;
+  await Promise.all(missing.map(reg=>
+    supa(tbl+'?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(_cgSanitizeReg(tbl,reg))})
+      .catch(e=>console.warn('CG push',tbl,e.message))
+  ));
+}
+
 async function cgSyncNow(showFeedback=false){
   if(!SUPA_URL||!SUPA_KEY){ _cgSetSyncStatus('offline'); return; }
   _cgSetSyncStatus('syncing');
@@ -8798,12 +8814,14 @@ async function cgSyncNow(showFeedback=false){
       const localOnly=cgDescargas.filter(r=>!ids.has(r.id));
       cgDescargas=[...descs,...localOnly].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
       saveCgDescargas();
+      _cgPushMissing('bulk_descargas', localOnly);
     }
     if(exps!==null){
       const ids=new Set(exps.map(r=>r.id));
       const localOnly=cgExpedicoes.filter(r=>!ids.has(r.id));
       cgExpedicoes=[...exps,...localOnly].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
       saveCgExpedicoes();
+      _cgPushMissing('bulk_expedicoes', localOnly);
     }
     renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico();
     updateCgStats(); cgPopulateBLSelects();
@@ -9888,7 +9906,7 @@ async function cgConfirmar(){
     const tbl=modo==='desc'?'bulk_descargas':'bulk_expedicoes';
     _cgSetSyncStatus('syncing');
     try{
-      await Promise.all(regs.map(reg=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)})));
+      await Promise.all(regs.map(reg=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(_cgSanitizeReg(tbl,reg))})));
       _cgSetSyncStatus('ok');
     }catch(e){
       _cgSetSyncStatus('error');
