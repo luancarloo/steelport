@@ -1112,8 +1112,8 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
           </select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Veículo / Placa</label>
-          <select id="rpt-veiculo" onchange="renderReport()"><option value="">Todos</option></select>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Veículo / Placa <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
+          <select id="rpt-veiculo" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
         </div>
         <div>
           <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Data Início</label>
@@ -3279,7 +3279,8 @@ async function printTicketCgExpedicao(regs, veiculo, motorista, destino, data, p
 }
 
 function _renderCgTicketWindow(t){
-  const {ticketNum, regs=[], veiculo, motorista, destino, data, periodo, obs, usuario} = t;
+  const {ticketNum, veiculo, motorista, destino, data, periodo, obs, usuario} = t;
+  const regs = (t.regs && t.regs.length) ? t.regs : (t.entries || []);
   const dataFmt = data ? data.split('-').reverse().join('/') : '-';
   const LINE  = '------------------------------------------------';
   const DLINE = '================================================';
@@ -3288,35 +3289,36 @@ function _renderCgTicketWindow(t){
   const totalQtd=regs.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
   const totalPeso=regs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const cliente=[...new Set(regs.map(r=>r.cliente).filter(Boolean))].join(' / ').toUpperCase()||'-';
+  const navio=[...new Set(regs.map(r=>r.navio).filter(Boolean))].join(' / ').toUpperCase()||'-';
   const w=window.open('','_blank','width=400,height=750');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>${ticketNum}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
-    @page{size:80mm auto;margin:4mm 3mm;}
-    body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#000;background:#fff;width:72mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
+    @page{size:80mm auto;margin:3mm 2mm;}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#000;background:#fff;width:76mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
     .no-print{margin-bottom:10px;display:flex;gap:8px;}
     .no-print button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:700;font-family:Arial,sans-serif;text-transform:uppercase;}
-    .header{display:flex;align-items:center;justify-content:center;gap:7px;margin-bottom:3px;}
-    .header img{height:26px;width:auto;}
-    .header-name{font-size:16px;font-weight:900;letter-spacing:1px;line-height:1.1;}
-    .header-sub{text-align:center;font-size:12px;font-weight:700;margin-bottom:2px;}
-    .tnum{text-align:center;font-size:18px;font-weight:900;letter-spacing:2px;margin:3px 0;}
-    .tdate{text-align:center;font-size:12px;margin-bottom:2px;}
-    .sep{white-space:pre;font-size:13px;margin:3px 0;font-family:Arial,sans-serif;letter-spacing:0;}
-    .stitle{font-size:14px;font-weight:900;margin-bottom:3px;}
-    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:13px;}
+    .header{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin-bottom:4px;}
+    .header img{height:52px;width:auto;filter:contrast(1.4) grayscale(1);}
+    .header-name{font-size:20px;font-weight:900;letter-spacing:1.5px;line-height:1.1;color:#000;}
+    .header-sub{text-align:center;font-size:12px;font-weight:700;margin-bottom:2px;color:#000;}
+    .tnum{text-align:center;font-size:18px;font-weight:900;letter-spacing:2px;margin:3px 0;color:#000;}
+    .tdate{text-align:center;font-size:12px;margin-bottom:2px;color:#000;}
+    .sep{border-top:1.5px dashed #000;height:0;margin:6px 0;font-size:0;line-height:0;overflow:hidden;}
+    .stitle{font-size:14px;font-weight:900;margin-bottom:3px;color:#000;}
+    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:13px;color:#000;}
     .lbl{flex-shrink:0;margin-right:6px;font-weight:700;}
     .val{font-weight:900;text-align:right;word-break:break-all;}
-    .item-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #999;}
+    .item-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #000;color:#000;}
     .item-row:last-child{border-bottom:none;}
     .item-desc{font-weight:700;flex:1;padding-right:6px;word-break:break-word;}
     .item-qtd{text-align:right;flex-shrink:0;font-weight:900;}
-    .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:3px 0;}
-    .sign-area{margin-top:8px;}
-    .sign-line{border-top:1.5px solid #000;margin-top:22px;padding-top:3px;text-align:center;font-size:12px;font-weight:700;}
-    .footer{text-align:center;font-size:11px;margin-top:8px;color:#555;}
-    @media print{.no-print{display:none!important;}body{width:72mm;margin:0;padding:0;}}
+    .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:3px 0;color:#000;}
+    .sign-area{margin-top:24px;}
+    .sign-line{border-top:1.5px solid #000;margin-top:52px;padding-top:3px;text-align:center;font-size:12px;font-weight:700;color:#000;}
+    .footer{text-align:center;font-size:11px;margin-top:10px;color:#000;}
+    @media print{.no-print{display:none!important;}body{width:76mm;margin:0;padding:0;}}
   </style></head><body>
 
   <div class="no-print">
@@ -3334,8 +3336,16 @@ function _renderCgTicketWindow(t){
   <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
   <div class="sep">${LINE}</div>
 
+  <div class="stitle">OPERADOR</div>
+  <div style="font-size:13px;font-weight:900;color:#000;word-break:normal;overflow-wrap:break-word;margin:2px 0;line-height:1.2;">SEATRADE SERV. PORT. E LOG. LTDA</div>
+  <div class="sep">${LINE}</div>
+
   <div class="stitle">CLIENTE</div>
   ${row('', cliente)}
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">NAVIO</div>
+  ${row('', navio)}
   <div class="sep">${LINE}</div>
 
   <div class="stitle">TRANSPORTE</div>
@@ -3361,9 +3371,9 @@ function _renderCgTicketWindow(t){
 
   <div class="sign-area">
     <div class="sign-line">ASSINATURA DO MOTORISTA</div>
-    <div style="margin-top:10px;padding:6px 4px;border:1px solid #ccc;border-radius:3px;">
-      <div style="font-size:10px;color:#555;margin-bottom:2px;">OPERADOR RESPONSAVEL</div>
-      <div style="font-size:14px;font-weight:900;text-align:center;">${(usuario||'—').toUpperCase()}</div>
+    <div style="margin-top:14px;padding:6px 4px;border:1px solid #000;border-radius:3px;">
+      <div style="font-size:10px;color:#000;margin-bottom:2px;">OPERADOR RESPONSAVEL</div>
+      <div style="font-size:14px;font-weight:900;text-align:center;color:#000;">${(usuario||'—').toUpperCase()}</div>
     </div>
   </div>
   <div class="footer">4SIDES - STEELPORT WAREHOUSE SYSTEMS</div>
@@ -8771,6 +8781,22 @@ function _cgSetSyncStatus(status){
   }
 }
 
+// A tabela bulk_expedicoes NÃO possui a coluna 'armazem' (apenas descargas usam praça).
+// Enviar 'armazem' faz o PostgREST rejeitar o INSERT inteiro (42703) → nada sincroniza.
+function _cgSanitizeReg(tbl, reg){
+  if(tbl==='bulk_expedicoes'){ const {armazem:_omit, ...rest}=reg; return rest; }
+  return reg;
+}
+// Reenvia ao servidor (upsert por id) registros locais que ainda não chegaram lá.
+// Cura registros presos por falha anterior de POST e saves feitos offline.
+async function _cgPushMissing(tbl, missing){
+  if(!SUPA_URL||!SUPA_KEY||!missing||!missing.length) return;
+  await Promise.all(missing.map(reg=>
+    supa(tbl+'?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(_cgSanitizeReg(tbl,reg))})
+      .catch(e=>console.warn('CG push',tbl,e.message))
+  ));
+}
+
 async function cgSyncNow(showFeedback=false){
   if(!SUPA_URL||!SUPA_KEY){ _cgSetSyncStatus('offline'); return; }
   _cgSetSyncStatus('syncing');
@@ -8781,8 +8807,22 @@ async function cgSyncNow(showFeedback=false){
       supaAll('bulk_expedicoes?select=*&order=data.asc,created_at.asc').catch(()=>null)
     ]);
     if(items!==null){ cgItems=items; saveCgItems(); }
-    if(descs!==null){ cgDescargas=descs; saveCgDescargas(); }
-    if(exps!==null){  cgExpedicoes=exps; saveCgExpedicoes(); }
+    // Merge não-destrutivo: preserva registros locais que ainda não chegaram ao servidor
+    // (evita que a baixa de saldo/ticket recém-emitido seja revertida pela sincronização).
+    if(descs!==null){
+      const ids=new Set(descs.map(r=>r.id));
+      const localOnly=cgDescargas.filter(r=>!ids.has(r.id));
+      cgDescargas=[...descs,...localOnly].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      saveCgDescargas();
+      _cgPushMissing('bulk_descargas', localOnly);
+    }
+    if(exps!==null){
+      const ids=new Set(exps.map(r=>r.id));
+      const localOnly=cgExpedicoes.filter(r=>!ids.has(r.id));
+      cgExpedicoes=[...exps,...localOnly].sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+      saveCgExpedicoes();
+      _cgPushMissing('bulk_expedicoes', localOnly);
+    }
     renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico();
     updateCgStats(); cgPopulateBLSelects();
     _cgSetSyncStatus('ok');
@@ -8886,13 +8926,74 @@ function updateCgStats(){
   if(lbExp)  lbExp.textContent =turnoAtual+' · '+(usuario||'todos');
 }
 
+// ── Ordenação de colunas (Carga Geral) ────────────────────────
+const _cgSort = { banco:{key:null,dir:1}, hist:{key:null,dir:1}, relD:{key:null,dir:1}, relE:{key:null,dir:1} };
+function _cgV(id){ const e=document.getElementById(id); return e?e.value:''; }
+function _cgFmtDateTime(ts){
+  if(!ts) return '—';
+  const d=new Date(ts);
+  if(isNaN(d)) return '—';
+  return d.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+}
+function _cgCmp(a,b,type){
+  if(type==='num') return (parseFloat(a)||0)-(parseFloat(b)||0);
+  if(type==='date') return String(a||'').localeCompare(String(b||''));
+  return String(a==null?'':a).localeCompare(String(b==null?'':b),'pt-BR',{numeric:true,sensitivity:'base'});
+}
+function _cgSortRows(rows, which, cols){
+  const st=_cgSort[which]; if(!st.key) return rows;
+  const c=cols.find(x=>x.key===st.key); if(!c||!c.val) return rows;
+  const type=c.type||'str';
+  return [...rows].sort((r1,r2)=>_cgCmp(c.val(r1),c.val(r2),type)*st.dir);
+}
+function cgToggleSort(which, key){
+  const st=_cgSort[which];
+  if(st.key===key){ st.dir=-st.dir; } else { st.key=key; st.dir=1; }
+  if(which==='banco') renderCgBanco();
+  else if(which==='hist') renderCgHistorico();
+  else renderCgRelatorio();
+}
+function _cgHeadHtml(which, cols){
+  const st=_cgSort[which];
+  return '<tr>'+cols.map(c=>{
+    if(!c.key) return `<th>${c.label||''}</th>`;
+    const active=st.key===c.key;
+    const arrow=active?(st.dir>0?' ▲':' ▼'):' <span style="opacity:.3;">⇅</span>';
+    return `<th onclick="cgToggleSort('${which}','${c.key}')" style="cursor:pointer;user-select:none;white-space:nowrap;" title="Clique para ordenar">${c.label}${arrow}</th>`;
+  }).join('')+'</tr>';
+}
+
 // ── Banco ─────────────────────────────────────────────────────
-function renderCgBanco(){
-  const fBl     =(document.getElementById('cg-f-bl')?.value||'').toLowerCase();
-  const fNav    =(document.getElementById('cg-f-navio')?.value||'').toLowerCase();
-  const fCli    =(document.getElementById('cg-f-cliente')?.value||'').toLowerCase();
-  const fProd   = document.getElementById('cg-f-produto')?.value||'';
-  const fStatus = document.getElementById('cg-f-status')?.value||'';
+const _cgBancoCols=[
+  {key:'bl',       label:'BL',                val:r=>r.it.bl},
+  {key:'navio',    label:'NAVIO',             val:r=>r.it.navio},
+  {key:'armazem',  label:'ARMAZÉM',           val:r=>r.it.armazem},
+  {key:'cliente',  label:'CLIENTE',           val:r=>r.it.cliente},
+  {key:'produto',  label:'PRODUTO',           val:r=>r.it.produto},
+  {key:'descricao',label:'DESCRIÇÃO / CHAVE', val:r=>r.it.descricao},
+  {key:'peso',     label:'PESO (kg)',         val:r=>r.it.peso,      type:'num'},
+  {key:'qtd',      label:'QTD TOTAL',         val:r=>r.it.qtd_total, type:'num'},
+  {key:'desc',     label:'DESCARREGADO',      val:r=>r.desc,         type:'num'},
+  {key:'sdesc',    label:'SALDO DESC.',       val:r=>r.sDesc,        type:'num'},
+  {key:'sarm',     label:'EM ARMAZÉM',        val:r=>r.sArm,         type:'num'},
+  {key:'exp',      label:'EXPEDIDO',          val:r=>r.exp,          type:'num'},
+  {key:'status',   label:'STATUS',            val:r=>r.sDesc===0?2:(r.desc>0?1:0), type:'num'},
+  {key:'',         label:''}
+];
+
+function _cgBancoFillProdFilter(){
+  const sel=document.getElementById('cg-f-produto'); if(!sel) return;
+  const cur=sel.value;
+  const prods=[...new Set(cgItems.map(it=>it.produto).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  sel.innerHTML='<option value="">Todos</option>'+prods.map(p=>`<option value="${p}"${p===cur?' selected':''}>${p}</option>`).join('');
+}
+
+function _cgBancoRows(){
+  const fBl     =(_cgV('cg-f-bl')).toLowerCase();
+  const fNav    =(_cgV('cg-f-navio')).toLowerCase();
+  const fCli    =(_cgV('cg-f-cliente')).toLowerCase();
+  const fProd   = _cgV('cg-f-produto');
+  const fStatus = _cgV('cg-f-status');
   const filtered=cgItems.filter(it=>{
     if(fBl  && !(it.bl||'').toLowerCase().includes(fBl)) return false;
     if(fNav && !(it.navio||'').toLowerCase().includes(fNav)) return false;
@@ -8903,21 +9004,27 @@ function renderCgBanco(){
     if(fStatus==='completo'&&pend) return false;
     return true;
   });
+  const rows=filtered.map(it=>{
+    const desc =cgQtdDescarregada(it.bl,it.descricao);
+    const exp  =cgQtdExpedida(it.bl,it.descricao);
+    const sDesc=Math.max(0,it.qtd_total-desc);
+    const sArm =Math.max(0,desc-exp);
+    const pct  =it.qtd_total>0?Math.round(desc/it.qtd_total*100):0;
+    return {it,desc,exp,sDesc,sArm,pct};
+  });
+  return _cgSortRows(rows,'banco',_cgBancoCols);
+}
+
+function renderCgBanco(){
+  _cgBancoFillProdFilter();
+  const rows=_cgBancoRows();
   const el=document.getElementById('cg-banco-list');
   if(!el) return;
-  if(!filtered.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📦</span>Nenhum item encontrado.</div>'; return; }
+  if(!rows.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📦</span>Nenhum item encontrado.</div>'; return; }
   el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1100px;">
-    <thead><tr>
-      <th>BL</th><th>NAVIO</th><th>ARMAZÉM</th><th>CLIENTE</th><th>PRODUTO</th>
-      <th>DESCRIÇÃO / CHAVE</th><th>PESO (kg)</th>
-      <th>QTD TOTAL</th><th>DESCARREGADO</th><th>SALDO DESC.</th><th>EM ARMAZÉM</th><th>EXPEDIDO</th><th>STATUS</th><th></th>
-    </tr></thead>
-    <tbody>${filtered.map((it,i)=>{
-      const desc =cgQtdDescarregada(it.bl,it.descricao);
-      const exp  =cgQtdExpedida(it.bl,it.descricao);
-      const sDesc=Math.max(0,it.qtd_total-desc);
-      const sArm =Math.max(0,desc-exp);
-      const pct  =it.qtd_total>0?Math.round(desc/it.qtd_total*100):0;
+    <thead>${_cgHeadHtml('banco',_cgBancoCols)}</thead>
+    <tbody>${rows.map((r,i)=>{
+      const it=r.it, desc=r.desc, exp=r.exp, sDesc=r.sDesc, sArm=r.sArm, pct=r.pct;
       const pctBar=Math.min(100,pct);
       const fillCls=pct>=100?'cg-progress-fill ok':pct>=50?'cg-progress-fill':'cg-progress-fill warn';
       const badge=sDesc===0?'<span class="cg-badge cg-badge-ok">✓ Completo</span>':
@@ -8945,6 +9052,49 @@ function renderCgBanco(){
       </tr>`;
     }).join('')}</tbody>
   </table></div>`;
+}
+
+function exportCgBancoXLSX(){
+  const rows=_cgBancoRows();
+  if(!rows.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const head=[['BL','NAVIO','ARMAZÉM','CLIENTE','PRODUTO','DESCRIÇÃO','PESO (kg)','QTD TOTAL','UNIDADE','DESCARREGADO','SALDO DESC.','EM ARMAZÉM','EXPEDIDO','STATUS']];
+  rows.forEach(r=>{
+    const it=r.it;
+    const status=r.sDesc===0?'Completo':(r.desc>0?'Em descarga':'Aguardando');
+    head.push([it.bl,it.navio||'',it.armazem||'',it.cliente||'',it.produto||'',it.descricao,it.peso||0,it.qtd_total,it.unidade||'UN',r.desc,r.sDesc,r.sArm,r.exp,status]);
+  });
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(head),'Banco de Itens');
+  XLSX.writeFile(wb,'4SIDES_CargaGeral_Banco_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  showToast('✓ Excel exportado!','#22c55e','#000');
+}
+
+function exportCgBancoPDF(){
+  if(!window.jspdf){ showToast('⚠ Biblioteca de PDF indisponível.','#e05c1a','#fff'); return; }
+  const rows=_cgBancoRows();
+  if(!rows.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const pageW=doc.internal.pageSize.getWidth();
+  doc.setFillColor(10,12,15); doc.rect(0,0,pageW,18,'F');
+  doc.setFillColor(240,165,0); doc.rect(0,16,pageW,2,'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(240,165,0);
+  doc.text('4SIDES · STEELPORT',14,11);
+  doc.setFontSize(10); doc.setTextColor(180,180,180);
+  doc.text('CARGA GERAL · BANCO DE ITENS',14,17);
+  doc.text('Gerado: '+new Date().toLocaleString('pt-BR'),pageW-14,11,{align:'right'});
+  doc.setTextColor(0,0,0);
+  const body=rows.map(r=>{
+    const it=r.it;
+    const status=r.sDesc===0?'Completo':(r.desc>0?'Em descarga':'Aguardando');
+    return [it.bl,it.navio||'—',it.cliente||'—',it.produto||'—',it.descricao,(it.qtd_total)+' '+(it.unidade||'UN'),r.desc,r.sDesc,r.sArm,r.exp,status];
+  });
+  doc.autoTable({
+    head:[['BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD TOTAL','DESC.','SALDO','ARMAZÉM','EXP.','STATUS']],
+    body, startY:22, styles:{fontSize:7,cellPadding:1.5}, headStyles:{fillColor:[240,165,0],textColor:[0,0,0]}, margin:{left:10,right:10}
+  });
+  doc.save('4SIDES_CargaGeral_Banco_'+new Date().toISOString().split('T')[0]+'.pdf');
+  showToast('✓ PDF exportado!','#22c55e','#000');
 }
 
 // ── Modal Item ────────────────────────────────────────────────
@@ -9253,8 +9403,40 @@ function renderCgExpHoje(){
   </table></div>`;
 }
 
-function reprintCgTicketByExpId(expId){
-  const t=ticketHistory.find(tk=>(tk.regs||tk.entries||[]).some(r=>r.id===expId));
+async function reprintCgTicketByExpId(expId){
+  const hasExp = tk => (tk.regs||tk.entries||[]).some(r=>r.id===expId);
+  // 1) Ticket já disponível localmente (emitido neste dispositivo ou já sincronizado)
+  let t = ticketHistory.find(hasExp);
+  // 2) Buscar ticket original no servidor (emitido em outro dispositivo)
+  if(!t && SUPA_URL && SUPA_KEY){
+    try{
+      const remote = await supaAll('tickets?select=*&tipo=eq.CGX&order=ts.desc&limit=500');
+      const norm = (remote||[]).map(x=>({
+        id:x.id, ticketNum:x.ticket_num, tipo:x.tipo||'CGX', emitidoEm:x.ts,
+        usuario:x.usuario, userId:x.user_id, veiculo:x.veiculo, motorista:x.motorista,
+        destino:x.destino, data:x.data, periodo:x.periodo, obs:x.obs,
+        regs: typeof x.entries==='string' ? JSON.parse(x.entries||'[]') : (x.entries||[])
+      }));
+      const byId={}; [...ticketHistory, ...norm].forEach(k=>{ if(k.id) byId[k.id]=k; });
+      ticketHistory = Object.values(byId).sort((a,b)=>new Date(b.emitidoEm||0)-new Date(a.emitidoEm||0));
+      try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+      t = norm.find(hasExp);
+    }catch(e){ console.warn('CG reprint fetch:', e); }
+  }
+  // 3) Reconstruir a partir dos registros de expedição (que já sincronizam via bulk_expedicoes)
+  if(!t){
+    const rec = cgExpedicoes.find(r=>r.id===expId);
+    if(rec){
+      const key = r => r.veiculo===rec.veiculo && r.data===rec.data && r.periodo===rec.periodo &&
+        (r.motorista||'')===(rec.motorista||'') && (r.destino||'')===(rec.destino||'') &&
+        (r.created_by||'')===(rec.created_by||'') &&
+        String(r.created_at||'').slice(0,16)===String(rec.created_at||'').slice(0,16);
+      const irmaos = cgExpedicoes.filter(key);
+      t = { ticketNum:'CGX · REIMPRESSAO', regs:(irmaos.length?irmaos:[rec]),
+        veiculo:rec.veiculo, motorista:rec.motorista, destino:rec.destino,
+        data:rec.data, periodo:rec.periodo, obs:rec.obs, usuario:rec.created_by||'—' };
+    }
+  }
   if(!t){ showToast('Ticket nao encontrado para esta expedicao.','#f59e0b','#000'); return; }
   _renderCgTicketWindow(t);
 }
@@ -9350,26 +9532,56 @@ function cgHistSetMonth(offset){
   renderCgHistorico();
 }
 
-function renderCgHistorico(){
-  const fBl  =(document.getElementById('cg-h-bl')?.value||'').toLowerCase();
-  const fTipo= document.getElementById('cg-h-tipo')?.value||'';
-  const fIni = document.getElementById('cg-h-ini')?.value||'';
-  const fFim = document.getElementById('cg-h-fim')?.value||'';
-  const fPer = document.getElementById('cg-h-periodo')?.value||'';
+const _cgHistCols=[
+  {key:'tipo',     label:'TIPO',      val:r=>r._tipo},
+  {key:'data',     label:'DATA',      val:r=>r.data, type:'date'},
+  {key:'bl',       label:'BL',        val:r=>r.bl},
+  {key:'navio',    label:'NAVIO',     val:r=>r.navio},
+  {key:'produto',  label:'PRODUTO',   val:r=>r.produto},
+  {key:'descricao',label:'DESCRIÇÃO', val:r=>r.descricao},
+  {key:'qtd',      label:'QTD',       val:r=>r.quantidade, type:'num'},
+  {key:'veiculo',  label:'VEÍCULO',   val:r=>r.veiculo},
+  {key:'motorista',label:'MOTORISTA', val:r=>r.motorista},
+  {key:'praca',    label:'PRAÇA',     val:r=>r.armazem},
+  {key:'usuario',  label:'USUÁRIO',   val:r=>r.created_by},
+  {key:'obs',      label:'OBS',       val:r=>r.obs}
+];
+
+function _cgHistRows(){
+  const fBl   =(_cgV('cg-h-bl')).toLowerCase();
+  const fTipo = _cgV('cg-h-tipo');
+  const fIni  = _cgV('cg-h-ini');
+  const fFim  = _cgV('cg-h-fim');
+  const fPer  = _cgV('cg-h-periodo');
+  const fProd =(_cgV('cg-h-produto')).toLowerCase();
+  const fDesc =(_cgV('cg-h-descricao')).toLowerCase();
+  const fUser =(_cgV('cg-h-usuario')).toLowerCase();
+  const fPraca=(_cgV('cg-h-praca')).toLowerCase();
+  const fVeic =(_cgV('cg-h-veiculo')).toLowerCase();
   let todos=[];
   if(!fTipo||fTipo==='descarga') cgDescargas.forEach(r=>todos.push({...r,_tipo:'DESCARGA'}));
   if(!fTipo||fTipo==='expedicao') cgExpedicoes.forEach(r=>todos.push({...r,_tipo:'EXPEDIÇÃO'}));
   todos=todos.filter(r=>{
-    if(fBl&&!r.bl.toLowerCase().includes(fBl)) return false;
+    if(fBl&&!(r.bl||'').toLowerCase().includes(fBl)) return false;
     if(fIni&&r.data<fIni) return false;
     if(fFim&&r.data>fFim) return false;
     if(fPer&&r.periodo!==fPer) return false;
+    if(fProd&&!(r.produto||'').toLowerCase().includes(fProd)) return false;
+    if(fDesc&&!(r.descricao||'').toLowerCase().includes(fDesc)) return false;
+    if(fUser&&!(r.created_by||'').toLowerCase().includes(fUser)) return false;
+    if(fPraca&&!(r.armazem||'').toLowerCase().includes(fPraca)) return false;
+    if(fVeic&&!(r.veiculo||'').toLowerCase().includes(fVeic)) return false;
     return true;
   }).sort((a,b)=>b.data>a.data?1:b.data<a.data?-1:b.created_at>a.created_at?1:-1);
+  return _cgSortRows(todos,'hist',_cgHistCols);
+}
+
+function renderCgHistorico(){
+  const todos=_cgHistRows();
   const el=document.getElementById('cg-historico-list'); if(!el) return;
   if(!todos.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">🕐</span>Nenhum registro encontrado.</div>'; return; }
-  el.innerHTML=`<table>
-    <thead><tr><th>TIPO</th><th>DATA</th><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>VEÍCULO</th><th>MOTORISTA</th><th>PRAÇA</th><th>OBS</th></tr></thead>
+  el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1100px;">
+    <thead>${_cgHeadHtml('hist',_cgHistCols)}</thead>
     <tbody>${todos.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td><span style="font-weight:700;color:${r._tipo==='DESCARGA'?'var(--info)':'var(--exp)'};">${r._tipo}</span></td>
       <td>${r.data?r.data.split('-').reverse().join('/'):'—'}</td>
@@ -9379,20 +9591,77 @@ function renderCgHistorico(){
       <td>${r.descricao}</td>
       <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
       <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
-      <td>${r.armazem||'—'}</td><td>${r.obs||'—'}</td>
+      <td>${r.armazem||'—'}</td>
+      <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
+      <td>${r.obs||'—'}</td>
     </tr>`).join('')}</tbody>
-  </table>`;
+  </table></div>`;
+}
+
+function exportCgHistorico(){
+  const rows=_cgHistRows();
+  if(!rows.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const head=[['TIPO','DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','PRAÇA','DESTINO','USUÁRIO','OBS']];
+  rows.forEach(r=>head.push([r._tipo,r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.destino||'',r.created_by||'',r.obs||'']));
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(head),'Historico');
+  XLSX.writeFile(wb,'4SIDES_CargaGeral_Historico_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  showToast('✓ Excel exportado!','#22c55e','#000');
 }
 
 // ── Relatório ─────────────────────────────────────────────────
-function renderCgRelatorio(){
-  const fBl  = document.getElementById('cg-rel-bl')?.value||'';
-  const fPer = document.getElementById('cg-rel-periodo')?.value||'';
-  const fIni = document.getElementById('cg-rel-dt-ini')?.value||'';
-  const fFim = document.getElementById('cg-rel-dt-fim')?.value||'';
+const _cgRelDCols=[
+  {key:'data',     label:'DATA',      val:r=>r.data, type:'date'},
+  {key:'periodo',  label:'PERÍODO',   val:r=>r.periodo},
+  {key:'bl',       label:'BL',        val:r=>r.bl},
+  {key:'produto',  label:'PRODUTO',   val:r=>r.produto},
+  {key:'descricao',label:'DESCRIÇÃO', val:r=>r.descricao},
+  {key:'qtd',      label:'QTD',       val:r=>r.quantidade, type:'num'},
+  {key:'peso',     label:'PESO',      val:r=>r.peso_kg, type:'num'},
+  {key:'veiculo',  label:'VEÍCULO',   val:r=>r.veiculo},
+  {key:'praca',    label:'PRAÇA',     val:r=>r.armazem},
+  {key:'operador', label:'OPERADOR',  val:r=>r.created_by},
+  {key:'registrado',label:'REGISTRADO EM', val:r=>r.created_at||'', type:'date'}
+];
+const _cgRelECols=[
+  {key:'data',     label:'DATA',      val:r=>r.data, type:'date'},
+  {key:'periodo',  label:'PERÍODO',   val:r=>r.periodo},
+  {key:'bl',       label:'BL',        val:r=>r.bl},
+  {key:'produto',  label:'PRODUTO',   val:r=>r.produto},
+  {key:'descricao',label:'DESCRIÇÃO', val:r=>r.descricao},
+  {key:'qtd',      label:'QTD',       val:r=>r.quantidade, type:'num'},
+  {key:'peso',     label:'PESO',      val:r=>r.peso_kg, type:'num'},
+  {key:'veiculo',  label:'VEÍCULO',   val:r=>r.veiculo},
+  {key:'destino',  label:'DESTINO',   val:r=>r.destino},
+  {key:'operador', label:'OPERADOR',  val:r=>r.created_by},
+  {key:'registrado',label:'REGISTRADO EM', val:r=>r.created_at||'', type:'date'}
+];
+
+function _cgRelData(){
+  const fBl   = _cgV('cg-rel-bl');
+  const fPer  = _cgV('cg-rel-periodo');
+  const fIni  = _cgV('cg-rel-dt-ini');
+  const fFim  = _cgV('cg-rel-dt-fim');
+  const fProd =(_cgV('cg-rel-produto')).toLowerCase();
+  const fDesc =(_cgV('cg-rel-descricao')).toLowerCase();
+  const fUser =(_cgV('cg-rel-usuario')).toLowerCase();
+  const fPraca=(_cgV('cg-rel-praca')).toLowerCase();
+  const fVeic =(_cgV('cg-rel-veiculo')).toLowerCase();
   const inRange = d => (!fIni||d>=fIni) && (!fFim||d<=fFim);
-  const descs = cgDescargas.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
-  const exps  = cgExpedicoes.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
+  const match = r =>
+    inRange(r.data) && (!fBl||r.bl===fBl) && (!fPer||r.periodo===fPer) &&
+    (!fProd ||(r.produto||'').toLowerCase().includes(fProd)) &&
+    (!fDesc ||(r.descricao||'').toLowerCase().includes(fDesc)) &&
+    (!fUser ||(r.created_by||'').toLowerCase().includes(fUser)) &&
+    (!fPraca||(r.armazem||'').toLowerCase().includes(fPraca)) &&
+    (!fVeic ||(r.veiculo||'').toLowerCase().includes(fVeic));
+  const descs=_cgSortRows(cgDescargas.filter(match),'relD',_cgRelDCols);
+  const exps =_cgSortRows(cgExpedicoes.filter(match),'relE',_cgRelECols);
+  return {descs, exps};
+}
+
+function renderCgRelatorio(){
+  const {descs, exps} = _cgRelData();
   const el = document.getElementById('cg-rel-content'); if(!el) return;
   if(!descs.length && !exps.length){
     el.innerHTML='<div class="empty-state"><span class="empty-icon">📊</span>Nenhum registro no período selecionado.</div>'; return;
@@ -9408,8 +9677,8 @@ function renderCgRelatorio(){
   if(descs.length){
     html+=`<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--info);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📥 DESCARGAS (${descs.length})</div>
     <div style="overflow-x:auto;margin-bottom:1.5rem;"><table>
-      <thead><tr><th>DATA</th><th>PERÍODO</th><th>BL</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO</th><th>VEÍCULO</th><th>PRAÇA</th><th>OPERADOR</th></tr></thead>
-      <tbody>${descs.sort((a,b)=>a.data>b.data?1:-1).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+      <thead>${_cgHeadHtml('relD',_cgRelDCols)}</thead>
+      <tbody>${descs.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
         <td>${fmtDate(r.data)}</td><td>${r.periodo||'—'}</td>
         <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
         <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
@@ -9417,14 +9686,15 @@ function renderCgRelatorio(){
         <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
         <td>${r.peso_kg?fmtTon(parseFloat(r.peso_kg)):'—'}</td>
         <td>${r.veiculo||'—'}</td><td>${r.armazem||'—'}</td><td>${r.created_by||'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_cgFmtDateTime(r.created_at)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
   }
   if(exps.length){
     html+=`<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--exp);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📤 EXPEDIÇÕES (${exps.length})</div>
     <div style="overflow-x:auto;"><table>
-      <thead><tr><th>DATA</th><th>PERÍODO</th><th>BL</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO</th><th>VEÍCULO</th><th>DESTINO</th><th>OPERADOR</th></tr></thead>
-      <tbody>${exps.sort((a,b)=>a.data>b.data?1:-1).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+      <thead>${_cgHeadHtml('relE',_cgRelECols)}</thead>
+      <tbody>${exps.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
         <td>${fmtDate(r.data)}</td><td>${r.periodo||'—'}</td>
         <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
         <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
@@ -9432,6 +9702,7 @@ function renderCgRelatorio(){
         <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
         <td>${r.peso_kg?fmtTon(parseFloat(r.peso_kg)):'—'}</td>
         <td>${r.veiculo||'—'}</td><td>${r.destino||'—'}</td><td>${r.created_by||'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_cgFmtDateTime(r.created_at)}</td>
       </tr>`).join('')}</tbody>
     </table></div>`;
   }
@@ -9439,22 +9710,16 @@ function renderCgRelatorio(){
 }
 
 function exportCgRelatorio(){
-  const fBl  = document.getElementById('cg-rel-bl')?.value||'';
-  const fPer = document.getElementById('cg-rel-periodo')?.value||'';
-  const fIni = document.getElementById('cg-rel-dt-ini')?.value||'';
-  const fFim = document.getElementById('cg-rel-dt-fim')?.value||'';
-  const inRange = d => (!fIni||d>=fIni) && (!fFim||d<=fFim);
-  const descs = cgDescargas.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
-  const exps  = cgExpedicoes.filter(r=>inRange(r.data)&&(!fBl||r.bl===fBl)&&(!fPer||r.periodo===fPer));
+  const {descs, exps} = _cgRelData();
   const wb = XLSX.utils.book_new();
-  const hDesc=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','PRAÇA','OBS','OPERADOR']];
+  const hDesc=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','PRAÇA','OBS','OPERADOR','REGISTRADO EM']];
   descs.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
-    hDesc.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.obs||'',r.created_by||'']);
+    hDesc.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.obs||'',r.created_by||'',_cgFmtDateTime(r.created_at)]);
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hDesc),'Descargas');
-  const hExp=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','DESTINO','OBS','OPERADOR']];
+  const hExp=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','DESTINO','OBS','OPERADOR','REGISTRADO EM']];
   exps.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
-    hExp.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.destino||'',r.obs||'',r.created_by||'']);
+    hExp.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.destino||'',r.obs||'',r.created_by||'',_cgFmtDateTime(r.created_at)]);
   });
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hExp),'Expedicoes');
   XLSX.writeFile(wb,'4SIDES_CargaGeral_Relatorio_'+new Date().toISOString().split('T')[0]+'.xlsx');
@@ -9641,7 +9906,7 @@ async function cgConfirmar(){
     const tbl=modo==='desc'?'bulk_descargas':'bulk_expedicoes';
     _cgSetSyncStatus('syncing');
     try{
-      await Promise.all(regs.map(reg=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)})));
+      await Promise.all(regs.map(reg=>supa(tbl,{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(_cgSanitizeReg(tbl,reg))})));
       _cgSetSyncStatus('ok');
     }catch(e){
       _cgSetSyncStatus('error');
@@ -11162,6 +11427,8 @@ alter table users add column if not exists email text;
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
           <div class="rpt-section-title" style="margin:0;">📦 ITENS POR BL</div>
           <div id="cg-banco-admin-btns" style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="exportCgBancoXLSX()">↓ EXCEL</button>
+            <button class="btn btn-info btn-sm" onclick="exportCgBancoPDF()">↓ PDF</button>
             <button class="btn btn-secondary btn-sm" onclick="downloadCgTemplate()">↓ MODELO EXCEL</button>
             <button class="btn btn-info btn-sm" onclick="openCgImportModal()">↑ IMPORTAR EXCEL</button>
             <button class="btn btn-primary btn-sm" onclick="abrirModalCgItem()">+ NOVO ITEM</button>
@@ -11307,12 +11574,32 @@ alter table users add column if not exists email text;
       <div class="rpt-section">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
           <div class="rpt-section-title" style="margin:0;">🕐 HISTÓRICO COMPLETO</div>
-          <button class="btn btn-primary btn-sm" onclick="exportCgXLSX()">↓ EXCEL</button>
+          <button class="btn btn-primary btn-sm" onclick="exportCgHistorico()">↓ EXCEL</button>
         </div>
         <div style="display:flex;flex-wrap:wrap;gap:.75rem;align-items:flex-end;margin-bottom:1rem;">
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">BL</label>
             <input type="text" id="cg-h-bl" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:130px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Produto</label>
+            <input type="text" id="cg-h-produto" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:120px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Descrição</label>
+            <input type="text" id="cg-h-descricao" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:140px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Usuário</label>
+            <input type="text" id="cg-h-usuario" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:120px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Praça</label>
+            <input type="text" id="cg-h-praca" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Veículo</label>
+            <input type="text" id="cg-h-veiculo" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Tipo</label>
@@ -11369,6 +11656,26 @@ alter table users add column if not exists email text;
             <select id="cg-rel-periodo" onchange="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;">
               <option value="">Todos</option><option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
             </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Produto</span>
+            <input type="text" id="cg-rel-produto" placeholder="Filtrar…" oninput="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:120px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Descrição</span>
+            <input type="text" id="cg-rel-descricao" placeholder="Filtrar…" oninput="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:140px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Usuário</span>
+            <input type="text" id="cg-rel-usuario" placeholder="Filtrar…" oninput="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:120px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Praça</span>
+            <input type="text" id="cg-rel-praca" placeholder="Filtrar…" oninput="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Veículo</span>
+            <input type="text" id="cg-rel-veiculo" placeholder="Filtrar…" oninput="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
           </div>
           <button class="btn btn-secondary btn-sm" onclick="cgRelSetMonth(0)">Mês atual</button>
           <button class="btn btn-secondary btn-sm" onclick="cgRelSetMonth(-1)">Mês anterior</button>
