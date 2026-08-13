@@ -1501,24 +1501,32 @@ async function doLogin(){
   const btnEl = document.getElementById('btn-login');
   try {
 
-  // 1. Try local cache first (fast path)
+  // Cache local: usado só como reserva quando não há conexão
   users = loadUsers();
   let candidate = users.find(x => x.user.toLowerCase()===u);
 
-  // 2. If not found locally, try fetching from Supabase
-  //    (first access on a new device — localStorage only has DEFAULT_ADMIN)
-  if(!candidate && SUPA_URL && SUPA_KEY){
+  // AUTENTICAÇÃO: o servidor é a fonte da verdade.
+  // Antes o login validava contra o cache local e só consultava o servidor se o usuário
+  // fosse desconhecido no aparelho. Efeito: senha trocada em outro dispositivo não valia
+  // aqui, e a senha ANTIGA continuava aceita. Agora consultamos sempre o registro atual
+  // (1 linha, rápido) e só caímos no cache local se estiver offline.
+  if(SUPA_URL && SUPA_KEY){
     if(btnEl){ btnEl.disabled=true; btnEl.textContent='Verificando...'; }
     try{
-      const remoteUsers = await supa('users?select=*');
-      if(remoteUsers && remoteUsers.length){
-        users = remoteUsers.map(normalizeUser);
-        if(!users.find(x=>x.id==='admin')) users.unshift(DEFAULT_ADMIN);
-        saveUsers();
+      const remoto = await supa(`users?select=*&user=eq.${encodeURIComponent(u)}`);
+      if(Array.isArray(remoto) && remoto.length){
+        const cands = remoto.map(normalizeUser);
+        // Se houver logins duplicados, aceita o registro cuja senha confere
+        let match=null;
+        for(const c of cands){ if(await verifyPass(p, c)){ match=c; break; } }
+        candidate = match || cands[0];
+        // Atualiza o cache local deste usuário
+        const idx = users.findIndex(x=>x.id===candidate.id);
+        if(idx>=0) users[idx]=candidate; else users.push(candidate);
+        try{ localStorage.setItem('sp_users', JSON.stringify(users)); }catch(e){}
       }
-      candidate = users.find(x => x.user.toLowerCase()===u);
     } catch(e){
-      // Supabase unreachable — keep local result
+      // Sem conexão — segue com o cache local
     } finally {
       if(btnEl){ btnEl.disabled=false; btnEl.textContent='ENTRAR'; }
     }
@@ -1759,8 +1767,21 @@ async function saveUser(){
   if(!nome||!user){ showToast('Preencha nome e usuário.','#e05c1a','#fff'); return; }
   if(!editUserId&&!pass){ showToast('Informe uma senha.','#e05c1a','#fff'); return; }
   if(pass&&pass.length<4){ showToast('Senha mínima de 4 caracteres.','#e05c1a','#fff'); return; }
-  const dup=users.find(u=>u.user===user&&u.id!==editUserId);
-  if(dup){ showToast('Nome de usuário já existe.','#e05c1a','#fff'); return; }
+  // Duplicidade: compara normalizado e ignora o próprio registro em edição.
+  const _norm=s=>String(s||'').trim().toLowerCase();
+  let dup=users.find(u=>_norm(u.user)===_norm(user)&&u.id!==editUserId);
+  // Em criação, confere também no servidor: dois dispositivos com a lista local
+  // desatualizada podiam criar o mesmo login duas vezes (foi o que gerou duplicatas).
+  if(!dup && !editUserId && SUPA_URL && SUPA_KEY){
+    try{
+      const remotos=await supa(`users?select=id,user&user=eq.${encodeURIComponent(user)}`);
+      if(Array.isArray(remotos)&&remotos.length) dup=remotos[0];
+    }catch(e){ console.warn('[users] checagem remota de duplicidade falhou:', e.message); }
+  }
+  if(dup){
+    showToast(`Já existe um usuário com o login "${user}"${dup.nome?' ('+dup.nome+')':''}.`,'#e05c1a','#fff');
+    return;
+  }
   const perms = role==='admin'
     ? {descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true}
     : role==='viewer'
@@ -2104,14 +2125,20 @@ function hideLoading(){ document.getElementById('loading-overlay').style.display
 async function loadAllData(){
   showLoading('Carregando dados do Supabase...');
   try{
-    const [rec,exp,coils,usrs,navs,fatCfg]=await Promise.all([
+    const [rec,exp,coils,usrs,navs]=await Promise.all([
       supaAll('records?select=*&order=id.asc'),
       supaAll('expedicoes?select=*&order=id.asc'),
       supaAll('coilsdb?select=*&order=coil.asc'),
       supa('users?select=*'),
-      supa('navios?select=nome'),
-      supa('fat_config?select=*').catch(()=>[])
+      supa('navios?select=nome')
     ]);
+    // fat_config NÃO entra no carregamento bloqueante: é config do faturamento e não pode
+    // impedir o login. Carrega em segundo plano (o autoSyncFatConfig também recarrega depois).
+    supa('fat_config?select=*')
+      .then(cfg=>{ if(cfg&&cfg.length){ applyFatConfig(cfg);
+        const fs=document.getElementById('screen-faturamento');
+        if(fs&&fs.classList.contains('active')) renderFaturamento(); } })
+      .catch(e=>console.warn('[fat_config] carga em segundo plano falhou:', e.message));
     records    = (rec  ||[]).map(normalizeRecord);
     expedicoes = (exp  ||[]).map(normalizeRecord);
     coilsDB    = coils ||[];
@@ -2121,14 +2148,22 @@ async function loadAllData(){
     // Mantém a sessão atual sincronizada com os armazéns mais recentes do usuário
     if(session){
       const freshSelf=users.find(u=>u.id===session.id);
-      if(freshSelf) session.armazens=freshSelf.armazens||[];
+      if(freshSelf){
+        // Atualiza TAMBÉM papel e permissões: antes só 'armazens' era renovado, então um
+        // usuário já logado ficava com os privilégios antigos até sair e entrar de novo.
+        session.armazens = freshSelf.armazens||[];
+        session.role     = freshSelf.role || session.role;
+        session.perms    = freshSelf.perms || session.perms;
+        session.nome     = freshSelf.nome || session.nome;
+        session.email    = freshSelf.email ?? session.email;
+      }
       localStorage.setItem('sp_session', JSON.stringify(session));
+      applySessionUI(); // reaplica visibilidade dos módulos com as permissões novas
     }
     // Restringe os dados em memória aos armazéns permitidos pela sessão atual
     applyArmazemRestriction();
     saveUsers();
-    // Load shared fat_config
-    if(fatCfg && fatCfg.length) applyFatConfig(fatCfg);
+    // fat_config é aplicado em segundo plano (ver acima)
     hideLoading();
     setSyncBadge('ok', new Date().toISOString());
     return true;
@@ -6721,13 +6756,18 @@ function getFatState(bl,num){
   try{ return JSON.parse(_fatGet(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
 }
 async function setFatState(bl,num,state){
+  const key=getFatStateKey(bl,num);
+  const prev=_fatGet(key);            // valor anterior, p/ desfazer se o servidor recusar
   const v=JSON.stringify(state);
-  _fatSet(getFatStateKey(bl,num), v);
+  _fatSet(key, v);
+  // O cache em memória é a fonte da tela. Se o servidor recusar, precisamos desfazer,
+  // senão a tela mostra "ENVIADO" e o dado some no próximo login (falso positivo).
+  const rollback=()=>{ if(prev==null) _fatRemove(key); else _fatSet(key, prev); };
   const chave='state_'+bl+'_'+num;
   const row={chave, valor:v};
   if(!SUPA_URL||!SUPA_KEY){
-    showToast('⚠ Supabase não configurado — estado salvo apenas localmente.','#f59e0b','#000');
-    return;
+    rollback();
+    throw new Error('Supabase não configurado — não é possível registrar o faturamento.');
   }
   // Try upsert
   try{
@@ -6740,9 +6780,11 @@ async function setFatState(bl,num,state){
   }catch(e){
     // Check for RLS error — guide user to fix
     if(e.message && (e.message.includes('row-level security') || e.message.includes('policy'))){
+      rollback();
       _showRLSFixModal('fat_config');
       throw new Error('Política de segurança RLS bloqueia o save. Execute o SQL mostrado no Supabase SQL Editor.');
     }
+    console.warn('[fat] upsert falhou, tentando DELETE+INSERT:', e.message);
   }
   // Fallback: DELETE + INSERT
   try{
@@ -6754,10 +6796,23 @@ async function setFatState(bl,num,state){
       body:JSON.stringify(row)
     });
   }catch(e2){
+    rollback();
     if(e2.message && (e2.message.includes('row-level security') || e2.message.includes('policy'))){
       _showRLSFixModal('fat_config');
     }
     throw new Error('Falha ao salvar no Supabase: '+e2.message);
+  }
+  // Confirmação: relê do servidor para garantir que a linha existe de fato
+  try{
+    const chk=await supa(`fat_config?select=chave&chave=eq.${encodeURIComponent(chave)}`);
+    if(!chk || !chk.length){
+      rollback();
+      throw new Error('O servidor aceitou a requisição mas a linha não foi gravada (verifique as permissões/RLS da tabela fat_config).');
+    }
+  }catch(e3){
+    if(String(e3.message||'').includes('não foi gravada')){ throw e3; }
+    // Falha só na verificação (rede): mantém o valor local, o autosync reenvia depois
+    console.warn('[fat] não foi possível confirmar a gravação:', e3.message);
   }
 }
 function getHandlingBL(bl){
@@ -7314,7 +7369,9 @@ async function toggleEnviado(checkbox, bl, num){
     checkbox.disabled = true;
     showToast('💾 Salvando...','#f59e0b','#000');
     try{
-      await setFatState(bl, num, {});
+      // Reabertura grava {enviado:false} (e não {}): a tela trata igual, mas permite que o
+      // banco bloqueie gravações de "{}" — que são o rastro de clientes antigos apagando NFs.
+      await setFatState(bl, num, {enviado:false});
       showToast(`Período ${num} do BL ${bl} reaberto.`,'#f59e0b','#000');
       registrarAudit('faturamento', `Faturamento reaberto — BL: ${bl} · ${num}º Período`, { bl, num });
     }catch(err){
@@ -7890,16 +7947,20 @@ async function fatConfigSync(){
   push('logo',         localStorage.getItem('sp_fat_logo'));
   push('clientes',     localStorage.getItem('sp_clientes'));
 
-  // Scan all localStorage keys for fat_ prefixed data
+  // Chaves dinâmicas (state_/peso_/tarifa_bl_/handling_): vivem no _fatCache em memória.
+  // Também varre o localStorage por compatibilidade com dados de versões antigas.
+  const _seen=new Set();
+  const pushDyn=(key,v)=>{
+    if(!v||_seen.has(key)) return;
+    if(key.startsWith('sp_fat_tarifa_bl_')||key.startsWith('sp_fat_handling_')||
+       key.startsWith('sp_fat_state_')||key.startsWith('sp_fat_peso_')){
+      _seen.add(key); push(key.replace('sp_fat_',''), v);
+    }
+  };
+  Object.entries(_fatCache).forEach(([k,v])=>pushDyn(k,v));
   for(let i=0;i<localStorage.length;i++){
     const key=localStorage.key(i);
-    if(!key) continue;
-    const v=localStorage.getItem(key);
-    if(!v) continue;
-    if(key.startsWith('sp_fat_tarifa_bl_')){ push(key.replace('sp_fat_',''), v); }
-    else if(key.startsWith('sp_fat_handling_')){ push(key.replace('sp_fat_',''), v); }
-    else if(key.startsWith('sp_fat_state_')){   push(key.replace('sp_fat_',''), v); }
-    else if(key.startsWith('sp_fat_peso_')){    push(key.replace('sp_fat_',''), v); }
+    if(key) pushDyn(key, localStorage.getItem(key));
   }
 
   if(!rows.length){ hideLoading(); showToast('Nenhum dado para sincronizar.','#f59e0b','#000'); return; }
@@ -7914,6 +7975,8 @@ async function fatConfigSync(){
   }
 }
 
+let _fatLogoPushed=null; // evita reenviar a logo (base64 pesado) a cada sincronização
+
 async function autoSyncFatConfig(){
   if(!SUPA_URL||!SUPA_KEY) return;
 
@@ -7924,19 +7987,16 @@ async function autoSyncFatConfig(){
   // Chaves estáticas (localStorage)
   push('tarifa',       localStorage.getItem('sp_fat_tarifa'));
   push('periodo_dias', localStorage.getItem('sp_fat_periodo'));
-  push('logo',         localStorage.getItem('sp_fat_logo'));
   push('clientes',     localStorage.getItem('sp_clientes'));
+  // Logo: só reenvia quando mudou (é uma imagem base64, custa banda a cada 5 min)
+  const _logoLocal=localStorage.getItem('sp_fat_logo');
+  if(_logoLocal && _logoLocal!==_fatLogoPushed){ push('logo', _logoLocal); _fatLogoPushed=_logoLocal; }
 
-  // Chaves dinâmicas (agora no _fatCache em memória, não no localStorage)
-  Object.entries(_fatCache).forEach(([key, v])=>{
-    if(!v) return;
-    if(key.startsWith('sp_fat_tarifa_bl_') ||
-       key.startsWith('sp_fat_handling_')  ||
-       key.startsWith('sp_fat_state_')     ||
-       key.startsWith('sp_fat_peso_')){
-      push(key.replace('sp_fat_',''), v);
-    }
-  });
+  // NÃO reenviar chaves dinâmicas (state_/peso_/tarifa_bl_/handling_).
+  // Elas já são gravadas no Supabase no instante da ação do usuário (setFatState /
+  // fatConfigSet). Reenviar o cache inteiro fazia qualquer sessão com valor antigo
+  // sobrescrever, a cada 5 min, o dado novo salvo em outra sessão/dispositivo —
+  // era assim que a NF virava "{}" no servidor.
 
   try{
     if(rows.length) await supaUpsertBulk('fat_config', rows, 'chave', 200);
@@ -7946,20 +8006,19 @@ async function autoSyncFatConfig(){
   // Após o push acima, o Supabase tem nossos dados mais recentes
   // O pull carrega dados de outros usuários (tarifas, handlings, etc.)
   try{
-    const remote = await supaAll('fat_config?select=*');
+    // Se já temos a logo local, não baixa de novo (linha grande de base64).
+    // Usa supa() simples: a tabela hoje tem <1000 linhas (limite do PostgREST sem paginação).
+    // ATENÇÃO: ao se aproximar de 1000 linhas, migrar para supaAll e testar antes de publicar.
+    const _skipLogo = !!localStorage.getItem('sp_fat_logo');
+    const remote = await supa('fat_config?select=*'+(_skipLogo?'&chave=neq.logo':''));
     if(remote && remote.length){
-      // Aplica todos os dados remotos ao _fatCache
-      // Para chaves dinâmicas: só aplica se NÃO temos valor local (local sempre mais recente após push)
-      const localKeys = new Set(Object.keys(_fatCache));
+      // O servidor é a fonte da verdade: aplica TODOS os valores remotos.
+      // Antes as chaves dinâmicas eram ignoradas quando já existiam no cache — assim uma
+      // sessão com valor antigo nunca se atualizava e ainda o reenviava por cima do novo.
+      // As gravações do usuário já vão direto ao servidor (e são conferidas), então
+      // aplicar o remoto aqui não perde nada.
       remote.forEach(r=>{
-        const localKey = 'sp_fat_'+r.chave.replace(/^sp_fat_/,'');
-        const isDynamic = r.chave.startsWith('state_') || r.chave.startsWith('peso_') ||
-                          r.chave.startsWith('tarifa_bl_') || r.chave.startsWith('handling_');
-        // Para chaves estáticas: sempre aplica (tarifa global, período, logo, clientes)
-        // Para chaves dinâmicas: aplica se não temos valor local (dado de outro usuário)
-        if(!isDynamic || !localKeys.has(localKey)){
-          _fatSet(localKey, r.valor);
-        }
+        _fatSet('sp_fat_'+r.chave.replace(/^sp_fat_/,''), r.valor);
       });
       // Atualiza telas se abertas
       const fatScreen=document.getElementById('screen-faturamento');
