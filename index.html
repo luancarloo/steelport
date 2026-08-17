@@ -6,6 +6,7 @@
 <title>4SIDES · STEELPORT — Gestão de Bobinas</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <!-- OAuth2 PKCE implementado diretamente — sem dependência externa -->
@@ -943,6 +944,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
         <div class="filter-chip" onclick="setChip('e',this,'13x19')">13x19</div>
         <div class="filter-chip" onclick="setChip('e',this,'19x01')">19x01</div>
         <div class="filter-chip" onclick="setChip('e',this,'01x07')">01x07</div>
+        <div class="filter-chip" id="e-fc-saldo" onclick="toggleSaldoExp(this)" style="border-color:var(--accent);color:var(--accent);" title="Mostrar itens descarregados ainda pendentes de expedição (respeita os demais filtros)">⚖ SALDO (pendentes)</div>
         <button class="btn btn-secondary btn-sm" onclick="clearFilters('e')">LIMPAR</button>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('e')">↓ CSV</button>
         <button class="btn btn-purple btn-sm" onclick="openImportMov('expedicao')">↑ IMPORTAR EXCEL</button>
@@ -1083,6 +1085,7 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
             <option value="ambos">Descarga + Expedição</option>
             <option value="descarga">Somente Descarga</option>
             <option value="expedicao">Somente Expedição</option>
+            <option value="saldo">⚖ Saldo (a descarregar / a expedir)</option>
           </select>
         </div>
         <div>
@@ -1433,6 +1436,16 @@ window.onunhandledrejection = function(e){
   console.error('Unhandled promise rejection:', e.reason);
 };
 // ══════════════════════════════════════════
+// SEGURANÇA — escape de HTML p/ evitar XSS armazenado ao montar innerHTML
+// Use SEMPRE que interpolar dado livre (obs, cliente, nome, descrição, etc.) em innerHTML.
+// ══════════════════════════════════════════
+function escapeHtml(v){
+  if(v==null) return '';
+  return String(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+const _esc = escapeHtml; // alias curto p/ templates
+
+// ══════════════════════════════════════════
 // AUTH & USERS
 // ══════════════════════════════════════════
 const DEFAULT_ADMIN = {id:'admin',nome:'Administrador',user:'admin',pass:'admin123',role:'admin',mustChange:true,perms:{descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true,faturamento:true,mapeamento:true,followup:true,cargaGeral:true,cgRelatorio:true}};
@@ -1488,24 +1501,32 @@ async function doLogin(){
   const btnEl = document.getElementById('btn-login');
   try {
 
-  // 1. Try local cache first (fast path)
+  // Cache local: usado só como reserva quando não há conexão
   users = loadUsers();
   let candidate = users.find(x => x.user.toLowerCase()===u);
 
-  // 2. If not found locally, try fetching from Supabase
-  //    (first access on a new device — localStorage only has DEFAULT_ADMIN)
-  if(!candidate && SUPA_URL && SUPA_KEY){
+  // AUTENTICAÇÃO: o servidor é a fonte da verdade.
+  // Antes o login validava contra o cache local e só consultava o servidor se o usuário
+  // fosse desconhecido no aparelho. Efeito: senha trocada em outro dispositivo não valia
+  // aqui, e a senha ANTIGA continuava aceita. Agora consultamos sempre o registro atual
+  // (1 linha, rápido) e só caímos no cache local se estiver offline.
+  if(SUPA_URL && SUPA_KEY){
     if(btnEl){ btnEl.disabled=true; btnEl.textContent='Verificando...'; }
     try{
-      const remoteUsers = await supa('users?select=*');
-      if(remoteUsers && remoteUsers.length){
-        users = remoteUsers.map(normalizeUser);
-        if(!users.find(x=>x.id==='admin')) users.unshift(DEFAULT_ADMIN);
-        saveUsers();
+      const remoto = await supa(`users?select=*&user=eq.${encodeURIComponent(u)}`);
+      if(Array.isArray(remoto) && remoto.length){
+        const cands = remoto.map(normalizeUser);
+        // Se houver logins duplicados, aceita o registro cuja senha confere
+        let match=null;
+        for(const c of cands){ if(await verifyPass(p, c)){ match=c; break; } }
+        candidate = match || cands[0];
+        // Atualiza o cache local deste usuário
+        const idx = users.findIndex(x=>x.id===candidate.id);
+        if(idx>=0) users[idx]=candidate; else users.push(candidate);
+        try{ localStorage.setItem('sp_users', JSON.stringify(users)); }catch(e){}
       }
-      candidate = users.find(x => x.user.toLowerCase()===u);
     } catch(e){
-      // Supabase unreachable — keep local result
+      // Sem conexão — segue com o cache local
     } finally {
       if(btnEl){ btnEl.disabled=false; btnEl.textContent='ENTRAR'; }
     }
@@ -1712,16 +1733,16 @@ function renderUsersList(){
       : `<span class="user-card-role-badge operator">👤 OPERADOR</span>`;
     const avatarBg = isAdmin?'var(--accent)':isViewer?'var(--success)':'var(--info)';
     return `<div class="user-card">
-      <div class="user-card-avatar" style="background:${avatarBg};">${u.nome.charAt(0).toUpperCase()}</div>
+      <div class="user-card-avatar" style="background:${avatarBg};">${_esc((u.nome||'').charAt(0).toUpperCase())}</div>
       <div class="user-card-info">
-        <div class="user-card-name">${u.nome} ${isSelf?'<span style="font-size:11px;color:var(--muted);font-family:\'JetBrains Mono\',monospace;">(você)</span>':''}</div>
+        <div class="user-card-name">${_esc(u.nome)} ${isSelf?'<span style="font-size:11px;color:var(--muted);font-family:\'JetBrains Mono\',monospace;">(você)</span>':''}</div>
         ${roleBadge}
         <div style="margin-top:5px;">${permList.map(p=>{
           const defaultOn=new Set(['descarga','expedicao','consulta']);
           const active = isAdmin || isViewer || (defaultOn.has(p)?perms[p]!==false:perms[p]===true);
           return `<span class="perm-chip ${active?'on':''}">${permIcons[p]||p}</span>`;
         }).join('')}</div>
-        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px;">login: ${u.user}${u.email?' · '+u.email:''}</div>
+        <div style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-top:4px;">login: ${_esc(u.user)}${u.email?' · '+_esc(u.email):''}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:.4rem;">
         <button class="btn btn-info btn-sm" onclick="editUser('${u.id}')">EDITAR</button>
@@ -1746,8 +1767,21 @@ async function saveUser(){
   if(!nome||!user){ showToast('Preencha nome e usuário.','#e05c1a','#fff'); return; }
   if(!editUserId&&!pass){ showToast('Informe uma senha.','#e05c1a','#fff'); return; }
   if(pass&&pass.length<4){ showToast('Senha mínima de 4 caracteres.','#e05c1a','#fff'); return; }
-  const dup=users.find(u=>u.user===user&&u.id!==editUserId);
-  if(dup){ showToast('Nome de usuário já existe.','#e05c1a','#fff'); return; }
+  // Duplicidade: compara normalizado e ignora o próprio registro em edição.
+  const _norm=s=>String(s||'').trim().toLowerCase();
+  let dup=users.find(u=>_norm(u.user)===_norm(user)&&u.id!==editUserId);
+  // Em criação, confere também no servidor: dois dispositivos com a lista local
+  // desatualizada podiam criar o mesmo login duas vezes (foi o que gerou duplicatas).
+  if(!dup && !editUserId && SUPA_URL && SUPA_KEY){
+    try{
+      const remotos=await supa(`users?select=id,user&user=eq.${encodeURIComponent(user)}`);
+      if(Array.isArray(remotos)&&remotos.length) dup=remotos[0];
+    }catch(e){ console.warn('[users] checagem remota de duplicidade falhou:', e.message); }
+  }
+  if(dup){
+    showToast(`Já existe um usuário com o login "${user}"${dup.nome?' ('+dup.nome+')':''}.`,'#e05c1a','#fff');
+    return;
+  }
   const perms = role==='admin'
     ? {descarga:true,expedicao:true,database:true,relatorios:true,usuarios:true}
     : role==='viewer'
@@ -2091,14 +2125,20 @@ function hideLoading(){ document.getElementById('loading-overlay').style.display
 async function loadAllData(){
   showLoading('Carregando dados do Supabase...');
   try{
-    const [rec,exp,coils,usrs,navs,fatCfg]=await Promise.all([
+    const [rec,exp,coils,usrs,navs]=await Promise.all([
       supaAll('records?select=*&order=id.asc'),
       supaAll('expedicoes?select=*&order=id.asc'),
       supaAll('coilsdb?select=*&order=coil.asc'),
       supa('users?select=*'),
-      supa('navios?select=nome'),
-      supa('fat_config?select=*').catch(()=>[])
+      supa('navios?select=nome')
     ]);
+    // fat_config NÃO entra no carregamento bloqueante: é config do faturamento e não pode
+    // impedir o login. Carrega em segundo plano (o autoSyncFatConfig também recarrega depois).
+    supa('fat_config?select=*')
+      .then(cfg=>{ if(cfg&&cfg.length){ applyFatConfig(cfg);
+        const fs=document.getElementById('screen-faturamento');
+        if(fs&&fs.classList.contains('active')) renderFaturamento(); } })
+      .catch(e=>console.warn('[fat_config] carga em segundo plano falhou:', e.message));
     records    = (rec  ||[]).map(normalizeRecord);
     expedicoes = (exp  ||[]).map(normalizeRecord);
     coilsDB    = coils ||[];
@@ -2108,14 +2148,22 @@ async function loadAllData(){
     // Mantém a sessão atual sincronizada com os armazéns mais recentes do usuário
     if(session){
       const freshSelf=users.find(u=>u.id===session.id);
-      if(freshSelf) session.armazens=freshSelf.armazens||[];
+      if(freshSelf){
+        // Atualiza TAMBÉM papel e permissões: antes só 'armazens' era renovado, então um
+        // usuário já logado ficava com os privilégios antigos até sair e entrar de novo.
+        session.armazens = freshSelf.armazens||[];
+        session.role     = freshSelf.role || session.role;
+        session.perms    = freshSelf.perms || session.perms;
+        session.nome     = freshSelf.nome || session.nome;
+        session.email    = freshSelf.email ?? session.email;
+      }
       localStorage.setItem('sp_session', JSON.stringify(session));
+      applySessionUI(); // reaplica visibilidade dos módulos com as permissões novas
     }
     // Restringe os dados em memória aos armazéns permitidos pela sessão atual
     applyArmazemRestriction();
     saveUsers();
-    // Load shared fat_config
-    if(fatCfg && fatCfg.length) applyFatConfig(fatCfg);
+    // fat_config é aplicado em segundo plano (ver acima)
     hideLoading();
     setSyncBadge('ok', new Date().toISOString());
     return true;
@@ -2867,17 +2915,17 @@ function renderDBDescarga(){
       statusBadge=`<span style="font-size:10px;padding:2px 7px;border-radius:3px;background:rgba(240,165,0,.1);color:var(--accent);border:1px solid rgba(240,165,0,.25);font-family:'JetBrains Mono',monospace;font-weight:700;">⏳ PEND.</span>`;
     }
     return `<tr style="${i%2===0?'background:var(--surface2)':''};${rowStyle}">
-      <td><span class="coil-badge">${c.coil}</span></td>
+      <td><span class="coil-badge">${_esc(c.coil)}</span></td>
       <td>${statusBadge}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
-      <td style="font-weight:600">${c.navio||'—'}</td>
-      <td style="color:#60a5fa">${c.cliente||'—'}</td>
-      <td style="font-size:12px">${c.armazem||'—'}</td>
-      <td style="font-size:12px">${c.produto||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(c.bl)||'—'}</td>
+      <td style="font-weight:600">${_esc(c.navio)||'—'}</td>
+      <td style="color:#60a5fa">${_esc(c.cliente)||'—'}</td>
+      <td style="font-size:12px">${_esc(c.armazem)||'—'}</td>
+      <td style="font-size:12px">${_esc(c.produto)||'—'}</td>
       <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
       <td class="weight-cell">${c.pesol?fmtKg(c.pesol):'—'}</td>
       <td style="font-size:12px;color:var(--muted)">${rec?formatDate(rec.data):'—'}</td>
-      <td style="font-size:12px;font-family:'JetBrains Mono',monospace">${rec?.veiculo||'—'}</td>
+      <td style="font-size:12px;font-family:'JetBrains Mono',monospace">${_esc(rec?.veiculo)||'—'}</td>
     </tr>`;
   }).join('');
 
@@ -2989,7 +3037,7 @@ function autocompleteCoil(px){
     const db  = pool.find(c=>c.coil===coil);
     const div = document.createElement('div');
     div.style.cssText = `padding:.5rem .75rem;cursor:pointer;font-size:13px;font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);`;
-    div.innerHTML = `<span style="color:var(--accent);font-weight:700">${coil}</span><span style="color:var(--muted);font-size:11px">${db?.navio||''} ${db?.cliente?'· '+db.cliente:''}</span>`;
+    div.innerHTML = `<span style="color:var(--accent);font-weight:700">${_esc(coil)}</span><span style="color:var(--muted);font-size:11px">${_esc(db?.navio)||''} ${db?.cliente?'· '+_esc(db.cliente):''}</span>`;
     div.onmousedown = (e)=>{ e.preventDefault(); inputEl.value=coil; box.remove(); };
     box.appendChild(div);
   });
@@ -3064,13 +3112,13 @@ function renderLoteList(px){
   list.innerHTML = items.map(r=>`
     <div class="lote-item ${r.status}">
       <span style="font-size:14px;color:${statusColor[r.status]};font-weight:700;">${statusIcon[r.status]}</span>
-      <span class="lote-coil-badge">${r.coil}</span>
-      <span class="lote-bl-badge" title="BL">${r.bl||'—'}</span>
-      <span class="lote-item-field" style="color:var(--accent)">${r.navio||'—'}</span>
-      <span class="lote-item-field">${r.cliente||'—'}</span>
+      <span class="lote-coil-badge">${_esc(r.coil)}</span>
+      <span class="lote-bl-badge" title="BL">${_esc(r.bl)||'—'}</span>
+      <span class="lote-item-field" style="color:var(--accent)">${_esc(r.navio)||'—'}</span>
+      <span class="lote-item-field">${_esc(r.cliente)||'—'}</span>
       <span class="lote-item-field">${r.pesob?fmtKg(r.pesob)+' kg':'—'}</span>
-      <span class="lote-item-status" style="color:${statusColor[r.status]}">${r.msg}</span>
-      <button onclick="removeLoteItem('${px}','${r.coil}')"
+      <span class="lote-item-status" style="color:${statusColor[r.status]}">${_esc(r.msg)}</span>
+      <button onclick="removeLoteItem('${px}','${_esc(r.coil)}')"
         style="background:transparent;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:0 .25rem;" title="Remover">✕</button>
     </div>`).join('');
 
@@ -3287,7 +3335,7 @@ function _renderCgTicketWindow(t){
   const LINE  = '------------------------------------------------';
   const DLINE = '================================================';
   const LOGO_SRC = (()=>{ try{ const m=_renderTicketWindow.toString().match(/LOGO_SRC\s*=\s*'([^']+)'/); return m?m[1]:''; }catch(e){ return ''; } })();
-  const row=(lbl,val)=>`<div class="row"><span class="lbl">${lbl}</span><span class="val">${(val||'-').toString().toUpperCase()}</span></div>`;
+  const row=(lbl,val)=>`<div class="row"><span class="lbl">${escapeHtml(lbl)}</span><span class="val">${escapeHtml((val||'-').toString().toUpperCase())}</span></div>`;
   const totalQtd=regs.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
   const totalPeso=regs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const cliente=[...new Set(regs.map(r=>r.cliente).filter(Boolean))].join(' / ').toUpperCase()||'-';
@@ -3361,21 +3409,21 @@ function _renderCgTicketWindow(t){
   <div class="stitle">ITENS - ${regs.length} REG.</div>
   ${regs.map((r,i)=>`
     <div class="item-row">
-      <span class="item-desc">${String(i+1).padStart(2,'0')}. BL ${(r.bl||'').toUpperCase()} — ${(r.descricao||'').toUpperCase()}</span>
-      <span class="item-qtd">${r.quantidade} ${r.unidade||'UN'}${r.peso_kg?` / ${Number(r.peso_kg).toLocaleString('pt-BR')} KG`:''}</span>
+      <span class="item-desc">${String(i+1).padStart(2,'0')}. BL ${escapeHtml((r.bl||'').toUpperCase())} — ${escapeHtml((r.descricao||'').toUpperCase())}</span>
+      <span class="item-qtd">${r.quantidade} ${escapeHtml(r.unidade||'UN')}${r.peso_kg?` / ${Number(r.peso_kg).toLocaleString('pt-BR')} KG`:''}</span>
     </div>`).join('')}
   <div class="sep">${LINE}</div>
 
   <div class="total-row"><span>QTDE TOTAL:</span><span>${totalQtd} UN</span></div>
   ${totalPeso?`<div class="total-row"><span>PESO TOTAL:</span><span>${Number(totalPeso).toLocaleString('pt-BR')} KG</span></div>`:''}
-  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${obs.toString().toUpperCase()}</div>`:''}
+  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${escapeHtml(obs.toString().toUpperCase())}</div>`:''}
   <div class="sep">${DLINE}</div>
 
   <div class="sign-area">
     <div class="sign-line">ASSINATURA DO MOTORISTA</div>
     <div style="margin-top:14px;padding:6px 4px;border:1px solid #000;border-radius:3px;">
       <div style="font-size:10px;color:#000;margin-bottom:2px;">OPERADOR RESPONSAVEL</div>
-      <div style="font-size:14px;font-weight:900;text-align:center;color:#000;">${(usuario||'—').toUpperCase()}</div>
+      <div style="font-size:14px;font-weight:900;text-align:center;color:#000;">${escapeHtml((usuario||'—').toUpperCase())}</div>
     </div>
   </div>
   <div class="footer">4SIDES - STEELPORT WAREHOUSE SYSTEMS</div>
@@ -3472,7 +3520,7 @@ function _renderTicketWindow(t){
   <div class="total-row"><span>QTDE BOBINAS:</span><span>${entries.length}</span></div>
   <div class="total-row"><span>P.BRUTO TOTAL:</span><span>${fmtKg(totalPB)} KG</span></div>
   <div class="total-row"><span>P.LIQ. TOTAL:</span><span>${fmtKg(totalPL)} KG</span></div>
-  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${obs.toString().toUpperCase()}</div>`:''}
+  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${escapeHtml(obs.toString().toUpperCase())}</div>`:''}
   <div class="sep">${DLINE}</div>
 
   <div class="sign-area">
@@ -3551,18 +3599,18 @@ function _renderReprintList(){
     const bl     = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
     const totalPB= (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
     const usuarioBadge = isAdmin && t.usuario
-      ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:1px 6px;">👤 ${t.usuario}</span>`
+      ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:1px 6px;">👤 ${_esc(t.usuario)}</span>`
       : '';
     return `<div style="display:flex;justify-content:space-between;align-items:center;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;gap:1rem;">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${t.ticketNum}</span>
-          <span style="font-size:12px;color:var(--text);font-weight:600;">${t.veiculo||'—'}</span>
-          <span style="font-size:11px;color:var(--muted);">${t.motorista||'—'}</span>
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${_esc(t.ticketNum)}</span>
+          <span style="font-size:12px;color:var(--text);font-weight:600;">${_esc(t.veiculo)||'—'}</span>
+          <span style="font-size:11px;color:var(--muted);">${_esc(t.motorista)||'—'}</span>
           ${usuarioBadge}
         </div>
         <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
-          <span>BL: <b style="color:var(--text)">${bl}</b></span>
+          <span>BL: <b style="color:var(--text)">${_esc(bl)}</b></span>
           <span>${nCoils} bobina(s)</span>
           <span>${fmtKg(totalPB)} kg</span>
           <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo||'—'}</span>
@@ -3701,8 +3749,21 @@ function buildDBNavSelect(){
   if(v) el.value=v;
 }
 
+// Modo "SALDO" da consulta de Expedição: lista bobinas descarregadas ainda pendentes de expedição.
+let saldoModeE=false;
+function toggleSaldoExp(el){
+  saldoModeE=!saldoModeE;
+  el.classList.toggle('active', saldoModeE);
+  el.textContent = saldoModeE ? '⚖ SALDO (pendentes) ✓' : '⚖ SALDO (pendentes)';
+  applyFilters('e');
+}
+
 function getFiltered(px){
-  const src = px==='d'?records:expedicoes;
+  let src = px==='d'?records:expedicoes;
+  if(px==='e' && saldoModeE){
+    const expSet=new Set(expedicoes.map(r=>r.coil));
+    src = records.filter(r=>!expSet.has(r.coil)); // descarregadas que ainda não foram expedidas
+  }
   const q   =(document.getElementById(px+'-search')?.value||'').toLowerCase();
   const fn  = document.getElementById(px+'-filter-navio')?.value||'';
   const fc  = document.getElementById(px+'-filter-cliente')?.value||'';
@@ -3745,7 +3806,9 @@ function clearFilters(px){
   const scope=px==='d'?document.getElementById('dpanel-consultar'):document.getElementById('epanel-consultar');
   scope.querySelectorAll('.filter-chip').forEach(c=>c.classList.remove('active'));
   document.getElementById(px+'-fc-all').classList.add('active');
-  activeFilter[px]=''; applyFilters(px);
+  activeFilter[px]='';
+  if(px==='e'){ saldoModeE=false; const sc=document.getElementById('e-fc-saldo'); if(sc) sc.textContent='⚖ SALDO (pendentes)'; }
+  applyFilters(px);
 }
 
 function sortTableMov(px, col){ setSort(px, col, ()=>renderTable(px)); }
@@ -3753,6 +3816,7 @@ function pageTableMov(px, page){ setPage(px, page, ()=>renderTable(px)); }
 
 function renderTable(px){
   const isExp = px==='e';
+  const readonly = px==='e' && saldoModeE; // itens pendentes de expedição (só leitura)
   const tbody = document.getElementById(px+'-table-body');
   const raw   = getFiltered(px);
   document.getElementById(px+'-count').textContent=raw.length;
@@ -3788,23 +3852,29 @@ function renderTable(px){
   }
 
   tbody.innerHTML=slice.map(r=>`<tr data-id="${r.id}" data-px="${px}">
-    <td style="padding:.5rem 1rem;"><input type="checkbox" class="cb-row mov-cb" data-id="${r.id}" data-px="${px}" onchange="onMovCbChange('${px}')"></td>
-    <td><span class="coil-badge${isExp?' exp':''}">${r.coil}</span></td>
+    <td style="padding:.5rem 1rem;">${readonly?'':`<input type="checkbox" class="cb-row mov-cb" data-id="${r.id}" data-px="${px}" onchange="onMovCbChange('${px}')">`}</td>
+    <td><span class="coil-badge${isExp&&!readonly?' exp':''}">${_esc(r.coil)}</span></td>
     <td>${formatDate(r.data)}</td>
-    <td>${r.periodo}</td>
-    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${r.bl||'—'}</td>
-    <td style="font-weight:600">${r.navio||'—'}</td>
-    <td style="color:var(--info);font-weight:600">${r.veiculo||'—'}</td>
-    <td>${r.motorista||'—'}</td>
-    <td style="color:#60a5fa;font-size:13px">${r.cliente||'—'}</td>
+    <td>${_esc(r.periodo)}</td>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(r.bl)||'—'}</td>
+    <td style="font-weight:600">${_esc(r.navio)||'—'}</td>
+    <td style="color:var(--info);font-weight:600">${_esc(r.veiculo)||'—'}</td>
+    <td>${_esc(r.motorista)||'—'}</td>
+    <td style="color:#60a5fa;font-size:13px">${_esc(r.cliente)||'—'}</td>
     <td class="weight-cell">${r.pesob?fmtKg(r.pesob):'—'}</td>
     <td class="weight-cell">${r.pesol?fmtKg(r.pesol):'—'}</td>
-    <td style="font-size:12px;color:var(--success);font-weight:600">${r.registradoPor||'—'}</td>
-    <td><div class="actions">
+    <td style="font-size:12px;color:var(--success);font-weight:600">${_esc(r.registradoPor)||'—'}</td>
+    <td>${readonly
+      ? `<div class="actions"><button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'d')">VER</button><span class="coil-badge" style="background:rgba(240,165,0,.12);color:var(--accent);border-color:rgba(240,165,0,.3);">📦 EM ESTOQUE</span></div>`
+      : `<div class="actions">
       <button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'${px}')">VER</button>
       <button class="btn btn-info btn-sm" onclick="editMovimento(${r.id},'${px}')" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
-    </div></td></tr>`).join('');
+    </div>`}</td></tr>`).join('')
+    + _totalRowHtml(13,{
+        9: fmtKg(raw.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg',
+        10:fmtKg(raw.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0))+' kg'
+      },`TOTAL (${raw.length} reg.)`);
 
   // Pager — inject below table
   const tableWrap = tbody.closest('div[style*="overflow-x"]') || tbody.closest('.panel');
@@ -3854,23 +3924,23 @@ function viewDetail(id, px){
   document.getElementById('modal-detail-title').textContent = px==='e'?'📤 DETALHES DA EXPEDIÇÃO':'📥 DETALHES DA DESCARGA';
   document.getElementById('modal-content').innerHTML=`
     <div class="detail-grid">
-      <div class="detail-row"><div class="detail-label">COIL NUMBER</div><div class="detail-value highlight">${r.coil}</div></div>
+      <div class="detail-row"><div class="detail-label">COIL NUMBER</div><div class="detail-value highlight">${_esc(r.coil)}</div></div>
       <div class="detail-row"><div class="detail-label">DATA</div><div class="detail-value">${formatDate(r.data)}</div></div>
-      <div class="detail-row"><div class="detail-label">PERÍODO</div><div class="detail-value">${r.periodo}</div></div>
-      <div class="detail-row"><div class="detail-label">BL</div><div class="detail-value" style="font-family:'JetBrains Mono',monospace;font-size:13px">${r.bl||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">NAVIO</div><div class="detail-value">${r.navio||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">VIAGEM</div><div class="detail-value">${r.viagem||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">CLIENTE</div><div class="detail-value" style="color:#60a5fa">${r.cliente||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">PRODUTO</div><div class="detail-value">${r.produto||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">PERÍODO</div><div class="detail-value">${_esc(r.periodo)}</div></div>
+      <div class="detail-row"><div class="detail-label">BL</div><div class="detail-value" style="font-family:'JetBrains Mono',monospace;font-size:13px">${_esc(r.bl)||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">NAVIO</div><div class="detail-value">${_esc(r.navio)||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">VIAGEM</div><div class="detail-value">${_esc(r.viagem)||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">CLIENTE</div><div class="detail-value" style="color:#60a5fa">${_esc(r.cliente)||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">PRODUTO</div><div class="detail-value">${_esc(r.produto)||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">PESO BRUTO</div><div class="detail-value">${r.pesob?fmtKg(r.pesob)+' kg':'—'}</div></div>
       <div class="detail-row"><div class="detail-label">PESO LÍQUIDO</div><div class="detail-value">${r.pesol?fmtKg(r.pesol)+' kg':'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">ARMAZÉM</div><div class="detail-value">${r.armazem||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">VEÍCULO</div><div class="detail-value">${r.veiculo||'—'}</div></div>
-      <div class="detail-row"><div class="detail-label">MOTORISTA</div><div class="detail-value">${r.motorista||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">ARMAZÉM</div><div class="detail-value">${_esc(r.armazem)||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">VEÍCULO</div><div class="detail-value">${_esc(r.veiculo)||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">MOTORISTA</div><div class="detail-value">${_esc(r.motorista)||'—'}</div></div>
       <div class="detail-row"><div class="detail-label">REGISTRADO EM</div><div class="detail-value" style="font-size:12px">${new Date(r.registradoEm).toLocaleString('pt-BR')}</div></div>
-      <div class="detail-row"><div class="detail-label">REGISTRADO POR</div><div class="detail-value" style="color:var(--success);font-weight:700">${r.registradoPor||'—'}</div></div>
+      <div class="detail-row"><div class="detail-label">REGISTRADO POR</div><div class="detail-value" style="color:var(--success);font-weight:700">${_esc(r.registradoPor)||'—'}</div></div>
     </div>
-    ${r.obs&&r.obs.trim()?`<div style="margin-top:1rem;padding:.75rem;background:var(--bg);border-radius:6px;color:var(--muted);font-size:13px"><b style="color:var(--text)">OBS:</b> ${r.obs}</div>`:''}`;
+    ${r.obs&&r.obs.trim()?`<div style="margin-top:1rem;padding:.75rem;background:var(--bg);border-radius:6px;color:var(--muted);font-size:13px"><b style="color:var(--text)">OBS:</b> ${_esc(r.obs)}</div>`:''}`;
   document.getElementById('modal-detail').classList.add('open');
 }
 
@@ -3920,13 +3990,13 @@ function renderCoilsGrouped(){
     ].join('');
     return `<tr style="${rowOp}">
       <td><input type="checkbox" class="db-cb" data-idx="${idx}" onchange="dbUpdateBulk()"></td>
-      <td><span class="coil-badge">${c.coil}</span>${badges}</td>
-      <td style="color:var(--info);font-size:13px">${c.navio||'—'}</td>
-      <td style="font-size:13px">${c.armazem||'—'}</td>
-      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
-      <td style="color:#60a5fa;font-size:13px">${c.cliente||'—'}</td>
-      <td style="font-size:12px;color:var(--muted)">${c.viagem||'—'}</td>
-      <td style="font-size:13px">${c.produto||'—'}</td>
+      <td><span class="coil-badge">${_esc(c.coil)}</span>${badges}</td>
+      <td style="color:var(--info);font-size:13px">${_esc(c.navio)||'—'}</td>
+      <td style="font-size:13px">${_esc(c.armazem)||'—'}</td>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(c.bl)||'—'}</td>
+      <td style="color:#60a5fa;font-size:13px">${_esc(c.cliente)||'—'}</td>
+      <td style="font-size:12px;color:var(--muted)">${_esc(c.viagem)||'—'}</td>
+      <td style="font-size:13px">${_esc(c.produto)||'—'}</td>
       <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
       <td class="weight-cell">${c.pesol?fmtKg(c.pesol):'—'}</td>
       <td><div class="actions">
@@ -4184,9 +4254,9 @@ async function confirmDelete(){
 // ══════════════════════════════════════════
 // NAVIOS LIST
 // ══════════════════════════════════════════
-function renderNaviosList(){ document.getElementById('db-navios-list').innerHTML=navios.map((n,i)=>`<div class="db-item"><span>${n}</span><button class="btn btn-danger btn-sm" onclick="removeNavio(${i},'${n}')">✕</button></div>`).join('')||'<div style="color:var(--muted);padding:.5rem;font-size:13px">Nenhum cadastrado.</div>'; }
+function renderNaviosList(){ document.getElementById('db-navios-list').innerHTML=navios.map((n,i)=>`<div class="db-item"><span>${_esc(n)}</span><button class="btn btn-danger btn-sm" onclick="removeNavio(${i})">✕</button></div>`).join('')||'<div style="color:var(--muted);padding:.5rem;font-size:13px">Nenhum cadastrado.</div>'; }
 async function addNavio(){ const v=document.getElementById('new-navio').value.trim().toUpperCase(); if(!v||navios.includes(v)) return; navios.push(v); renderNaviosList(); document.getElementById('new-navio').value=''; try{ await apiPost({action:'addNavio',nome:v}); }catch(err){ showToast('⚠ Sincronização falhou','#f59e0b','#000'); } }
-async function removeNavio(i,nome){ navios.splice(i,1); renderNaviosList(); try{ await api({action:'deleteNavio',nome}); }catch(err){} }
+async function removeNavio(i){ const nome=navios[i]; navios.splice(i,1); renderNaviosList(); try{ await api({action:'deleteNavio',nome}); }catch(err){} }
 
 function showDBTab(name){
   ['bobinas','navios'].forEach(n=>{ document.getElementById('dbpanel-'+n).style.display=n===name?'':'none'; document.getElementById('dbtab-'+n).classList.toggle('active',n===name); });
@@ -5114,6 +5184,68 @@ function renderRptSummary(){
   }
 }
 
+// ── Relatório: cálculo de SALDO (a descarregar / a expedir) ──
+function _rptSaldoCalc(dbArr, descArr, expArr){
+  const sum=arr=>arr.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+  const bancoQ=dbArr.length, bancoP=sum(dbArr);
+  const descQ=descArr.length, descP=sum(descArr);
+  const expQ=expArr.length, expP=sum(expArr);
+  return {
+    bancoQ, bancoP,
+    descQ, descP,
+    saldoDescQ:Math.max(0,bancoQ-descQ), saldoDescP:Math.max(0,bancoP-descP),
+    expQ, expP,
+    estoqueQ:Math.max(0,descQ-expQ), estoqueP:Math.max(0,descP-expP)
+  };
+}
+function renderRptSaldoPanel(filtDB, desc, exps, tipo){
+  const t=_rptSaldoCalc(filtDB, desc, exps);
+  document.getElementById('rpt-group-title').textContent='⚖ SALDO — A DESCARREGAR / A EXPEDIR';
+  const card=(label,q,p,color)=>`<div class="rpt-summary-card" style="border-left:3px solid ${color};">
+    <div class="rpt-sum-label">${label}</div>
+    <div class="rpt-sum-value" style="color:${color};font-size:22px;">${q}</div>
+    <div class="rpt-sum-unit">${fmtKg(p)} kg</div></div>`;
+  document.getElementById('rpt-group-table').innerHTML=`
+    <div class="rpt-summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr));">
+      ${card('Total no banco (a descarregar)', t.bancoQ, t.bancoP, 'var(--text)')}
+      ${card('Já descarregado', t.descQ, t.descP, 'var(--info)')}
+      ${card('Saldo a descarregar', t.saldoDescQ, t.saldoDescP, 'var(--accent)')}
+      ${card('Já expedido', t.expQ, t.expP, 'var(--exp)')}
+      ${card('Saldo a expedir (em estoque)', t.estoqueQ, t.estoqueP, 'var(--success)')}
+    </div>`;
+
+  // Detalhe por grupo (respeitando o "Tipo de Relatório")
+  const fieldMap={navio:'navio',cliente:'cliente',bl:'bl',produto:'produto',armazem:'armazem'};
+  const field=fieldMap[tipo];
+  const detWrapper=document.getElementById('rpt-detail-wrapper');
+  const detTable=document.getElementById('rpt-detail-table');
+  if(!field){
+    document.getElementById('rpt-detail-title').textContent='🔩 DETALHE POR GRUPO';
+    detTable.innerHTML='<div class="empty-state"><span class="empty-icon">⚖</span>Selecione um Tipo de Relatório (Navio, Cliente, BL, Produto ou Armazém) para ver o saldo detalhado por grupo.</div>';
+    if(detWrapper) detWrapper.style.display='';
+    return;
+  }
+  document.getElementById('rpt-detail-title').textContent=`⚖ SALDO POR ${tipo.toUpperCase()}`;
+  const groups=[...new Set([...filtDB.map(x=>x[field]),...desc.map(x=>x[field]),...exps.map(x=>x[field])].filter(Boolean))].sort();
+  const headers=['GRUPO','BANCO (qtd)','BANCO (kg)','DESCARREGADO (qtd)','DESCARREGADO (kg)','SALDO DESC. (qtd)','SALDO DESC. (kg)','EXPEDIDO (qtd)','EXPEDIDO (kg)','A EXPEDIR (qtd)','A EXPEDIR (kg)'];
+  const rows=groups.map(g=>{
+    const m=_rptSaldoCalc(filtDB.filter(x=>x[field]===g), desc.filter(x=>x[field]===g), exps.filter(x=>x[field]===g));
+    return [g, m.bancoQ, fmtKg(m.bancoP), m.descQ, fmtKg(m.descP), m.saldoDescQ, fmtKg(m.saldoDescP), m.expQ, fmtKg(m.expP), m.estoqueQ, fmtKg(m.estoqueP)];
+  });
+  if(detWrapper) detWrapper.style.display='';
+  detTable.innerHTML=`<div style="overflow-x:auto;"><table>
+    <thead><tr>${headers.map(h=>`<th style="white-space:nowrap;">${h}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">${r.map((c,ci)=>`<td style="${ci===0?'font-weight:700':'text-align:right;font-family:monospace;font-size:12px'}">${_esc(c)}</td>`).join('')}</tr>`).join('')}
+    <tr style="border-top:2px solid var(--border);font-weight:700;">
+      <td>TOTAL</td><td style="text-align:right;">${t.bancoQ}</td><td style="text-align:right;">${fmtKg(t.bancoP)}</td>
+      <td style="text-align:right;">${t.descQ}</td><td style="text-align:right;">${fmtKg(t.descP)}</td>
+      <td style="text-align:right;">${t.saldoDescQ}</td><td style="text-align:right;">${fmtKg(t.saldoDescP)}</td>
+      <td style="text-align:right;">${t.expQ}</td><td style="text-align:right;">${fmtKg(t.expP)}</td>
+      <td style="text-align:right;">${t.estoqueQ}</td><td style="text-align:right;">${fmtKg(t.estoqueP)}</td>
+    </tr></tbody>
+  </table></div>`;
+}
+
 function renderReport(){
   const tipo=document.getElementById('rpt-tipo').value;
   const {desc,exps,sNav,sCli,sBl,sArm,sPro,qs}=getRptData();
@@ -5128,6 +5260,13 @@ function renderReport(){
   const filtDB=coilsDB.filter(c=>
     _rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm)
   );
+
+  // ── INCLUIR: SALDO (a descarregar / a expedir) ──
+  if(document.getElementById('rpt-movimento').value==='saldo'){
+    const filtDBp=filtDB.filter(c=>_rptMatch(c.produto,sPro)&&(!qs||[c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(qs))));
+    renderRptSaldoPanel(filtDBp, desc, exps, tipo);
+    return;
+  }
 
   // GROUP TABLE
   let groupRows=[], groupHeaders=[];
@@ -5325,7 +5464,16 @@ function renderReport(){
   else {
     groupContainer.innerHTML=`<table>
       <thead><tr>${groupHeaders.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
-      <tbody>${groupRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">${r.map((c,ci)=>`<td style="${ci>=2&&ci<=4?'font-weight:700':''}${ci===4?';color:var(--accent)':''}">${c}</td>`).join('')}</tr>`).join('')}</tbody>
+      <tbody>${groupRows.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">${r.map((c,ci)=>`<td style="${ci>=2&&ci<=4?'font-weight:700':''}${ci===4?';color:var(--accent)':''}">${_esc(c)}</td>`).join('')}</tr>`).join('')}
+      ${(()=>{ // subtotais das colunas numéricas do resumo
+        const nc=groupHeaders.length, tot={};
+        for(let ci=1;ci<nc;ci++){
+          if(groupRows.some(r=>_ptNum(r[ci])!=null)){
+            tot[ci]=Number(groupRows.reduce((a,r)=>a+(_ptNum(r[ci])||0),0)).toLocaleString('pt-BR');
+          }
+        }
+        return Object.keys(tot).length?_totalRowHtml(nc,tot,`TOTAL (${groupRows.length})`):'';
+      })()}</tbody>
     </table>`;
   }
 
@@ -5353,14 +5501,15 @@ function renderReport(){
         ${rthSort('P.BRUTO (kg)','pesob')}
       </tr></thead>
       <tbody>${pendSlice.map((c,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td><span class="coil-badge">${c.coil}</span></td>
-        <td style="font-weight:600">${c.navio||'—'}</td>
-        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${c.bl||'—'}</td>
-        <td style="color:#60a5fa">${c.cliente||'—'}</td>
-        <td style="font-size:13px">${c.produto||'—'}</td>
-        <td style="font-size:12px;color:var(--muted)">${c.armazem||'—'}</td>
+        <td><span class="coil-badge">${_esc(c.coil)}</span></td>
+        <td style="font-weight:600">${_esc(c.navio)||'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(c.bl)||'—'}</td>
+        <td style="color:#60a5fa">${_esc(c.cliente)||'—'}</td>
+        <td style="font-size:13px">${_esc(c.produto)||'—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${_esc(c.armazem)||'—'}</td>
         <td class="weight-cell">${c.pesob?fmtKg(c.pesob):'—'}</td>
-      </tr>`).join('')}</tbody>
+      </tr>`).join('')}
+      ${_totalRowHtml(7,{6:fmtKg(pendList.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0))+' kg'},`TOTAL (${pendList.length} bobinas)`)}</tbody>
     </table>
     ${renderPager(st, pendTotal, pendPages, "(p)=>setPage('rpt',p,renderReport)", 'rpt-detail')}`;
     return;
@@ -5387,29 +5536,170 @@ function renderReport(){
       const isExp=r._tipo==='EXPEDIÇÃO';
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
         <td><span style="font-size:11px;padding:2px 7px;border-radius:3px;font-family:'JetBrains Mono',monospace;${isExp?'background:rgba(168,85,247,.15);color:var(--exp);border:1px solid rgba(168,85,247,.3)':'background:rgba(34,197,94,.1);color:var(--success);border:1px solid rgba(34,197,94,.25)'}">${r._tipo}</span></td>
-        <td><span class="coil-badge${isExp?' exp':''}">${r.coil}</span></td>
-        <td>${formatDate(r.data)}</td><td>${r.periodo}</td>
-        <td style="font-weight:600">${r.navio||'—'}</td>
-        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${r.bl||'—'}</td>
-        <td style="color:#60a5fa">${r.cliente||'—'}</td>
-        <td style="font-size:13px">${r.produto||'—'}</td>
-        <td style="font-size:12px;color:var(--muted)">${r.armazem||'—'}</td>
-        <td style="color:var(--info)">${r.veiculo||'—'}</td>
-        <td>${r.motorista||'—'}</td>
+        <td><span class="coil-badge${isExp?' exp':''}">${_esc(r.coil)}</span></td>
+        <td>${formatDate(r.data)}</td><td>${_esc(r.periodo)}</td>
+        <td style="font-weight:600">${_esc(r.navio)||'—'}</td>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(r.bl)||'—'}</td>
+        <td style="color:#60a5fa">${_esc(r.cliente)||'—'}</td>
+        <td style="font-size:13px">${_esc(r.produto)||'—'}</td>
+        <td style="font-size:12px;color:var(--muted)">${_esc(r.armazem)||'—'}</td>
+        <td style="color:var(--info)">${_esc(r.veiculo)||'—'}</td>
+        <td>${_esc(r.motorista)||'—'}</td>
         <td class="weight-cell">${r.pesob?fmtKg(r.pesob):'—'}</td>
         <td class="weight-cell">${r.pesol?fmtKg(r.pesol):'—'}</td>
-        <td style="font-size:12px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.obs||''}">${r.obs||'—'}</td>
+        <td style="font-size:12px;color:var(--muted);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${_esc(r.obs)}">${_esc(r.obs)||'—'}</td>
       </tr>`;
-    }).join('')}</tbody>
+    }).join('')}
+    ${_totalRowHtml(14,{
+      11:fmtKg(all.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg',
+      12:fmtKg(all.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0))+' kg'
+    },`TOTAL (${all.length} mov.)`)}</tbody>
   </table>
   ${renderPager(st, rptTotal, rptPages, "(p)=>setPage('rpt',p,renderReport)", 'rpt-detail')}`;
 }
 
-function exportReportXLSX(){
+// ── Excel estilizado (ExcelJS): logo no cabeçalho, header colorido, bordas, zebra e larguras ──
+function _rptLogoBase64(){
+  try{ const m=_renderTicketWindow.toString().match(/LOGO_SRC\s*=\s*'([^']+)'/); return m?m[1]:''; }catch(e){ return ''; }
+}
+function _xlsxBorder(){ const s={style:'thin',color:{argb:'FFD1D5DB'}}; return {top:s,left:s,bottom:s,right:s}; }
+// Converte valores exibidos (inclusive "1.234,56", "12,50 t", "5 UN", "R$ 10,00") em número.
+// Retorna null quando não é um número somável (datas, "07x13", textos).
+function _ptNum(v){
+  if(typeof v==='number') return isFinite(v)?v:null;
+  if(v==null) return null;
+  let s=String(v).trim();
+  if(!s || s==='—') return null;
+  if(s.includes('/')||s.includes('x')||s.includes(':')) return null; // datas, turnos, horas
+  s=s.replace(/R\$|kg|KG|\bt\b|UN|un|%/g,'').trim();
+  if(!/^-?[\d.,]+$/.test(s)) return null;
+  s=s.replace(/\./g,'').replace(',','.');
+  const n=parseFloat(s);
+  return isFinite(n)?n:null;
+}
+// Linha de TOTAL para tabelas na tela. totals = {índiceColuna: 'texto'}
+function _totalRowHtml(nCols, totals, label){
+  let tds='';
+  for(let i=0;i<nCols;i++){
+    if(i===0) tds+=`<td style="font-weight:900;white-space:nowrap;">${label||'TOTAL'}</td>`;
+    else tds+=`<td style="font-weight:900;text-align:right;">${totals[i]!=null?totals[i]:''}</td>`;
+  }
+  return `<tr style="border-top:2px solid var(--accent);background:var(--surface2);">${tds}</tr>`;
+}
+// sheets: [{ name, title, aoa (aoa[0]=cabeçalho), numFmts?{colIdx:fmt}, dateCols?[idx] }]
+async function _xlsxStyled({filename, sheets}){
+  if(typeof ExcelJS==='undefined'){ showToast('⚠ Biblioteca ExcelJS não carregada (verifique a internet).','#e05c1a','#fff'); return false; }
+  const wb=new ExcelJS.Workbook();
+  wb.creator='4SIDES · STEELPORT';
+  // Logo (uma vez por workbook)
+  let imgId=null;
+  const logo=_rptLogoBase64();
+  if(logo){
+    try{
+      const b64=logo.split(',').pop();
+      const ext=/image\/jpe?g/i.test(logo)?'jpeg':'png';
+      imgId=wb.addImage({base64:b64, extension:ext});
+    }catch(e){ imgId=null; }
+  }
+  const HDR_ROW=4; // linha do cabeçalho da tabela (após a faixa 1-3)
+  sheets.forEach(sp=>{
+    const ws=wb.addWorksheet((sp.name||'Planilha').substring(0,31));
+    const headers=sp.aoa[0]||[];
+    const dataRows=sp.aoa.slice(1);
+    const nCols=Math.max(1, headers.length);
+    // Faixa de título (linhas 1-3) com logo à esquerda e título.
+    // Fundo CLARO: a logo tem arte escura e sumia sobre fundo preto.
+    ws.mergeCells(1,1,3,nCols);
+    const tc=ws.getCell(1,1);
+    tc.value=(sp.title||'4SIDES · STEELPORT')+'\nGerado em '+new Date().toLocaleString('pt-BR');
+    tc.font={bold:true,size:14,color:{argb:'FF0A0C0F'},name:'Calibri'};
+    tc.alignment={vertical:'middle',horizontal:'right',wrapText:true};
+    tc.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFFFFFF'}};
+    ws.getRow(1).height=20; ws.getRow(2).height=20; ws.getRow(3).height=18;
+    // Filete âmbar separando a faixa da tabela
+    for(let i=1;i<=nCols;i++){
+      ws.getCell(3,i).border={bottom:{style:'medium',color:{argb:'FFF0A500'}}};
+    }
+    if(imgId!=null){
+      try{ ws.addImage(imgId,{ tl:{col:0.15,row:0.25}, ext:{width:150,height:52} }); }catch(e){}
+    }
+    // Cabeçalho da tabela (linha 4)
+    const hr=ws.getRow(HDR_ROW);
+    headers.forEach((h,i)=>{
+      const c=hr.getCell(i+1);
+      c.value=h;
+      c.font={bold:true,color:{argb:'FFFFFFFF'},size:11};
+      c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF1F2937'}};
+      c.alignment={vertical:'middle',horizontal:'center',wrapText:true};
+      c.border=_xlsxBorder();
+    });
+    hr.height=24;
+    // Linhas de dados
+    dataRows.forEach((row,ri)=>{
+      const r=ws.getRow(HDR_ROW+1+ri);
+      for(let ci=0; ci<nCols; ci++){
+        const raw=row[ci];
+        const c=r.getCell(ci+1);
+        let val=(raw===''||raw==null)?null:raw;
+        if(val!=null && sp.dateCols && sp.dateCols.includes(ci) && /^\d{4}-\d{2}-\d{2}$/.test(String(val))){
+          const [y,m,d]=String(val).split('-').map(Number); val=new Date(y,m-1,d);
+        }
+        c.value=val;
+        c.border=_xlsxBorder();
+        c.alignment={vertical:'middle',horizontal:(typeof val==='number'||val instanceof Date)?'right':'left'};
+        if(val instanceof Date) c.numFmt='DD/MM/YYYY';
+        else if(sp.numFmts && sp.numFmts[ci]!=null && typeof val==='number') c.numFmt=sp.numFmts[ci];
+        if(ri%2===1) c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFF3F4F6'}};
+      }
+    });
+    // ── Linha de SUBTOTAIS por coluna ──
+    // Colunas somadas: sp.totalCols (explícito) | chaves de numFmts | detecção por conteúdo
+    // (autoTotals:'parse'). Nunca soma colunas de data nem a coluna 0 (rótulo).
+    let tcols=sp.totalCols;
+    if(!tcols){
+      if(sp.autoTotals==='parse'){
+        tcols=[]; for(let i=1;i<nCols;i++){ if(dataRows.some(r=>_ptNum(r[i])!=null)) tcols.push(i); }
+      } else if(sp.numFmts){
+        tcols=Object.keys(sp.numFmts).map(Number).filter(i=>!(sp.dateCols||[]).includes(i) && i>0);
+      }
+    }
+    if(sp.totals!==false && tcols && tcols.length && dataRows.length){
+      const tr=ws.getRow(HDR_ROW+1+dataRows.length);
+      for(let ci=0; ci<nCols; ci++){
+        const c=tr.getCell(ci+1);
+        if(ci===0) c.value='TOTAL';
+        else if(tcols.includes(ci)){
+          c.value=dataRows.reduce((a,r)=>a+(_ptNum(r[ci])||0),0);
+          c.numFmt=(sp.numFmts&&sp.numFmts[ci])||'#,##0.##';
+        }
+        c.font={bold:true,color:{argb:'FF0A0C0F'}};
+        c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FFFDE9C8'}};
+        c.alignment={vertical:'middle',horizontal:ci===0?'left':'right'};
+        c.border=Object.assign(_xlsxBorder(),{top:{style:'medium',color:{argb:'FFF0A500'}}});
+      }
+      tr.height=20;
+    }
+    // Larguras automáticas (pelo conteúdo)
+    for(let i=0;i<nCols;i++){
+      let max=String(headers[i]==null?'':headers[i]).length;
+      dataRows.forEach(row=>{ const v=row[i]; const len=(v==null?0:String(v).length); if(len>max) max=len; });
+      ws.getColumn(i+1).width=Math.min(50, Math.max(11, max+2));
+    }
+    // Congela cabeçalho + autofiltro
+    ws.views=[{state:'frozen', ySplit:HDR_ROW}];
+    ws.autoFilter={ from:{row:HDR_ROW,column:1}, to:{row:HDR_ROW,column:nCols} };
+  });
+  const buf=await wb.xlsx.writeBuffer();
+  const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },2000);
+  return true;
+}
+
+async function exportReportXLSX(){
   const {desc,exps,sBl,sNav,sCli}=getRptData();
   const tipo=document.getElementById('rpt-tipo').value;
   const mv=document.getElementById('rpt-movimento').value;
-  const wb=XLSX.utils.book_new();
 
   // ── Relatório Kingspan ────────────────────────────────
   if(tipo==='kingspan'){
@@ -5453,36 +5743,12 @@ function exportReportXLSX(){
         }
       });
     });
-    const ws=XLSX.utils.aoa_to_sheet([headers,...dataRows]);
-    // Larguras de coluna
-    ws['!cols']=[{wch:14},{wch:44},{wch:16},{wch:20},{wch:18},{wch:16},{wch:14},{wch:14},{wch:14},{wch:12},{wch:12},{wch:14},{wch:12}];
-    // Formata colunas de data (A, H, I) como datas legíveis dd/mm/yyyy no Excel
-    // Os valores já estão como string ISO — converte para date serial para Excel reconhecer como data
-    dataRows.forEach((_r,ri)=>{
-      const rowIdx=ri+1; // +1 por causa do header
-      [0,7,8].forEach(ci=>{
-        const addr=XLSX.utils.encode_cell({r:rowIdx,c:ci});
-        if(ws[addr]&&ws[addr].v){
-          const iso=ws[addr].v;
-          if(/^\d{4}-\d{2}-\d{2}$/.test(iso)){
-            const [y,m,d]=iso.split('-').map(Number);
-            // Excel date serial (days since 1900-01-01, with leap-year bug)
-            const serial=Math.round((new Date(y,m-1,d)-new Date(1899,11,30))/86400000);
-            ws[addr]={t:'n',v:serial,z:'DD/MM/YYYY'};
-          }
-        }
-      });
-      // Colunas Valor (G=6), Tarifa (K=10) como número monetário
-      [6,10].forEach(ci=>{
-        const addr=XLSX.utils.encode_cell({r:rowIdx,c:ci});
-        if(ws[addr]) ws[addr]={t:'n',v:ws[addr].v,z:'"R$"#,##0.00'};
-      });
-      // Peso (J=9) como número inteiro
-      const pesoAddr=XLSX.utils.encode_cell({r:rowIdx,c:9});
-      if(ws[pesoAddr]) ws[pesoAddr]={t:'n',v:ws[pesoAddr].v,z:'#,##0'};
+    await _xlsxStyled({
+      filename:'4SIDES_STEELPORT_Kingspan_'+new Date().toISOString().split('T')[0]+'.xlsx',
+      sheets:[{ name:'Kingspan', title:'🟧 RELATÓRIO KINGSPAN — FATURAMENTO', aoa:[headers,...dataRows],
+        dateCols:[0,7,8], numFmts:{6:'"R$" #,##0.00', 9:'#,##0', 10:'"R$" #,##0.00'},
+        totalCols:[6,9] }] // não soma TARIFA (R$/t)
     });
-    XLSX.utils.book_append_sheet(wb, ws, 'Kingspan');
-    XLSX.writeFile(wb, '4SIDES_STEELPORT_Kingspan_'+new Date().toISOString().split('T')[0]+'.xlsx');
     showToast('✓ Relatório Kingspan exportado!','#22c55e','#000');
     return;
   }
@@ -5524,51 +5790,44 @@ function exportReportXLSX(){
         ]);
       });
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), 'Faturamento');
-    XLSX.writeFile(wb, '4SIDES_STEELPORT_Faturamento_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    await _xlsxStyled({
+      filename:'4SIDES_STEELPORT_Faturamento_'+new Date().toISOString().split('T')[0]+'.xlsx',
+      sheets:[{ name:'Faturamento', title:'💰 RELATÓRIO DE FATURAMENTO', aoa:rows,
+        numFmts:{8:'#,##0', 9:'#,##0.000', 10:'"R$" #,##0.00', 11:'"R$" #,##0.00', 12:'"R$" #,##0.00', 13:'"R$" #,##0.00'},
+        totalCols:[8,9,11,12,13] }] // não soma TARIFA (R$/t)
+    });
     showToast('✓ Relatório de Faturamento exportado!','#22c55e','#000');
     return;
   }
 
-  // Sheet 1: Resumo (usa helper compartilhado, cobre todos os tipos)
+  // Relatório geral: Resumo + (A Descarregar | Descargas + Expedições)
   const {sArm,sVei,sPro,qs}=getRptData();
   const {headers:sumH, rows:sumR}=buildRptGroupSummary(tipo,desc,exps,sNav,sCli,sBl,sArm,sPro,qs);
-  const pbDescTotal=Math.round(desc.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
-  const pbExpsTotal=Math.round(exps.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0));
-  const summaryData=[sumH,...sumR,
-    [],
-    ['TOTAIS','DESC: '+desc.length,'EXP: '+exps.length,'SALDO: '+(desc.length-exps.length),
-     'P.B. DESC (kg): '+pbDescTotal,'P.B. EXP (kg): '+pbExpsTotal,'SALDO P.B. (kg): '+(pbDescTotal-pbExpsTotal)]
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summaryData), 'Resumo');
+  const sheets=[{ name:'Resumo', title:'📋 RESUMO DO RELATÓRIO', aoa:[sumH,...sumR], autoTotals:'parse' }];
+  const today=new Date().toISOString().split('T')[0];
 
-  // Sheet extra: lista de bobinas pendentes de descarga (tipo "a descarregar")
   if(tipo==='a_descarregar'){
     const filtDB=coilsDB.filter(c=>_rptMatch(c.navio,sNav)&&_rptMatch(c.cliente,sCli)&&_rptMatch(c.bl,sBl)&&_rptMatch(c.armazem,sArm));
     const pend=getPendingDischarge(filtDB,sPro,qs);
     const pSheet=[['COIL NUMBER','NAVIO','BL','CLIENTE','PRODUTO','ARMAZÉM','P.BRUTO (kg)']];
     pend.forEach(c=>pSheet.push([c.coil,c.navio||'',c.bl||'',c.cliente||'',c.produto||'',c.armazem||'',parseFloat(c.pesob)||0]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(pSheet), 'A Descarregar');
-    XLSX.writeFile(wb, '4SIDES_STEELPORT_ADescarregar_'+new Date().toISOString().split('T')[0]+'.xlsx');
+    sheets.push({ name:'A Descarregar', title:'⏳ BOBINAS A DESCARREGAR', aoa:pSheet, numFmts:{6:'#,##0'} });
+    await _xlsxStyled({ filename:'4SIDES_STEELPORT_ADescarregar_'+today+'.xlsx', sheets });
     showToast('✓ Excel exportado com sucesso!','#22c55e','#000');
     return;
   }
 
-  // Sheet 2: Descargas
   if(mv!=='expedicao'){
     const dSheet=[['COIL NUMBER','DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','VEÍCULO','MOTORISTA','P.BRUTO (kg)','P.LÍQUIDO (kg)','ARMAZÉM']];
     desc.forEach(r=>dSheet.push([r.coil,r.data,r.periodo,r.bl,r.navio,r.cliente,r.produto,r.veiculo,r.motorista,parseFloat(r.pesob)||0,parseFloat(r.pesol)||0,r.armazem]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(dSheet), 'Descargas');
+    sheets.push({ name:'Descargas', title:'📥 DESCARGAS', aoa:dSheet, dateCols:[1], numFmts:{9:'#,##0',10:'#,##0'} });
   }
-
-  // Sheet 3: Expedições
   if(mv!=='descarga'){
     const eSheet=[['COIL NUMBER','DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','VEÍCULO','MOTORISTA','P.BRUTO (kg)','P.LÍQUIDO (kg)']];
     exps.forEach(r=>eSheet.push([r.coil,r.data,r.periodo,r.bl,r.navio,r.cliente,r.produto,r.veiculo,r.motorista,parseFloat(r.pesob)||0,parseFloat(r.pesol)||0]));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(eSheet), 'Expedicoes');
+    sheets.push({ name:'Expedicoes', title:'📤 EXPEDIÇÕES', aoa:eSheet, dateCols:[1], numFmts:{9:'#,##0',10:'#,##0'} });
   }
-
-  XLSX.writeFile(wb, '4SIDES_STEELPORT_Relatorio_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  await _xlsxStyled({ filename:'4SIDES_STEELPORT_Relatorio_'+today+'.xlsx', sheets });
   showToast('✓ Excel exportado com sucesso!','#22c55e','#000');
 }
 function exportReportPDF(){
@@ -5860,7 +6119,7 @@ function renderMapa(){
   container.innerHTML = Object.entries(byArm).map(([arm, blGroups])=>`
     <div style="margin-bottom:2rem;">
       <div style="font-size:13px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:2px;font-weight:700;margin-bottom:1rem;padding:.5rem 1rem;background:var(--surface2);border-radius:6px;border-left:3px solid var(--accent);">
-        🏭 ARMAZÉM: ${arm}
+        🏭 ARMAZÉM: ${_esc(arm)}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:1.2rem;align-items:flex-end;">
         ${Object.entries(blGroups).map(([bl, pile])=>{
@@ -5889,11 +6148,11 @@ function renderMapa(){
               const curPos=ov.posicao??c._mapPos??'';
               const curObs=ov.obs??c._mapObs??'';
               return `<div style="background:var(--surface);border:2px solid var(--accent);border-radius:6px;padding:8px;margin-bottom:2px;min-width:190px;">
-                <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;">✏ ${c.coil}</div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;">✏ ${_esc(c.coil)}</div>
                 <div style="display:flex;flex-direction:column;gap:4px;">
                   <div>
                     <div style="font-size:9px;color:var(--muted);margin-bottom:2px;font-family:'JetBrains Mono',monospace;">ARMAZÉM</div>
-                    <input id="map-ie-arm-${sid}" type="text" value="${curArm}"
+                    <input id="map-ie-arm-${sid}" type="text" value="${_esc(curArm)}"
                       placeholder="ex: ARM-01"
                       oninput="this.value=this.value.toUpperCase()"
                       style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace;outline:none;text-transform:uppercase;">
@@ -5906,7 +6165,7 @@ function renderMapa(){
                   </div>
                   <div>
                     <div style="font-size:9px;color:var(--muted);margin-bottom:2px;font-family:'JetBrains Mono',monospace;">OBSERVAÇÃO</div>
-                    <input id="map-ie-obs-${sid}" type="text" value="${curObs}"
+                    <input id="map-ie-obs-${sid}" type="text" value="${_esc(curObs)}"
                       placeholder="ex: Linha 3, Col B"
                       style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;outline:none;">
                   </div>
@@ -5931,15 +6190,15 @@ function renderMapa(){
               bg='rgba(240,165,0,.08)'; border='rgba(240,165,0,.25)'; label='PEND.';
             }
             const highlightBorder = isHighlight ? '2px solid var(--accent)' : `1px solid ${border}`;
-            return `<div title="${c.coil} — ${c.cliente||''} ${c.produto||''} ${c.pesob?fmtKg(c.pesob)+' kg':''}"
+            return `<div title="${_esc(c.coil)} — ${_esc(c.cliente)||''} ${_esc(c.produto)||''} ${c.pesob?fmtKg(c.pesob)+' kg':''}"
               style="background:${bg};border:${highlightBorder};border-radius:4px;padding:5px 8px;margin-bottom:2px;min-width:170px;transition:all .15s;display:flex;justify-content:space-between;align-items:center;gap:4px;${isHighlight?'box-shadow:0 0 0 1px var(--accent);':''}"
               onmouseover="this.style.transform='scale(1.01)'" onmouseout="this.style.transform=''">
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#000">${c.coil}</span>
+                  <span style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:#000">${_esc(c.coil)}</span>
                   ${label?`<span style="font-size:9px;font-weight:700;color:#000;opacity:.8">${label}</span>`:''}
                 </div>
-                <div style="font-size:10px;color:#000;opacity:.65;margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+c.produto.substring(0,12):''}${c._mapObs?` · <em>${c._mapObs}</em>`:''}</div>
+                <div style="font-size:10px;color:#000;opacity:.65;margin-top:1px">${c.pesob?fmtKg(c.pesob)+' kg':'—'} ${c.produto?'· '+_esc(c.produto.substring(0,12)):''}${c._mapObs?` · <em>${_esc(c._mapObs)}</em>`:''}</div>
               </div>
               <button onclick="mapInlineEditCoil='${c.coil}';renderMapa()"
                 style="background:transparent;border:1px solid ${border};border-radius:3px;cursor:pointer;color:#000;font-size:10px;padding:2px 5px;flex-shrink:0;opacity:.6;transition:opacity .15s;"
@@ -5952,10 +6211,10 @@ function renderMapa(){
             <!-- Stack header -->
             <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px 8px 0 0;padding:.6rem .8rem;border-bottom:none;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-                <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;">BL: ${bl}</div>
+                <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;">BL: ${_esc(bl)}</div>
                 <button onclick="abrirDividirPilha('${bl}')" class="btn btn-secondary btn-sm" style="font-size:10px;padding:1px 6px;" title="Mover bobinas selecionadas para outro armazém">✂ DIVIDIR</button>
               </div>
-              <div style="font-size:10px;color:var(--muted);">${navio} ${cliente?'· '+cliente:''}</div>
+              <div style="font-size:10px;color:var(--muted);">${_esc(navio)} ${cliente?'· '+_esc(cliente):''}</div>
               <div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;">
                 <span style="font-size:9px;background:rgba(34,197,94,.1);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${descCount-expCount} em estoque</span>
                 ${expCount?`<span style="font-size:9px;background:rgba(168,85,247,.1);color:var(--exp);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${expCount} expedida(s)</span>`:''}
@@ -6497,13 +6756,18 @@ function getFatState(bl,num){
   try{ return JSON.parse(_fatGet(getFatStateKey(bl,num))||'{}'); }catch(e){ return {}; }
 }
 async function setFatState(bl,num,state){
+  const key=getFatStateKey(bl,num);
+  const prev=_fatGet(key);            // valor anterior, p/ desfazer se o servidor recusar
   const v=JSON.stringify(state);
-  _fatSet(getFatStateKey(bl,num), v);
+  _fatSet(key, v);
+  // O cache em memória é a fonte da tela. Se o servidor recusar, precisamos desfazer,
+  // senão a tela mostra "ENVIADO" e o dado some no próximo login (falso positivo).
+  const rollback=()=>{ if(prev==null) _fatRemove(key); else _fatSet(key, prev); };
   const chave='state_'+bl+'_'+num;
   const row={chave, valor:v};
   if(!SUPA_URL||!SUPA_KEY){
-    showToast('⚠ Supabase não configurado — estado salvo apenas localmente.','#f59e0b','#000');
-    return;
+    rollback();
+    throw new Error('Supabase não configurado — não é possível registrar o faturamento.');
   }
   // Try upsert
   try{
@@ -6516,9 +6780,11 @@ async function setFatState(bl,num,state){
   }catch(e){
     // Check for RLS error — guide user to fix
     if(e.message && (e.message.includes('row-level security') || e.message.includes('policy'))){
+      rollback();
       _showRLSFixModal('fat_config');
       throw new Error('Política de segurança RLS bloqueia o save. Execute o SQL mostrado no Supabase SQL Editor.');
     }
+    console.warn('[fat] upsert falhou, tentando DELETE+INSERT:', e.message);
   }
   // Fallback: DELETE + INSERT
   try{
@@ -6530,10 +6796,23 @@ async function setFatState(bl,num,state){
       body:JSON.stringify(row)
     });
   }catch(e2){
+    rollback();
     if(e2.message && (e2.message.includes('row-level security') || e2.message.includes('policy'))){
       _showRLSFixModal('fat_config');
     }
     throw new Error('Falha ao salvar no Supabase: '+e2.message);
+  }
+  // Confirmação: relê do servidor para garantir que a linha existe de fato
+  try{
+    const chk=await supa(`fat_config?select=chave&chave=eq.${encodeURIComponent(chave)}`);
+    if(!chk || !chk.length){
+      rollback();
+      throw new Error('O servidor aceitou a requisição mas a linha não foi gravada (verifique as permissões/RLS da tabela fat_config).');
+    }
+  }catch(e3){
+    if(String(e3.message||'').includes('não foi gravada')){ throw e3; }
+    // Falha só na verificação (rede): mantém o valor local, o autosync reenvia depois
+    console.warn('[fat] não foi possível confirmar a gravação:', e3.message);
   }
 }
 function getHandlingBL(bl){
@@ -6923,8 +7202,8 @@ function renderFaturamento(){
                 style="width:16px;height:16px;accent-color:var(--success);cursor:pointer;">
               <span style="font-size:11px;font-weight:700;color:${state.enviado?'var(--success)':'var(--muted)'};">${state.enviado?'✓ ENVIADO':'Não enviado'}</span>
             </label>
-            ${state.enviado&&state.nf&&state.nf!=='—'?`<div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:3px;padding:1px 5px;white-space:nowrap;">NF: <strong>${state.nf}</strong></div>`:''}
-            ${state.enviado&&state.dataEnvio?`<div style="font-size:9px;color:var(--muted);">${state.dataEnvio}${state.usuario?' · '+state.usuario:''}</div>`:''}
+            ${state.enviado&&state.nf&&state.nf!=='—'?`<div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:3px;padding:1px 5px;white-space:nowrap;">NF: <strong>${_esc(state.nf)}</strong></div>`:''}
+            ${state.enviado&&state.dataEnvio?`<div style="font-size:9px;color:var(--muted);">${_esc(state.dataEnvio)}${state.usuario?' · '+_esc(state.usuario):''}</div>`:''}
           </div>`;
         periodsHTML+=`<tr style="${rowBg}">
           <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${lockBadge}</td>
@@ -6943,14 +7222,14 @@ function renderFaturamento(){
 
     blCards.push(`<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;margin-bottom:1rem;overflow:hidden;">
       <div style="background:var(--surface2);border-bottom:1px solid var(--border);padding:.75rem 1.2rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
-        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--accent);">BL: ${bl}</div>
-        <div style="font-size:13px;color:var(--text);font-weight:600;">${cliente}</div>
-        <div style="font-size:12px;color:var(--muted);">🚢 ${navio}${viagem&&viagem!=='—'?' · '+viagem:''}</div>
-        <div style="font-size:12px;color:var(--muted);">${produto}</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--accent);">BL: ${_esc(bl)}</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600;">${_esc(cliente)}</div>
+        <div style="font-size:12px;color:var(--muted);">🚢 ${_esc(navio)}${viagem&&viagem!=='—'?' · '+_esc(viagem):''}</div>
+        <div style="font-size:12px;color:var(--muted);">${_esc(produto)}</div>
         ${statusBadge}
-        ${cliInfo?.cnpj?`<div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CNPJ: ${cliInfo.cnpj}</div>`:''}
-        ${cliInfo?.email?`<a href="mailto:${cliInfo.email}" style="font-size:11px;color:var(--info);text-decoration:none;">✉ ${cliInfo.email}</a>`:''}
-        ${cliInfo?.contato?`<div style="font-size:11px;color:var(--muted);">👤 ${cliInfo.contato}</div>`:''}
+        ${cliInfo?.cnpj?`<div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);">CNPJ: ${_esc(cliInfo.cnpj)}</div>`:''}
+        ${cliInfo?.email?`<a href="mailto:${_esc(cliInfo.email)}" style="font-size:11px;color:var(--info);text-decoration:none;">✉ ${_esc(cliInfo.email)}</a>`:''}
+        ${cliInfo?.contato?`<div style="font-size:11px;color:var(--muted);">👤 ${_esc(cliInfo.contato)}</div>`:''}
         <div style="display:flex;align-items:center;gap:.35rem;margin-left:auto;">
           <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;">R$/t:</span>
           <span id="fat-tarifa-display-${bl.replace(/[^a-z0-9]/gi,'_')}"
@@ -7090,7 +7369,9 @@ async function toggleEnviado(checkbox, bl, num){
     checkbox.disabled = true;
     showToast('💾 Salvando...','#f59e0b','#000');
     try{
-      await setFatState(bl, num, {});
+      // Reabertura grava {enviado:false} (e não {}): a tela trata igual, mas permite que o
+      // banco bloqueie gravações de "{}" — que são o rastro de clientes antigos apagando NFs.
+      await setFatState(bl, num, {enviado:false});
       showToast(`Período ${num} do BL ${bl} reaberto.`,'#f59e0b','#000');
       registrarAudit('faturamento', `Faturamento reaberto — BL: ${bl} · ${num}º Período`, { bl, num });
     }catch(err){
@@ -7312,14 +7593,14 @@ function renderHistoricoFaturas(){
     return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.85rem 1.2rem;margin-bottom:.6rem;display:flex;align-items:flex-start;gap:1rem;flex-wrap:wrap;">
       <div style="flex:1;min-width:0;">
         <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.4rem;">
-          <span style="font-family:'JetBrains Mono',monospace;font-weight:900;font-size:14px;color:var(--accent);">${f.fatNum}</span>
-          ${f.nf?`<span style="font-size:11px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 6px;font-family:'JetBrains Mono',monospace;">NF: ${f.nf}</span>`:''}
+          <span style="font-family:'JetBrains Mono',monospace;font-weight:900;font-size:14px;color:var(--accent);">${_esc(f.fatNum)}</span>
+          ${f.nf?`<span style="font-size:11px;background:rgba(59,130,246,.1);color:#60a5fa;border:1px solid rgba(59,130,246,.25);border-radius:3px;padding:1px 6px;font-family:'JetBrains Mono',monospace;">NF: ${_esc(f.nf)}</span>`:''}
           ${f.totalFatura>0?`<span style="font-size:12px;font-weight:700;color:var(--success);">R$ ${f.totalFatura.toFixed(2).replace('.',',')}</span>`:''}
         </div>
-        <div style="font-size:13px;color:var(--text);font-weight:600;">${f.cliente}</div>
-        <div style="font-size:12px;color:var(--muted);">🚢 ${f.navio} · BL: <span style="font-family:'JetBrains Mono',monospace;">${f.bl}</span> · ${f.periodoNum}º período</div>
+        <div style="font-size:13px;color:var(--text);font-weight:600;">${_esc(f.cliente)}</div>
+        <div style="font-size:12px;color:var(--muted);">🚢 ${_esc(f.navio)} · BL: <span style="font-family:'JetBrains Mono',monospace;">${_esc(f.bl)}</span> · ${f.periodoNum}º período</div>
         <div style="font-size:12px;color:var(--muted);">${dtIni} → ${dtFim} · ${fmtKg(f.pesoBruto)} kg · ${f.toneladas.toFixed(3)} t</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Emitido: ${dt} por ${f.emitidoPor}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Emitido: ${dt} por ${_esc(f.emitidoPor)}</div>
       </div>
       <button class="btn btn-info btn-sm" onclick="reemitirFatura(${f.id})" style="flex-shrink:0;white-space:nowrap;">📄 REEMITIR</button>
     </div>`;
@@ -7666,16 +7947,20 @@ async function fatConfigSync(){
   push('logo',         localStorage.getItem('sp_fat_logo'));
   push('clientes',     localStorage.getItem('sp_clientes'));
 
-  // Scan all localStorage keys for fat_ prefixed data
+  // Chaves dinâmicas (state_/peso_/tarifa_bl_/handling_): vivem no _fatCache em memória.
+  // Também varre o localStorage por compatibilidade com dados de versões antigas.
+  const _seen=new Set();
+  const pushDyn=(key,v)=>{
+    if(!v||_seen.has(key)) return;
+    if(key.startsWith('sp_fat_tarifa_bl_')||key.startsWith('sp_fat_handling_')||
+       key.startsWith('sp_fat_state_')||key.startsWith('sp_fat_peso_')){
+      _seen.add(key); push(key.replace('sp_fat_',''), v);
+    }
+  };
+  Object.entries(_fatCache).forEach(([k,v])=>pushDyn(k,v));
   for(let i=0;i<localStorage.length;i++){
     const key=localStorage.key(i);
-    if(!key) continue;
-    const v=localStorage.getItem(key);
-    if(!v) continue;
-    if(key.startsWith('sp_fat_tarifa_bl_')){ push(key.replace('sp_fat_',''), v); }
-    else if(key.startsWith('sp_fat_handling_')){ push(key.replace('sp_fat_',''), v); }
-    else if(key.startsWith('sp_fat_state_')){   push(key.replace('sp_fat_',''), v); }
-    else if(key.startsWith('sp_fat_peso_')){    push(key.replace('sp_fat_',''), v); }
+    if(key) pushDyn(key, localStorage.getItem(key));
   }
 
   if(!rows.length){ hideLoading(); showToast('Nenhum dado para sincronizar.','#f59e0b','#000'); return; }
@@ -7690,6 +7975,8 @@ async function fatConfigSync(){
   }
 }
 
+let _fatLogoPushed=null; // evita reenviar a logo (base64 pesado) a cada sincronização
+
 async function autoSyncFatConfig(){
   if(!SUPA_URL||!SUPA_KEY) return;
 
@@ -7700,19 +7987,16 @@ async function autoSyncFatConfig(){
   // Chaves estáticas (localStorage)
   push('tarifa',       localStorage.getItem('sp_fat_tarifa'));
   push('periodo_dias', localStorage.getItem('sp_fat_periodo'));
-  push('logo',         localStorage.getItem('sp_fat_logo'));
   push('clientes',     localStorage.getItem('sp_clientes'));
+  // Logo: só reenvia quando mudou (é uma imagem base64, custa banda a cada 5 min)
+  const _logoLocal=localStorage.getItem('sp_fat_logo');
+  if(_logoLocal && _logoLocal!==_fatLogoPushed){ push('logo', _logoLocal); _fatLogoPushed=_logoLocal; }
 
-  // Chaves dinâmicas (agora no _fatCache em memória, não no localStorage)
-  Object.entries(_fatCache).forEach(([key, v])=>{
-    if(!v) return;
-    if(key.startsWith('sp_fat_tarifa_bl_') ||
-       key.startsWith('sp_fat_handling_')  ||
-       key.startsWith('sp_fat_state_')     ||
-       key.startsWith('sp_fat_peso_')){
-      push(key.replace('sp_fat_',''), v);
-    }
-  });
+  // NÃO reenviar chaves dinâmicas (state_/peso_/tarifa_bl_/handling_).
+  // Elas já são gravadas no Supabase no instante da ação do usuário (setFatState /
+  // fatConfigSet). Reenviar o cache inteiro fazia qualquer sessão com valor antigo
+  // sobrescrever, a cada 5 min, o dado novo salvo em outra sessão/dispositivo —
+  // era assim que a NF virava "{}" no servidor.
 
   try{
     if(rows.length) await supaUpsertBulk('fat_config', rows, 'chave', 200);
@@ -7722,20 +8006,19 @@ async function autoSyncFatConfig(){
   // Após o push acima, o Supabase tem nossos dados mais recentes
   // O pull carrega dados de outros usuários (tarifas, handlings, etc.)
   try{
-    const remote = await supaAll('fat_config?select=*');
+    // Se já temos a logo local, não baixa de novo (linha grande de base64).
+    // Usa supa() simples: a tabela hoje tem <1000 linhas (limite do PostgREST sem paginação).
+    // ATENÇÃO: ao se aproximar de 1000 linhas, migrar para supaAll e testar antes de publicar.
+    const _skipLogo = !!localStorage.getItem('sp_fat_logo');
+    const remote = await supa('fat_config?select=*'+(_skipLogo?'&chave=neq.logo':''));
     if(remote && remote.length){
-      // Aplica todos os dados remotos ao _fatCache
-      // Para chaves dinâmicas: só aplica se NÃO temos valor local (local sempre mais recente após push)
-      const localKeys = new Set(Object.keys(_fatCache));
+      // O servidor é a fonte da verdade: aplica TODOS os valores remotos.
+      // Antes as chaves dinâmicas eram ignoradas quando já existiam no cache — assim uma
+      // sessão com valor antigo nunca se atualizava e ainda o reenviava por cima do novo.
+      // As gravações do usuário já vão direto ao servidor (e são conferidas), então
+      // aplicar o remoto aqui não perde nada.
       remote.forEach(r=>{
-        const localKey = 'sp_fat_'+r.chave.replace(/^sp_fat_/,'');
-        const isDynamic = r.chave.startsWith('state_') || r.chave.startsWith('peso_') ||
-                          r.chave.startsWith('tarifa_bl_') || r.chave.startsWith('handling_');
-        // Para chaves estáticas: sempre aplica (tarifa global, período, logo, clientes)
-        // Para chaves dinâmicas: aplica se não temos valor local (dado de outro usuário)
-        if(!isDynamic || !localKeys.has(localKey)){
-          _fatSet(localKey, r.valor);
-        }
+        _fatSet('sp_fat_'+r.chave.replace(/^sp_fat_/,''), r.valor);
       });
       // Atualiza telas se abertas
       const fatScreen=document.getElementById('screen-faturamento');
@@ -8288,7 +8571,7 @@ function renderHistorico(){
     const allUsers = [...new Set(auditLog.map(e=>e.usuario).filter(Boolean))].sort();
     const cur = userSel.value;
     userSel.innerHTML = '<option value="">Todos os usuários</option>' +
-      allUsers.map(u=>`<option value="${u}" ${u===cur?'selected':''}>${u}</option>`).join('');
+      allUsers.map(u=>`<option value="${_esc(u)}" ${u===cur?'selected':''}>${_esc(u)}</option>`).join('');
   }
 
   const list = auditLog.filter(e=>{
@@ -8333,11 +8616,11 @@ function renderHistorico(){
       <div style="font-size:20px;flex-shrink:0;">${icon}</div>
       <div style="flex:1;min-width:0;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:.5rem;">
-          <span style="font-weight:700;font-size:13px;color:var(--text);">${e.descricao}</span>
+          <span style="font-weight:700;font-size:13px;color:var(--text);">${_esc(e.descricao)}</span>
           <span style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;flex-shrink:0;">${dt}</span>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:2px;">
-          👤 ${e.usuario} &nbsp;·&nbsp;
+          👤 ${_esc(e.usuario)} &nbsp;·&nbsp;
           <span style="font-family:'JetBrains Mono',monospace;font-size:10px;background:var(--surface2);padding:1px 5px;border-radius:3px;">${e.tipo.toUpperCase()}</span>
         </div>
       </div>
@@ -8887,14 +9170,29 @@ async function cgSyncNow(showFeedback=false){
       _cgReconcile('bulk_expedicoes', cgExpedicoes, exps);
     }
     _cgPruneTombstones(descs, exps);
-    renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico();
-    updateCgStats(); cgPopulateBLSelects();
+    _cgRenderAfterSync();
     _cgSetSyncStatus('ok');
     if(showFeedback) showToast('↻ Dados sincronizados!','#22c55e','#000');
   }catch(e){
     console.warn('CG sync error:',e.message);
     _cgSetSyncStatus('error');
   }
+}
+
+// Após sincronizar, renderiza SÓ a aba visível (evita reconstruir todas as tabelas a cada 15s).
+// Se o módulo Carga Geral estiver fechado, só atualiza os contadores (baratos) do início.
+function _cgRenderAfterSync(){
+  updateCgStats();
+  const cgOpen=document.getElementById('screen-carga-geral')?.classList.contains('active');
+  if(!cgOpen) return;
+  cgPopulateBLSelects();
+  const active=['banco','descarga','expedicao','historico','relatorio']
+    .find(t=>document.getElementById('cg-panel-'+t)?.classList.contains('active'));
+  if(active==='banco') renderCgBanco();
+  else if(active==='descarga') renderCgDescHoje();
+  else if(active==='expedicao') renderCgExpHoje();
+  else if(active==='historico') renderCgHistorico();
+  else if(active==='relatorio') renderCgRelatorio();
 }
 
 function cgStartSync(){
@@ -8920,6 +9218,13 @@ function cgQtdExpedida(bl, descricao){
 }
 function cgSaldoDescarga(item){ return Math.max(0,(item.qtd_total||0)-cgQtdDescarregada(item.bl,item.descricao)); }
 function cgSaldoArmazem(item){  return Math.max(0,cgQtdDescarregada(item.bl,item.descricao)-cgQtdExpedida(item.bl,item.descricao)); }
+// Agrega quantidades por BL|DESCRIÇÃO em um só passe (evita varredura por item → O(n) em vez de O(n²)).
+function _cgQtyKey(bl,desc){ return String(bl||'').toUpperCase()+'|'+String(desc||'').toUpperCase(); }
+function _cgBuildQtyMap(arr){
+  const m=Object.create(null);
+  for(const r of arr){ const k=_cgQtyKey(r.bl,r.descricao); m[k]=(m[k]||0)+(parseFloat(r.quantidade)||0); }
+  return m;
+}
 
 // ── Init ─────────────────────────────────────────────────────
 function cgRelPopulateBLFilter(){
@@ -8991,7 +9296,7 @@ function updateCgStats(){
 }
 
 // ── Ordenação de colunas (Carga Geral) ────────────────────────
-const _cgSort = { banco:{key:null,dir:1}, hist:{key:null,dir:1}, relD:{key:null,dir:1}, relE:{key:null,dir:1} };
+const _cgSort = { banco:{key:null,dir:1}, hist:{key:null,dir:1}, relD:{key:null,dir:1,page:0}, relE:{key:null,dir:1,page:0} };
 function _cgV(id){ const e=document.getElementById(id); return e?e.value:''; }
 function _cgFmtDateTime(ts){
   if(!ts) return '—';
@@ -9058,24 +9363,24 @@ function _cgBancoRows(){
   const fCli    =(_cgV('cg-f-cliente')).toLowerCase();
   const fProd   = _cgV('cg-f-produto');
   const fStatus = _cgV('cg-f-status');
-  const filtered=cgItems.filter(it=>{
-    if(fBl  && !(it.bl||'').toLowerCase().includes(fBl)) return false;
-    if(fNav && !(it.navio||'').toLowerCase().includes(fNav)) return false;
-    if(fCli && !(it.cliente||'').toLowerCase().includes(fCli)) return false;
-    if(fProd && (it.produto||'').toLowerCase()!==fProd.toLowerCase()) return false;
-    const pend=cgSaldoDescarga(it)>0;
-    if(fStatus==='pendente'&&!pend) return false;
-    if(fStatus==='completo'&&pend) return false;
-    return true;
-  });
-  const rows=filtered.map(it=>{
-    const desc =cgQtdDescarregada(it.bl,it.descricao);
-    const exp  =cgQtdExpedida(it.bl,it.descricao);
-    const sDesc=Math.max(0,it.qtd_total-desc);
+  const descMap=_cgBuildQtyMap(cgDescargas);
+  const expMap =_cgBuildQtyMap(cgExpedicoes);
+  const rows=[];
+  for(const it of cgItems){
+    if(fBl  && !(it.bl||'').toLowerCase().includes(fBl)) continue;
+    if(fNav && !(it.navio||'').toLowerCase().includes(fNav)) continue;
+    if(fCli && !(it.cliente||'').toLowerCase().includes(fCli)) continue;
+    if(fProd && (it.produto||'').toLowerCase()!==fProd.toLowerCase()) continue;
+    const k=_cgQtyKey(it.bl,it.descricao);
+    const desc=descMap[k]||0, exp=expMap[k]||0;
+    const sDesc=Math.max(0,(it.qtd_total||0)-desc);
     const sArm =Math.max(0,desc-exp);
-    const pct  =it.qtd_total>0?Math.round(desc/it.qtd_total*100):0;
-    return {it,desc,exp,sDesc,sArm,pct};
-  });
+    const pend=sDesc>0;
+    if(fStatus==='pendente'&&!pend) continue;
+    if(fStatus==='completo'&&pend) continue;
+    const pct=it.qtd_total>0?Math.round(desc/it.qtd_total*100):0;
+    rows.push({it,desc,exp,sDesc,sArm,pct});
+  }
   return _cgSortRows(rows,'banco',_cgBancoCols);
 }
 
@@ -9095,14 +9400,14 @@ function renderCgBanco(){
                   desc>0?'<span class="cg-badge cg-badge-pend">Em descarga</span>':
                   '<span class="cg-badge cg-badge-aberto">Aguardando</span>';
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${it.bl}</td>
-        <td>${it.navio||'—'}</td>
-        <td>${it.armazem||'—'}</td>
-        <td>${it.cliente||'—'}</td>
-        <td><span style="font-weight:700;color:#f97316;">${it.produto||'—'}</span></td>
-        <td style="max-width:200px;">${it.descricao}</td>
+        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_esc(it.bl)}</td>
+        <td>${_esc(it.navio)||'—'}</td>
+        <td>${_esc(it.armazem)||'—'}</td>
+        <td>${_esc(it.cliente)||'—'}</td>
+        <td><span style="font-weight:700;color:#f97316;">${_esc(it.produto)||'—'}</span></td>
+        <td style="max-width:200px;">${_esc(it.descricao)}</td>
         <td style="font-family:'JetBrains Mono',monospace;">${it.peso?Number(it.peso).toLocaleString('pt-BR'):'—'}</td>
-        <td style="font-weight:700;">${it.qtd_total} ${it.unidade||'UN'}</td>
+        <td style="font-weight:700;">${it.qtd_total} ${_esc(it.unidade)||'UN'}</td>
         <td>${desc} <span style="font-size:10px;color:var(--muted);">(${pct}%)</span>
           <div class="cg-progress-bar" style="margin-top:3px;"><div class="${fillCls}" style="width:${pctBar}%"></div></div></td>
         <td style="font-weight:700;color:${sDesc>0?'#f97316':'#22c55e'};">${sDesc} ${it.unidade||'UN'}</td>
@@ -9114,7 +9419,15 @@ function renderCgBanco(){
           <button class="btn btn-sm btn-danger" onclick="excluirCgItem('${it.id}')">✕</button>
         </td>
       </tr>`;
-    }).join('')}</tbody>
+    }).join('')}
+    ${(()=>{ // subtotais das colunas numéricas
+      const sum=f=>rows.reduce((a,r)=>a+(parseFloat(f(r))||0),0);
+      const n=v=>Number(v).toLocaleString('pt-BR');
+      return _totalRowHtml(14,{
+        6:n(sum(r=>r.it.peso)), 7:n(sum(r=>r.it.qtd_total)), 8:n(sum(r=>r.desc)),
+        9:n(sum(r=>r.sDesc)), 10:n(sum(r=>r.sArm)), 11:n(sum(r=>r.exp))
+      },`TOTAL (${rows.length} itens)`);
+    })()}</tbody>
   </table></div>`;
 }
 
@@ -9127,9 +9440,11 @@ function exportCgBancoXLSX(){
     const status=r.sDesc===0?'Completo':(r.desc>0?'Em descarga':'Aguardando');
     head.push([it.bl,it.navio||'',it.armazem||'',it.cliente||'',it.produto||'',it.descricao,it.peso||0,it.qtd_total,it.unidade||'UN',r.desc,r.sDesc,r.sArm,r.exp,status]);
   });
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(head),'Banco de Itens');
-  XLSX.writeFile(wb,'4SIDES_CargaGeral_Banco_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  _xlsxStyled({
+    filename:'4SIDES_CargaGeral_Banco_'+new Date().toISOString().split('T')[0]+'.xlsx',
+    sheets:[{ name:'Banco de Itens', title:'📦 CARGA GERAL — BANCO DE ITENS', aoa:head,
+      numFmts:{6:'#,##0',7:'#,##0',9:'#,##0',10:'#,##0',11:'#,##0',12:'#,##0'} }]
+  });
   showToast('✓ Excel exportado!','#22c55e','#000');
 }
 
@@ -9367,15 +9682,15 @@ function renderCgDescHoje(){
     <tbody>${lista.map((r,i)=>{
       const canAct=isAdmin||(r.created_by&&r.created_by===session?.nome);
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
-      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
-      <td>${r.navio||'—'}</td>
-      <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
-      <td>${r.descricao}</td>
-      <td style="font-weight:700;color:var(--info);">${r.quantidade} ${r.unidade||'UN'}</td>
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_esc(r.bl)}</td>
+      <td>${_esc(r.navio)||'—'}</td>
+      <td><span style="color:#f97316;font-weight:700;">${_esc(r.produto)||'—'}</span></td>
+      <td>${_esc(r.descricao)}</td>
+      <td style="font-weight:700;color:var(--info);">${r.quantidade} ${_esc(r.unidade)||'UN'}</td>
       <td style="font-family:'JetBrains Mono',monospace;">${r.peso_kg?Number(r.peso_kg).toLocaleString('pt-BR'):'—'}</td>
-      <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
-      <td>${r.armazem||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
-      <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
+      <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.motorista)||'—'}</td>
+      <td>${_esc(r.armazem)||'—'}</td><td>${_esc(r.periodo)||'—'}</td><td>${_esc(r.obs)||'—'}</td>
+      <td style="color:var(--muted);font-size:12px;">${_esc(r.created_by)||'—'}</td>
       <td style="white-space:nowrap;">${canAct?`<button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="editarCgReg('desc','${r.id}')">✎</button>`:''} ${canAct?`<button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button>`:''}</td>
     </tr>`;}).join('')}</tbody>
   </table></div>`;
@@ -9451,15 +9766,15 @@ function renderCgExpHoje(){
     <tbody>${lista.map((r,i)=>{
       const canAct=isAdmin||(r.created_by&&r.created_by===session?.nome);
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
-      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${r.bl}</td>
-      <td>${r.navio||'—'}</td>
-      <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
-      <td>${r.descricao}</td>
-      <td style="font-weight:700;color:var(--exp);">${r.quantidade} ${r.unidade||'UN'}</td>
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_esc(r.bl)}</td>
+      <td>${_esc(r.navio)||'—'}</td>
+      <td><span style="color:#f97316;font-weight:700;">${_esc(r.produto)||'—'}</span></td>
+      <td>${_esc(r.descricao)}</td>
+      <td style="font-weight:700;color:var(--exp);">${r.quantidade} ${_esc(r.unidade)||'UN'}</td>
       <td style="font-family:'JetBrains Mono',monospace;">${r.peso_kg?Number(r.peso_kg).toLocaleString('pt-BR'):'—'}</td>
-      <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
-      <td>${r.destino||'—'}</td><td>${r.periodo||'—'}</td><td>${r.obs||'—'}</td>
-      <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
+      <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.motorista)||'—'}</td>
+      <td>${_esc(r.destino)||'—'}</td><td>${_esc(r.periodo)||'—'}</td><td>${_esc(r.obs)||'—'}</td>
+      <td style="color:var(--muted);font-size:12px;">${_esc(r.created_by)||'—'}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="reprintCgTicketByExpId('${r.id}')">🖨</button>
         ${canAct?`<button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="editarCgReg('exp','${r.id}')">✎</button>`:''}
@@ -9654,16 +9969,23 @@ function renderCgHistorico(){
     <tbody>${todos.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
       <td><span style="font-weight:700;color:${r._tipo==='DESCARGA'?'var(--info)':'var(--exp)'};">${r._tipo}</span></td>
       <td>${r.data?r.data.split('-').reverse().join('/'):'—'}</td>
-      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
-      <td>${r.navio||'—'}</td>
-      <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
-      <td>${r.descricao}</td>
-      <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
-      <td>${r.veiculo||'—'}</td><td>${r.motorista||'—'}</td>
-      <td>${r.armazem||'—'}</td>
-      <td style="color:var(--muted);font-size:12px;">${r.created_by||'—'}</td>
-      <td>${r.obs||'—'}</td>
-    </tr>`).join('')}</tbody>
+      <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${_esc(r.bl)}</td>
+      <td>${_esc(r.navio)||'—'}</td>
+      <td><span style="color:#f97316;font-weight:700;">${_esc(r.produto)||'—'}</span></td>
+      <td>${_esc(r.descricao)}</td>
+      <td style="font-weight:700;">${r.quantidade} ${_esc(r.unidade)||'UN'}</td>
+      <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.motorista)||'—'}</td>
+      <td>${_esc(r.armazem)||'—'}</td>
+      <td style="color:var(--muted);font-size:12px;">${_esc(r.created_by)||'—'}</td>
+      <td>${_esc(r.obs)||'—'}</td>
+    </tr>`).join('')}
+    ${(()=>{ // subtotais: QTD (col 6)
+      const qtd=todos.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+      const peso=todos.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
+      return _totalRowHtml(12,{6:Number(qtd).toLocaleString('pt-BR')+' un',
+        7:'', 8:'', 9:'', 10:'', 11:'Peso: '+Number(peso).toLocaleString('pt-BR')+' kg'},
+        `TOTAL (${todos.length} reg.)`);
+    })()}</tbody>
   </table></div>`;
 }
 
@@ -9672,9 +9994,10 @@ function exportCgHistorico(){
   if(!rows.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
   const head=[['TIPO','DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','PRAÇA','DESTINO','USUÁRIO','OBS']];
   rows.forEach(r=>head.push([r._tipo,r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.destino||'',r.created_by||'',r.obs||'']));
-  const wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(head),'Historico');
-  XLSX.writeFile(wb,'4SIDES_CargaGeral_Historico_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  _xlsxStyled({
+    filename:'4SIDES_CargaGeral_Historico_'+new Date().toISOString().split('T')[0]+'.xlsx',
+    sheets:[{ name:'Historico', title:'🕐 CARGA GERAL — HISTÓRICO', aoa:head, dateCols:[1], numFmts:{8:'#,##0',10:'#,##0'} }]
+  });
   showToast('✓ Excel exportado!','#22c55e','#000');
 }
 
@@ -9729,12 +10052,35 @@ function _cgRelData(){
   return {descs, exps};
 }
 
+// Troca de página (não recalcula filtros nem reseta a paginação)
+function cgRelSetPage(which, p){
+  const st=_cgSort[which]; if(!st) return;
+  st.page=Math.max(0,p);
+  _cgRelRender();
+  document.getElementById(which==='relD'?'cg-rel-anchor-desc':'cg-rel-anchor-exp')?.scrollIntoView({block:'nearest'});
+}
+
+// Entrada pública: filtros/ordenação mudaram → volta para a 1ª página
 function renderCgRelatorio(){
+  _cgSort.relD.page=0; _cgSort.relE.page=0;
+  _cgRelRender();
+}
+
+function _cgRelRender(){
   const {descs, exps} = _cgRelData();
   const el = document.getElementById('cg-rel-content'); if(!el) return;
   if(!descs.length && !exps.length){
     el.innerHTML='<div class="empty-state"><span class="empty-icon">📊</span>Nenhum registro no período selecionado.</div>'; return;
   }
+  // Paginação (PAGE_SIZE registros por página em cada tabela)
+  const pageOf=(arr,st)=>{
+    const pages=Math.max(1,Math.ceil(arr.length/PAGE_SIZE));
+    if(st.page>=pages) st.page=pages-1;
+    const start=st.page*PAGE_SIZE;
+    return {slice:arr.slice(start,start+PAGE_SIZE), pages, total:arr.length};
+  };
+  const pgD=pageOf(descs,_cgSort.relD);
+  const pgE=pageOf(exps,_cgSort.relE);
   const fmtDate = d => d?d.split('-').reverse().join('/'):'—';
   const totalDescPeso = descs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const totalExpPeso  = exps.reduce((a,r) =>a+(parseFloat(r.peso_kg)||0),0);
@@ -9744,54 +10090,67 @@ function renderCgRelatorio(){
     <div class="rpt-summary-card"><div class="rpt-sum-val">${exps.length}</div><div class="rpt-sum-label">Expedições</div><div class="rpt-sum-unit">${fmtTon(totalExpPeso)}</div></div>
   </div>`;
   if(descs.length){
-    html+=`<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--info);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📥 DESCARGAS (${descs.length})</div>
-    <div style="overflow-x:auto;margin-bottom:1.5rem;"><table>
+    html+=`<div id="cg-rel-anchor-desc" style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--info);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📥 DESCARGAS (${descs.length})</div>
+    <div style="overflow-x:auto;"><table>
       <thead>${_cgHeadHtml('relD',_cgRelDCols)}</thead>
-      <tbody>${descs.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td>${fmtDate(r.data)}</td><td>${r.periodo||'—'}</td>
-        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
-        <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
-        <td>${r.descricao}</td>
-        <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
+      <tbody>${pgD.slice.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td>${fmtDate(r.data)}</td><td>${_esc(r.periodo)||'—'}</td>
+        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${_esc(r.bl)}</td>
+        <td><span style="color:#f97316;font-weight:700;">${_esc(r.produto)||'—'}</span></td>
+        <td>${_esc(r.descricao)}</td>
+        <td style="font-weight:700;">${r.quantidade} ${_esc(r.unidade)||'UN'}</td>
         <td>${r.peso_kg?fmtTon(parseFloat(r.peso_kg)):'—'}</td>
-        <td>${r.veiculo||'—'}</td><td>${r.armazem||'—'}</td><td>${r.created_by||'—'}</td>
+        <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.armazem)||'—'}</td><td>${_esc(r.created_by)||'—'}</td>
         <td style="font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_cgFmtDateTime(r.created_at)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
+      </tr>`).join('')}
+      ${_totalRowHtml(11,{
+        5:Number(descs.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0)).toLocaleString('pt-BR')+' un',
+        6:fmtTon(totalDescPeso)
+      },`TOTAL (${descs.length} reg.)`)}</tbody>
+    </table></div>
+    <div style="margin-bottom:1.5rem;">${renderPager(_cgSort.relD, pgD.total, pgD.pages, "(p)=>cgRelSetPage('relD',p)", 'cg-rel-pager-d')}</div>`;
   }
   if(exps.length){
-    html+=`<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--exp);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📤 EXPEDIÇÕES (${exps.length})</div>
+    html+=`<div id="cg-rel-anchor-exp" style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--exp);font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:.5rem;">📤 EXPEDIÇÕES (${exps.length})</div>
     <div style="overflow-x:auto;"><table>
       <thead>${_cgHeadHtml('relE',_cgRelECols)}</thead>
-      <tbody>${exps.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
-        <td>${fmtDate(r.data)}</td><td>${r.periodo||'—'}</td>
-        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${r.bl}</td>
-        <td><span style="color:#f97316;font-weight:700;">${r.produto||'—'}</span></td>
-        <td>${r.descricao}</td>
-        <td style="font-weight:700;">${r.quantidade} ${r.unidade||'UN'}</td>
+      <tbody>${pgE.slice.map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}">
+        <td>${fmtDate(r.data)}</td><td>${_esc(r.periodo)||'—'}</td>
+        <td style="font-weight:700;font-family:'JetBrains Mono',monospace;">${_esc(r.bl)}</td>
+        <td><span style="color:#f97316;font-weight:700;">${_esc(r.produto)||'—'}</span></td>
+        <td>${_esc(r.descricao)}</td>
+        <td style="font-weight:700;">${r.quantidade} ${_esc(r.unidade)||'UN'}</td>
         <td>${r.peso_kg?fmtTon(parseFloat(r.peso_kg)):'—'}</td>
-        <td>${r.veiculo||'—'}</td><td>${r.destino||'—'}</td><td>${r.created_by||'—'}</td>
+        <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.destino)||'—'}</td><td>${_esc(r.created_by)||'—'}</td>
         <td style="font-family:'JetBrains Mono',monospace;white-space:nowrap;">${_cgFmtDateTime(r.created_at)}</td>
-      </tr>`).join('')}</tbody>
-    </table></div>`;
+      </tr>`).join('')}
+      ${_totalRowHtml(11,{
+        5:Number(exps.reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0)).toLocaleString('pt-BR')+' un',
+        6:fmtTon(totalExpPeso)
+      },`TOTAL (${exps.length} reg.)`)}</tbody>
+    </table></div>
+    ${renderPager(_cgSort.relE, pgE.total, pgE.pages, "(p)=>cgRelSetPage('relE',p)", 'cg-rel-pager-e')}`;
   }
   el.innerHTML = html;
 }
 
 function exportCgRelatorio(){
   const {descs, exps} = _cgRelData();
-  const wb = XLSX.utils.book_new();
   const hDesc=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','PRAÇA','OBS','OPERADOR','REGISTRADO EM']];
   descs.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
     hDesc.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.armazem||'',r.obs||'',r.created_by||'',_cgFmtDateTime(r.created_at)]);
   });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hDesc),'Descargas');
   const hExp=[['DATA','PERÍODO','BL','NAVIO','CLIENTE','PRODUTO','DESCRIÇÃO','QTD','UNIDADE','PESO (kg)','VEÍCULO','MOTORISTA','DESTINO','OBS','OPERADOR','REGISTRADO EM']];
   exps.sort((a,b)=>a.data>b.data?1:-1).forEach(r=>{
     hExp.push([r.data,r.periodo||'',r.bl,r.navio||'',r.cliente||'',r.produto||'',r.descricao,r.quantidade,r.unidade||'UN',r.peso_kg||0,r.veiculo||'',r.motorista||'',r.destino||'',r.obs||'',r.created_by||'',_cgFmtDateTime(r.created_at)]);
   });
-  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(hExp),'Expedicoes');
-  XLSX.writeFile(wb,'4SIDES_CargaGeral_Relatorio_'+new Date().toISOString().split('T')[0]+'.xlsx');
+  _xlsxStyled({
+    filename:'4SIDES_CargaGeral_Relatorio_'+new Date().toISOString().split('T')[0]+'.xlsx',
+    sheets:[
+      { name:'Descargas',  title:'📥 CARGA GERAL — DESCARGAS',   aoa:hDesc, dateCols:[0], numFmts:{7:'#,##0',9:'#,##0'} },
+      { name:'Expedicoes', title:'📤 CARGA GERAL — EXPEDIÇÕES',  aoa:hExp,  dateCols:[0], numFmts:{7:'#,##0',9:'#,##0'} }
+    ]
+  });
   showToast('✓ Excel exportado!','#22c55e','#000');
 }
 
