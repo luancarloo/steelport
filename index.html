@@ -1586,6 +1586,10 @@ async function doLogin(){
     // Sync automático a cada 5 minutos
     if(window._fatSyncInterval) clearInterval(window._fatSyncInterval);
     window._fatSyncInterval = setInterval(autoSyncFatConfig, 5*60*1000);
+    // Reenvio de tickets que não chegaram ao servidor (rede caiu na emissão)
+    setTimeout(()=>_tkBackfillFromLocal().then(()=>_tkFlushPending(false)), 6000);
+    if(window._tkFlushInterval) clearInterval(window._tkFlushInterval);
+    window._tkFlushInterval = setInterval(()=>_tkFlushPending(false), 60*1000);
   }).catch(err=>{ showToast('⚠ Erro ao carregar dados: '+err.message,'#f59e0b','#000'); });
   } catch(loginErr) {
     console.error('Erro no doLogin:', loginErr);
@@ -3254,6 +3258,111 @@ async function confirmarLote(px){
   showModuleTab(tipo,'consultar');
 }
 
+// ── Fila de tickets pendentes de envio ao servidor ───────────
+// Antes o POST do ticket era "dispare e esqueça" (.catch(()=>{})): se a rede
+// falhasse no momento da emissão, o ticket existia só no aparelho e NUNCA era
+// reenviado — outros dispositivos jamais o encontravam na Reimpressão.
+// Agora todo ticket entra numa fila persistente e é reenviado até confirmar.
+let _tkPending = [];
+try{ _tkPending = JSON.parse(localStorage.getItem('sp_tk_pending')||'[]'); }catch(e){ _tkPending=[]; }
+
+function _tkSavePending(){
+  try{ localStorage.setItem('sp_tk_pending', JSON.stringify(_tkPending.slice(0,300))); }catch(e){}
+}
+function _tkEnqueue(row){
+  if(!_tkPending.some(r=>String(r.id)===String(row.id))) _tkPending.push(row);
+  _tkSavePending();
+}
+// Reenvia a fila. Para no primeiro erro (provavelmente offline) para não martelar.
+async function _tkFlushPending(silent=true){
+  if(!SUPA_URL||!SUPA_KEY||!_tkPending.length) return 0;
+  let enviados=0;
+  for(const row of _tkPending.slice()){
+    try{
+      await supaUpsert('tickets', row, 'id');
+      _tkPending = _tkPending.filter(r=>String(r.id)!==String(row.id));
+      _tkSavePending();
+      enviados++;
+    }catch(e){
+      console.warn('[tickets] reenvio pendente falhou:', e.message);
+      break;
+    }
+  }
+  if(enviados && !silent) showToast(`↻ ${enviados} ticket(s) pendente(s) sincronizado(s)`,'#22c55e','#000');
+  return enviados;
+}
+function _tkPendingCount(){ return _tkPending.length; }
+
+// Recupera tickets que ficaram presos SÓ neste aparelho — emitidos antes da fila
+// existir, ou por falha de rede no momento da emissão. Compara o histórico local
+// com o servidor e reenfileira o que estiver faltando lá.
+// (Foi o que aconteceu com CGX-000562..567: emitidos, mas nunca subiram.)
+async function _tkBackfillFromLocal(){
+  if(!SUPA_URL||!SUPA_KEY||!ticketHistory.length) return 0;
+  const LIMITE = Date.now() - 90*24*3600*1000;   // só os últimos 90 dias
+  const cands = ticketHistory.filter(t=>{
+    if(!t || !t.id) return false;
+    const ts = new Date(t.emitidoEm||0).getTime();
+    return !isNaN(ts) && ts >= LIMITE;
+  });
+  if(!cands.length) return 0;
+
+  const existentes = new Set();   // ids já presentes no servidor
+  const numsUsados = new Set();   // números já usados no servidor (por OUTRO id)
+  try{
+    const ids  = cands.map(t=>String(t.id)).join(',');
+    const nums = cands.map(t=>'"'+String(t.ticketNum||'').replace(/"/g,'')+'"').join(',');
+    const [porId, porNum] = await Promise.all([
+      supa('tickets?select=id&id=in.('+ids+')'),
+      supa('tickets?select=id,ticket_num&ticket_num=in.('+nums+')')
+    ]);
+    (porId||[]).forEach(r=>existentes.add(String(r.id)));
+    (porNum||[]).forEach(r=>numsUsados.add(String(r.ticket_num)+'|'+String(r.id)));
+  }catch(e){
+    console.warn('[tickets] backfill: consulta ao servidor falhou:', e.message);
+    return 0;
+  }
+  // Um número já ocupado no servidor por um id DIFERENTE significa que o registro
+  // foi relançado manualmente enquanto este aparelho estava fora do ar. Reenviar
+  // criaria ticket duplicado — então pulamos e avisamos.
+  const numeroColidido = t=>{
+    for(const k of numsUsados){
+      const [num,id]=k.split('|');
+      if(num===String(t.ticketNum) && id!==String(t.id)) return true;
+    }
+    return false;
+  };
+
+  let n=0, pulados=[];
+  cands.forEach(t=>{
+    if(existentes.has(String(t.id))) return;
+    if(numeroColidido(t)){ pulados.push(t.ticketNum); return; }
+    const conteudo = (t.regs && t.regs.length) ? t.regs : (t.entries || []);
+    _tkEnqueue({
+      id: String(t.id),
+      ticket_num: t.ticketNum,
+      tipo: t.tipo || 'EXP',
+      ts: t.emitidoEm,
+      user_id: t.userId || '',
+      usuario: t.usuario || '',
+      veiculo: t.veiculo || '',
+      motorista: t.motorista || '',
+      destino: t.destino || '',
+      data: t.data || null,
+      periodo: t.periodo || '',
+      obs: t.obs || '',
+      entries: typeof conteudo==='string' ? conteudo : JSON.stringify(conteudo)
+    });
+    n++;
+  });
+  if(n) console.info('[tickets] '+n+' ticket(s) local(is) ausente(s) no servidor foram enfileirados para reenvio.');
+  if(pulados.length){
+    console.warn('[tickets] '+pulados.length+' ticket(s) NÃO reenviado(s) — número já usado no servidor (relançamento manual): '+pulados.join(', '));
+    showToast('⚠ '+pulados.length+' ticket(s) deste aparelho não subiram: o número já foi usado no servidor ('+pulados.slice(0,3).join(', ')+'). Confira se houve relançamento manual.','#f59e0b','#000');
+  }
+  return n;
+}
+
 // ── Numeração sequencial de tickets ──────────────────────────
 async function getNextTicketNum(prefix){
   const KEY = 'sp_tseq_'+prefix;
@@ -3287,14 +3396,15 @@ async function printTicketExpedicao(entries, veiculo, motorista, destino, data, 
   if(ticketHistory.length > 200) ticketHistory.pop();
   try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
 
-  if(SUPA_URL&&SUPA_KEY){
-    supaUpsert('tickets',{
-      id: String(ticketId), ticket_num: ticketNum, tipo:'EXP',
-      ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
-      veiculo, motorista, destino, data, periodo, obs,
-      entries: JSON.stringify(entries)
-    },'id').catch(()=>{});
-  }
+  _tkEnqueue({
+    id: String(ticketId), ticket_num: ticketNum, tipo:'EXP',
+    ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
+    veiculo, motorista, destino, data, periodo, obs,
+    entries: JSON.stringify(entries)
+  });
+  _tkFlushPending().then(()=>{
+    if(_tkPendingCount()) showToast('⚠ Ticket emitido, mas ainda NÃO sincronizado. Será reenviado automaticamente.','#f59e0b','#000');
+  });
 
   _renderTicketWindow(ticketData);
 }
@@ -3302,7 +3412,13 @@ async function printTicketExpedicao(entries, veiculo, motorista, destino, data, 
 function reprintTicket(idx){
   const t = ticketHistory[idx];
   if(!t) return;
-  if(t.tipo==='CG') _renderCgTicketWindow(t); else _renderTicketWindow(t);
+  // CGX/CGD = layout Carga Geral; EXP/DSC = layout bobinas.
+  // (antes comparava com 'CG', que nunca existiu como tipo — ticket de Carga
+  //  Geral acabava impresso no layout de bobinas, sem os itens.)
+  const doc  = (t.tipo==='CGD'||t.tipo==='DSC') ? 'DESCARGA' : 'EXPEDICAO';
+  const itens = t.regs || t.entries || [];
+  if(t.tipo==='CGX' || t.tipo==='CGD') _renderCgTicketWindow({...t, doc, regs:itens});
+  else                                 _renderTicketWindow({...t, doc, entries:itens});
 }
 
 async function printTicketCgExpedicao(regs, veiculo, motorista, destino, data, periodo, obs){
@@ -3317,19 +3433,123 @@ async function printTicketCgExpedicao(regs, veiculo, motorista, destino, data, p
   ticketHistory.unshift(ticketData);
   if(ticketHistory.length > 200) ticketHistory.pop();
   try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
-  if(SUPA_URL&&SUPA_KEY){
-    supaUpsert('tickets',{
-      id: String(ticketId), ticket_num: ticketNum, tipo:'CGX',
-      ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
-      veiculo, motorista, destino, data, periodo, obs,
-      entries: JSON.stringify(regs)
-    },'id').catch(()=>{});
-  }
+  _tkEnqueue({
+    id: String(ticketId), ticket_num: ticketNum, tipo:'CGX',
+    ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
+    veiculo, motorista, destino, data, periodo, obs,
+    entries: JSON.stringify(regs)
+  });
+  _tkFlushPending().then(()=>{
+    if(_tkPendingCount()) showToast('⚠ Ticket emitido, mas ainda NÃO sincronizado. Será reenviado automaticamente.','#f59e0b','#000');
+  });
   _renderCgTicketWindow(ticketData);
+}
+
+// ══════════════════════════════════════════
+// TICKETS DE DESCARGA (sob demanda)
+// Não são emitidos ao registrar: o operador clica no 🖨 ao lado do registro.
+// O número é gerado na PRIMEIRA impressão e reaproveitado nas seguintes,
+// para que o mesmo carregamento não gere dois documentos diferentes.
+// ══════════════════════════════════════════
+
+// Registros lançados na mesma operação = mesmo veículo/data/período/motorista
+// dentro de uma janela de 10 min (um lote pode demorar alguns minutos p/ digitar).
+function _mesmoCarregamento(a, b, campoTs){
+  const t1=new Date(a[campoTs]||0).getTime(), t2=new Date(b[campoTs]||0).getTime();
+  const perto = (!isNaN(t1)&&!isNaN(t2)) ? Math.abs(t1-t2) <= 10*60*1000 : true;
+  return (a.veiculo||'')===(b.veiculo||'') && (a.data||'')===(b.data||'') &&
+         (a.periodo||'')===(b.periodo||'') && (a.motorista||'')===(b.motorista||'') && perto;
+}
+
+// Procura ticket já emitido que contenha algum dos registros (local, depois servidor).
+async function _tkBuscarPorRegistros(tipo, ids){
+  const contem = t => String(t.tipo)===tipo &&
+    ((t.regs||t.entries||[]).some(r=>ids.has(String(r.id))));
+  let achado = ticketHistory.find(contem);
+  if(achado) return achado;
+  if(!SUPA_URL||!SUPA_KEY) return null;
+  try{
+    const remote = await supaAll(`tickets?select=*&tipo=eq.${tipo}&order=ts.desc&limit=500`);
+    const norm = (remote||[]).map(x=>({
+      id:x.id, ticketNum:x.ticket_num, tipo:x.tipo, doc:'DESCARGA', emitidoEm:x.ts,
+      usuario:x.usuario, userId:x.user_id, veiculo:x.veiculo, motorista:x.motorista,
+      destino:x.destino, data:x.data, periodo:x.periodo, obs:x.obs,
+      regs:    typeof x.entries==='string'?JSON.parse(x.entries||'[]'):(x.entries||[]),
+      entries: typeof x.entries==='string'?JSON.parse(x.entries||'[]'):(x.entries||[])
+    }));
+    const byId={}; [...ticketHistory,...norm].forEach(k=>{ if(k.id) byId[k.id]=k; });
+    ticketHistory = Object.values(byId).sort((a,b)=>new Date(b.emitidoEm||0)-new Date(a.emitidoEm||0));
+    try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+    return ticketHistory.find(contem) || null;
+  }catch(e){ return null; }   // offline: emite um novo
+}
+
+// Guarda o ticket no histórico + fila de envio (mesma fila resiliente da expedição).
+function _tkRegistrar(ticketData, itens){
+  ticketHistory.unshift(ticketData);
+  if(ticketHistory.length > 200) ticketHistory.pop();
+  try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+  _tkEnqueue({
+    id: String(ticketData.id), ticket_num: ticketData.ticketNum, tipo: ticketData.tipo,
+    ts: ticketData.emitidoEm, user_id: ticketData.userId, usuario: ticketData.usuario,
+    veiculo: ticketData.veiculo||'', motorista: ticketData.motorista||'',
+    destino: ticketData.destino||'', data: ticketData.data||null,
+    periodo: ticketData.periodo||'', obs: ticketData.obs||'',
+    entries: JSON.stringify(itens)
+  });
+  _tkFlushPending().then(()=>{
+    if(_tkPendingCount()) showToast('⚠ Ticket gerado, mas ainda NÃO sincronizado. Será reenviado automaticamente.','#f59e0b','#000');
+  });
+}
+
+// ── Carga Geral ──────────────────────────────────────────────
+async function printCgTicketDescarga(descId){
+  const rec = cgDescargas.find(r=>String(r.id)===String(descId));
+  if(!rec){ showToast('Registro de descarga não encontrado.','#e05c1a','#fff'); return; }
+  const itens = cgDescargas.filter(x=>_mesmoCarregamento(x, rec, 'created_at'));
+  const alvo  = itens.length ? itens : [rec];
+  const ids   = new Set(alvo.map(r=>String(r.id)));
+
+  const jaExiste = await _tkBuscarPorRegistros('CGD', ids);
+  if(jaExiste){ _renderCgTicketWindow({...jaExiste, doc:'DESCARGA'}); return; }
+
+  const ticketData = {
+    id: Date.now(), ticketNum: await getNextTicketNum('CGD'), tipo:'CGD', doc:'DESCARGA',
+    regs: alvo, veiculo: rec.veiculo, motorista: rec.motorista,
+    destino: rec.armazem||'', data: rec.data, periodo: rec.periodo, obs: rec.obs,
+    emitidoEm: new Date().toISOString(),
+    usuario: session?.nome||'—', userId: session?.user||''
+  };
+  _tkRegistrar(ticketData, alvo);
+  _renderCgTicketWindow(ticketData);
+}
+
+// ── Descarga de bobinas ──────────────────────────────────────
+async function printTicketDescargaBobinas(recId){
+  const rec = records.find(r=>String(r.id)===String(recId));
+  if(!rec){ showToast('Registro de descarga não encontrado.','#e05c1a','#fff'); return; }
+  const itens = records.filter(x=>_mesmoCarregamento(x, rec, 'registradoEm'));
+  const alvo  = itens.length ? itens : [rec];
+  const ids   = new Set(alvo.map(r=>String(r.id)));
+
+  const jaExiste = await _tkBuscarPorRegistros('DSC', ids);
+  if(jaExiste){ _renderTicketWindow({...jaExiste, doc:'DESCARGA', entries:(jaExiste.entries||jaExiste.regs||[])}); return; }
+
+  const ticketData = {
+    id: Date.now(), ticketNum: await getNextTicketNum('DSC'), tipo:'DSC', doc:'DESCARGA',
+    entries: alvo, veiculo: rec.veiculo, motorista: rec.motorista,
+    destino: rec.armazem||'', data: rec.data, periodo: rec.periodo, obs: rec.obs,
+    emitidoEm: new Date().toISOString(),
+    usuario: session?.nome||'—', userId: session?.user||''
+  };
+  _tkRegistrar(ticketData, alvo);
+  _renderTicketWindow(ticketData);
 }
 
 function _renderCgTicketWindow(t){
   const {ticketNum, veiculo, motorista, destino, data, periodo, obs, usuario} = t;
+  const isDesc = (t.doc==='DESCARGA' || t.tipo==='CGD');   // mesmo layout, cabecalho/campos trocados
+  const destLbl = isDesc ? 'PRACA:' : 'DESTINO:';
   const regs = (t.regs && t.regs.length) ? t.regs : (t.entries || []);
   const dataFmt = data ? data.split('-').reverse().join('/') : '-';
   const LINE  = '------------------------------------------------';
@@ -3380,7 +3600,7 @@ function _renderCgTicketWindow(t){
     <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
     <div class="header-name">4SIDES - STEELPORT</div>
   </div>
-  <div class="header-sub">TICKET DE EXPEDICAO - CARGA GERAL</div>
+  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'} - CARGA GERAL</div>
   <div class="sep">${DLINE}</div>
   <div class="tnum">${ticketNum}</div>
   <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
@@ -3401,7 +3621,7 @@ function _renderCgTicketWindow(t){
   <div class="stitle">TRANSPORTE</div>
   ${row('VEICULO:', veiculo)}
   ${row('MOTORISTA:', motorista)}
-  ${row('DESTINO:', destino)}
+  ${row(destLbl, destino)}
   ${row('DATA:', dataFmt)}
   ${row('PERIODO:', periodo)}
   <div class="sep">${LINE}</div>
@@ -3435,6 +3655,8 @@ function _renderCgTicketWindow(t){
 
 function _renderTicketWindow(t){
   const {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs} = t;
+  const isDesc = (t.doc==='DESCARGA' || t.tipo==='DSC');   // mesmo layout, cabecalho/campos trocados
+  const destLbl = isDesc ? 'ARMAZEM:' : 'DESTINO:';
   const totalPB = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   const totalPL = entries.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0);
   const bl      = [...new Set(entries.map(r=>r.bl).filter(Boolean))].join(' / ').toUpperCase();
@@ -3488,7 +3710,7 @@ function _renderTicketWindow(t){
     <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
     <div class="header-name">4SIDES - STEELPORT</div>
   </div>
-  <div class="header-sub">TICKET DE EXPEDICAO</div>
+  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'}</div>
   <div class="sep">${DLINE}</div>
   <div class="tnum">${ticketNum}</div>
   <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
@@ -3497,7 +3719,7 @@ function _renderTicketWindow(t){
   <div class="stitle">TRANSPORTE</div>
   ${row('VEICULO:', veiculo)}
   ${row('MOTORISTA:', motorista)}
-  ${row('DESTINO:', destino)}
+  ${row(destLbl, destino)}
   ${row('DATA:', dataFmt)}
   ${row('PERIODO:', periodo)}
   <div class="sep">${LINE}</div>
@@ -3547,6 +3769,8 @@ async function openReprintModal(){
 
   if(SUPA_URL && SUPA_KEY){
     try{
+      await _tkBackfillFromLocal();   // detecta tickets presos só neste aparelho
+      await _tkFlushPending();        // e os sobe antes de listar
       const isAdmin = session?.role==='admin';
       const q = isAdmin
         ? 'tickets?select=*&order=ts.desc&limit=500'
@@ -3584,20 +3808,33 @@ function filterReprintList(term){
   _renderReprintList(term||'', tipo);
 }
 
-function _renderReprintList(){
+function _renderReprintList(term, tipo){
   const list  = document.getElementById('reprint-list');
   const empty = document.getElementById('reprint-empty');
   const isAdmin = session?.role==='admin';
-  if(!ticketHistory.length){
+  term = String(term||'').toLowerCase().trim();
+  tipo = String(tipo||'');
+  // Guarda o índice ORIGINAL: reprintTicket(i) indexa ticketHistory, não a lista filtrada.
+  const itens = ticketHistory.map((t,i)=>({t,i})).filter(({t})=>{
+    if(tipo && String(t.tipo||'')!==tipo) return false;
+    if(!term) return true;
+    return [t.ticketNum,t.veiculo,t.motorista,t.destino,t.usuario,t.data,t.obs]
+      .some(v=>String(v||'').toLowerCase().includes(term));
+  });
+  if(!itens.length){
     list.innerHTML=''; empty.style.display='';
     return;
   }
   empty.style.display='none';
-  list.innerHTML = ticketHistory.map((t,i)=>{
+  list.innerHTML = itens.map(({t,i})=>{
     const dt     = new Date(t.emitidoEm).toLocaleString('pt-BR');
-    const nCoils = t.entries?.length||0;
-    const bl     = [...new Set((t.entries||[]).map(r=>r.bl).filter(Boolean))].join(', ')||'—';
-    const totalPB= (t.entries||[]).reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+    const isCG   = (t.tipo==='CGX'||t.tipo==='CGD');
+    const lista  = t.entries || t.regs || [];
+    const nCoils = lista.length;
+    const rotuloItem = isCG ? 'item(ns)' : 'bobina(s)';
+    const bl     = [...new Set(lista.map(r=>r.bl).filter(Boolean))].join(', ')||'—';
+    const totalPB= lista.reduce((a,r)=>a+(parseFloat(isCG?r.peso_kg:r.pesob)||0),0);
+    const tipoBadge = `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(240,165,0,.15);color:var(--accent);border:1px solid rgba(240,165,0,.3);border-radius:4px;padding:1px 6px;">${_esc(t.tipo||'EXP')}</span>`;
     const usuarioBadge = isAdmin && t.usuario
       ? `<span style="font-size:10px;font-family:'JetBrains Mono',monospace;background:rgba(59,130,246,.15);color:var(--info);border:1px solid rgba(59,130,246,.3);border-radius:4px;padding:1px 6px;">👤 ${_esc(t.usuario)}</span>`
       : '';
@@ -3607,11 +3844,12 @@ function _renderReprintList(){
           <span style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);font-size:13px;">${_esc(t.ticketNum)}</span>
           <span style="font-size:12px;color:var(--text);font-weight:600;">${_esc(t.veiculo)||'—'}</span>
           <span style="font-size:11px;color:var(--muted);">${_esc(t.motorista)||'—'}</span>
+          ${tipoBadge}
           ${usuarioBadge}
         </div>
         <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
           <span>BL: <b style="color:var(--text)">${_esc(bl)}</b></span>
-          <span>${nCoils} bobina(s)</span>
+          <span>${nCoils} ${rotuloItem}</span>
           <span>${fmtKg(totalPB)} kg</span>
           <span>${t.data?t.data.split('-').reverse().join('/'):''} · ${t.periodo||'—'}</span>
         </div>
@@ -3868,6 +4106,7 @@ function renderTable(px){
       ? `<div class="actions"><button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'d')">VER</button><span class="coil-badge" style="background:rgba(240,165,0,.12);color:var(--accent);border-color:rgba(240,165,0,.3);">📦 EM ESTOQUE</span></div>`
       : `<div class="actions">
       <button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'${px}')">VER</button>
+      ${px==='d'?`<button class="btn btn-secondary btn-sm" onclick="printTicketDescargaBobinas(${r.id})" title="Imprimir ticket desta descarga">🖨</button>`:''}
       <button class="btn btn-info btn-sm" onclick="editMovimento(${r.id},'${px}')" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
       <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
     </div>`}</td></tr>`).join('')
@@ -6686,26 +6925,41 @@ function carregarTarifa(){
 function getDataFimDescarga(bl){
   const _nbl2=String(bl||'').trim().toUpperCase();
   const bobinas = coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===_nbl2);
-  if(!bobinas.length) return null;
+  const temCG   = _fatCgItens(bl).length>0;
+  const dtCG    = temCG ? _fatCgDataFimDescarga(bl) : null;   // null se ainda incompleta
+  if(!bobinas.length) return dtCG;                            // BL só de Carga Geral
   // Todos os coils deste BL precisam estar descarregados
   const descarregados = bobinas.map(c=>records.find(r=>r.coil===c.coil)).filter(Boolean);
   if(descarregados.length < bobinas.length) return null; // descarga incompleta
+  if(temCG && !dtCG) return null;                        // carga geral do BL ainda incompleta
   // Data mais recente = data em que o BL completou a descarga
-  return descarregados.map(r=>r.data).sort().pop();
+  const dtBob = descarregados.map(r=>r.data).sort().pop();
+  return (dtCG && dtCG > dtBob) ? dtCG : dtBob;
 }
 
 // Retorna a data da última expedição de um BL (quando o estoque zerou)
 function getDataFimExpedicao(bl){
   const _nbl=String(bl||'').trim().toUpperCase();
   const bobinas=coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===_nbl);
-  if(!bobinas.length) return null;
+  // Carga Geral: ultima saida registrada em cgExpedicoes para este BL
+  const dtCG=(()=>{
+    const itens=(typeof _fatCgItens==='function')?_fatCgItens(bl):[];
+    if(!itens.length) return null;
+    const descrs=new Set(itens.map(it=>_fatNorm(it.descricao)));
+    const datas=(typeof cgExpedicoes!=='undefined'?cgExpedicoes:[])
+      .filter(r=>_fatNorm(r.bl)===_nbl && descrs.has(_fatNorm(r.descricao)) && r.data)
+      .map(r=>r.data).sort();
+    return datas.length?datas[datas.length-1]:null;
+  })();
+  if(!bobinas.length) return dtCG;
   // Pega todas as expedições de bobinas deste BL
   const expBL=bobinas
     .map(c=>expedicoes.find(e=>e.coil===c.coil))
     .filter(Boolean);
-  if(!expBL.length) return null;
-  // Data mais recente = última bobina a sair
-  return expBL.map(r=>r.data).sort().pop();
+  if(!expBL.length) return dtCG;
+  // Data mais recente = última bobina a sair (ou a carga geral, se mais recente)
+  const dtBob=expBL.map(r=>r.data).sort().pop();
+  return (dtCG && dtCG>dtBob) ? dtCG : dtBob;
 }
 // ── Chave de armazenamento para pesos congelados por período ──────
 // formato: sp_fat_peso_<bl>_<periodoNum> → pesoBruto em kg
@@ -6929,11 +7183,12 @@ function atualizarBLsFaturamento(){
   const vAtual=fb.value;
 
   const normStr=s=>String(s||'').trim().toUpperCase();
-  let bls=[...new Set([...coilsDB.map(c=>c.bl),...records.map(r=>r.bl)].filter(Boolean))].sort();
+  let bls=_fatTodosBLs().sort();
 
-  const getBLNavio  =bl=>normStr(coilsDB.find(c=>normStr(c.bl)===normStr(bl)&&c.navio)?.navio||records.find(r=>normStr(r.bl)===normStr(bl)&&r.navio)?.navio||expedicoes.find(r=>normStr(r.bl)===normStr(bl)&&r.navio)?.navio||'');
-  const getBLCliente=bl=>normStr(coilsDB.find(c=>normStr(c.bl)===normStr(bl)&&c.cliente)?.cliente||records.find(r=>normStr(r.bl)===normStr(bl)&&r.cliente)?.cliente||'');
-  const getBLArmazem=bl=>normStr(coilsDB.find(c=>normStr(c.bl)===normStr(bl)&&c.armazem)?.armazem||records.find(r=>normStr(r.bl)===normStr(bl)&&r.armazem)?.armazem||'');
+  const getBLNavio  =bl=>_fatBLNavio(bl);
+  const getBLCliente=bl=>_fatBLCliente(bl);
+  const getBLArmazem=bl=>_fatBLArmazem(bl);
+  bls=bls.filter(bl=>!getBLArmazem(bl).includes('PORTO'));
 
   if(fc) bls=bls.filter(bl=>getBLCliente(bl)===normStr(fc));
   if(fn) bls=bls.filter(bl=>getBLNavio(bl)===normStr(fn));
@@ -6947,7 +7202,8 @@ function buildFatSelects(){
 
   // Collect navios/clientes/armazens from ALL sources, normalized
   const navMap={}, cliMap={}, armMap={};
-  [...coilsDB,...records,...expedicoes].forEach(r=>{
+  const _cgIt=(typeof cgItems!=='undefined'&&Array.isArray(cgItems))?cgItems.filter(it=>String(it.armazem||'').trim()!==''):[];
+  [...coilsDB,...records,...expedicoes,..._cgIt].forEach(r=>{
     if(r.navio)   navMap[normStr(r.navio)]=r.navio.trim();
     if(r.cliente) cliMap[normStr(r.cliente)]=r.cliente.trim();
     if(r.armazem) armMap[normStr(r.armazem)]=r.armazem.trim();
@@ -6964,6 +7220,107 @@ function buildFatSelects(){
   if(fn){ const v=fn.value; fn.innerHTML='<option value="">Todos os navios</option>'+navSet.map(n=>`<option>${n}</option>`).join(''); fn.value=v; }
   if(fa){ const v=fa.value; fa.innerHTML='<option value="">Todos os armazéns</option>'+armSet.map(a=>`<option>${a}</option>`).join(''); fa.value=v; }
   atualizarBLsFaturamento();
+}
+
+// ── Carga Geral dentro do Faturamento ──────────────────
+// Um BL da Carga Geral entra no faturamento pelos MESMOS critérios das bobinas:
+//   • o armazém vem do banco de itens (PRATICO entra; PORTO continua excluído
+//     pela regra que já existia em renderFaturamento);
+//   • item sem armazém preenchido fica de fora (situação não classificada);
+//   • a cobrança só começa quando a descarga do BL está completa;
+//   • o peso cobrado é o estoque no primeiro dia do período.
+function _fatNorm(v){ return String(v||'').trim().toUpperCase(); }
+
+function _fatCgItens(bl){
+  const arr=(typeof cgItems!=='undefined'&&Array.isArray(cgItems))?cgItems:[];
+  const nb=_fatNorm(bl);
+  return arr.filter(it=>_fatNorm(it.bl)===nb);
+}
+
+// BLs da Carga Geral que participam do faturamento (têm armazém definido).
+function _fatCgBLs(){
+  const arr=(typeof cgItems!=='undefined'&&Array.isArray(cgItems))?cgItems:[];
+  return [...new Set(arr.filter(it=>String(it.armazem||'').trim()!=='')
+                        .map(it=>String(it.bl||'').trim()).filter(Boolean))];
+}
+
+// Todos os BLs do faturamento: bobinas + carga geral.
+function _fatTodosBLs(){
+  return [...new Set([
+    ...coilsDB.map(c=>c.bl),
+    ...records.map(r=>r.bl),
+    ..._fatCgBLs()
+  ].filter(Boolean).map(b=>String(b).trim()))];
+}
+
+// Data em que a Carga Geral do BL completou a descarga.
+// null = sem carga geral, ou descarga ainda incompleta (mesma regra das bobinas).
+function _fatCgDataFimDescarga(bl){
+  const itens=_fatCgItens(bl);
+  if(!itens.length) return null;
+  const nb=_fatNorm(bl);
+  const descrs=new Set(itens.map(it=>_fatNorm(it.descricao)));
+  const descs=(typeof cgDescargas!=='undefined'?cgDescargas:[])
+    .filter(r=>_fatNorm(r.bl)===nb && descrs.has(_fatNorm(r.descricao)));
+  if(!descs.length) return null;
+  for(const it of itens){
+    const qtd=descs.filter(r=>_fatNorm(r.descricao)===_fatNorm(it.descricao))
+                   .reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+    if(qtd < (parseFloat(it.qtd_total)||0)) return null;   // descarga incompleta
+  }
+  return descs.map(r=>r.data).filter(Boolean).sort().pop()||null;
+}
+
+// Peso (kg) da Carga Geral em estoque no dia informado.
+// Mesma regra das bobinas: conta o que foi descarregado ATÉ o dia e desconta
+// o que foi expedido ANTES do dia (saída no próprio dia ainda é cobrada).
+function _fatCgPesoNoDia(bl, diaStr){
+  const itens=_fatCgItens(bl);
+  if(!itens.length) return 0;
+  const nb=_fatNorm(bl);
+  const descrs=new Set(itens.map(it=>_fatNorm(it.descricao)));
+  const soma=(arr,cmp)=>(arr||[]).filter(r=>_fatNorm(r.bl)===nb && descrs.has(_fatNorm(r.descricao))
+      && r.data && cmp(r.data))
+    .reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
+  const descarregado=soma(typeof cgDescargas!=='undefined'?cgDescargas:[],  d=>d<=diaStr);
+  const expedido    =soma(typeof cgExpedicoes!=='undefined'?cgExpedicoes:[], d=>d< diaStr);
+  return Math.max(0, descarregado-expedido);
+}
+
+// Resumo de quantidades da Carga Geral do BL (para status e badges).
+function _fatCgResumo(bl){
+  const itens=_fatCgItens(bl);
+  if(!itens.length) return {temCG:false,total:0,desc:0,exp:0,emEstoque:0,unidade:'UN',incompleta:false};
+  const nb=_fatNorm(bl);
+  const descrs=new Set(itens.map(it=>_fatNorm(it.descricao)));
+  const soma=arr=>(arr||[]).filter(r=>_fatNorm(r.bl)===nb && descrs.has(_fatNorm(r.descricao)))
+                           .reduce((a,r)=>a+(parseFloat(r.quantidade)||0),0);
+  const total=itens.reduce((a,it)=>a+(parseFloat(it.qtd_total)||0),0);
+  const desc =soma(typeof cgDescargas!=='undefined'?cgDescargas:[]);
+  const exp  =soma(typeof cgExpedicoes!=='undefined'?cgExpedicoes:[]);
+  return {temCG:true,total,desc,exp,emEstoque:desc-exp,
+          unidade:itens[0].unidade||'UN',incompleta:desc<total};
+}
+
+// Navio / cliente / armazém do BL, com a Carga Geral como fonte adicional.
+function _fatBLNavio(bl){
+  const k=_fatNorm(bl);
+  return _fatNorm(coilsDB.find(c=>_fatNorm(c.bl)===k&&c.navio)?.navio
+    || records.find(r=>_fatNorm(r.bl)===k&&r.navio)?.navio
+    || expedicoes.find(r=>_fatNorm(r.bl)===k&&r.navio)?.navio
+    || _fatCgItens(bl).find(it=>it.navio)?.navio || '');
+}
+function _fatBLCliente(bl){
+  const k=_fatNorm(bl);
+  return _fatNorm(coilsDB.find(c=>_fatNorm(c.bl)===k&&c.cliente)?.cliente
+    || records.find(r=>_fatNorm(r.bl)===k&&r.cliente)?.cliente
+    || _fatCgItens(bl).find(it=>it.cliente)?.cliente || '');
+}
+function _fatBLArmazem(bl){
+  const k=_fatNorm(bl);
+  return _fatNorm(coilsDB.find(c=>_fatNorm(c.bl)===k&&c.armazem)?.armazem
+    || records.find(r=>_fatNorm(r.bl)===k&&r.armazem)?.armazem
+    || _fatCgItens(bl).find(it=>it.armazem)?.armazem || '');
 }
 
 // ── Cálculo de períodos ───────────────────────────────
@@ -6998,7 +7355,7 @@ function calcPeriodosBL(bl, periodoDias){
 
     // SEMPRE recalcula o peso a partir do coilsDB atual
     // Assim qualquer alteração de peso no banco reflete imediatamente no faturamento
-    const pesoBruto=bobinas.reduce((acc,c)=>{
+    const pesoBobinas=bobinas.reduce((acc,c)=>{
       const rec=records.find(r=>r.coil===c.coil);
       if(!rec||rec.data>iniStr) return acc; // não descarregada ainda neste período
       const exp=expedicoes.find(e=>e.coil===c.coil);
@@ -7007,6 +7364,9 @@ function calcPeriodosBL(bl, periodoDias){
       const peso=parseFloat(c.pesob)||parseFloat(rec.pesob)||0;
       return acc+peso;
     },0);
+
+    // Carga Geral do mesmo BL entra pelo mesmo critério (estoque no 1º dia do período)
+    const pesoBruto = pesoBobinas + _fatCgPesoNoDia(bl, iniStr);
 
     if(pesoBruto===0 && encerrado) continue;
     if(pesoBruto===0 && !encerrado) break;
@@ -7019,7 +7379,8 @@ function calcPeriodosBL(bl, periodoDias){
 
   const descCoils=bobinas.filter(c=>records.find(r=>r.coil===c.coil)).length;
   const expCoils =bobinas.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
-  return { periodos, descCoils, expCoils, emEstoque:descCoils-expCoils, totalCoils:bobinas.length };
+  const cg=_fatCgResumo(bl);
+  return { periodos, descCoils, expCoils, emEstoque:descCoils-expCoils, totalCoils:bobinas.length, cg };
 }
 
 // Alias para compatibilidade
@@ -7084,11 +7445,12 @@ function renderFaturamento(){
   const blMap={};
   records.forEach(r=>{ if(r.bl) blMap[normStr(r.bl)]=r.bl.trim(); });
   coilsDB.forEach(c=>{ if(c.bl) blMap[normStr(c.bl)]=c.bl.trim(); });
+  _fatCgBLs().forEach(b=>{ blMap[normStr(b)]=String(b).trim(); });   // Carga Geral
   let bls=Object.values(blMap);
 
-  const _nav=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.navio)?.navio||records.find(r=>normStr(r.bl)===k&&r.navio)?.navio||expedicoes.find(r=>normStr(r.bl)===k&&r.navio)?.navio||'');
-  const _cli=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.cliente)?.cliente||records.find(r=>normStr(r.bl)===k&&r.cliente)?.cliente||'');
-  const _arm=k=>normStr(coilsDB.find(c=>normStr(c.bl)===k&&c.armazem)?.armazem||records.find(r=>normStr(r.bl)===k&&r.armazem)?.armazem||'');
+  const _nav=k=>_fatBLNavio(k);
+  const _cli=k=>_fatBLCliente(k);
+  const _arm=k=>_fatBLArmazem(k);
 
   // BLs com armazém "Porto" não são faturados por nós — excluir sempre
   bls=bls.filter(bl=>!_arm(normStr(bl)).includes('PORTO'));
@@ -7114,16 +7476,20 @@ function renderFaturamento(){
     const blK=normStr(bl);
     const dbCoils=coilsDB.filter(c=>normStr(c.bl)===blK);
     const recBL=records.find(r=>normStr(r.bl)===blK);
-    const cliente=dbCoils[0]?.cliente||recBL?.cliente||'—';
-    const navio  =dbCoils[0]?.navio  ||recBL?.navio  ||'—';
+    const cgIt=_fatCgItens(bl)[0];   // BL de Carga Geral: dados vem do banco de itens
+    const cliente=dbCoils[0]?.cliente||recBL?.cliente||cgIt?.cliente||'—';
+    const navio  =dbCoils[0]?.navio  ||recBL?.navio  ||cgIt?.navio  ||'—';
     const viagem =dbCoils[0]?.viagem||'—';
-    const produto=dbCoils[0]?.produto||'—';
+    const produto=dbCoils[0]?.produto||cgIt?.produto||'—';
     const cliInfo=getClienteInfo(cliente);
     const totalCoils=dbCoils.length;
     const descCoils=dbCoils.filter(c=>records.find(r=>r.coil===c.coil)).length;
     const expCoils =dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
-    const emEstoque=descCoils-expCoils;
-    const incompleta=descCoils<totalCoils;
+    // Carga Geral do mesmo BL: quantidades em vez de bobinas
+    const cgR=_fatCgResumo(bl);
+    const emEstoque=(descCoils-expCoils)+cgR.emEstoque;
+    const incompleta=(descCoils<totalCoils)||cgR.incompleta;
+    const soCG=(totalCoils===0)&&cgR.temCG;   // BL exclusivamente de Carga Geral
     let blStatus=incompleta?'incompleta':emEstoque>0?'estoque':'zerada';
 
     if(fs==='estoque'||fs==='incompleta'||fs==='zerada'){
@@ -7149,7 +7515,8 @@ function renderFaturamento(){
       const dataFimFmt=dataFimExp?dataFimExp.split('-').reverse().join('/'):'';
       statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(168,85,247,.12);color:var(--exp);border:1px solid rgba(168,85,247,.3);font-family:'JetBrains Mono',monospace;">✓ CARGA ZERADA${dataFimFmt?' · última saída: '+dataFimFmt:''}</span>`;
     } else {
-      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} bobinas</span>`;
+      const _un = soCG ? (cgR.unidade||'UN') : (cgR.temCG ? 'itens' : 'bobinas');
+      statusBadge=`<span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(34,197,94,.12);color:var(--success);border:1px solid rgba(34,197,94,.3);font-family:'JetBrains Mono',monospace;">📦 EM ESTOQUE: ${emEstoque} ${_un}</span>`;
       blsAtivos++;
     }
 
@@ -7718,11 +8085,13 @@ function _getFatBLsFiltrados(){
   const fb=document.getElementById('fat-filter-bl')?.value||'';
   const fq=(document.getElementById('fat-search-bl')?.value||'').trim().toUpperCase();
   const fs=document.getElementById('fat-filter-status')?.value||'';
-  let bls=[...new Set([...coilsDB.map(c=>c.bl),...records.map(r=>r.bl)].filter(Boolean))];
+  let bls=_fatTodosBLs();
   const _normStr2=s=>String(s||'').trim().toUpperCase();
-  const _getBLNavio  =bl=>_normStr2(coilsDB.find(c=>_normStr2(c.bl)===_normStr2(bl)&&c.navio)?.navio||records.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.navio)?.navio||expedicoes.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.navio)?.navio||'');
-  const _getBLCliente=bl=>_normStr2(coilsDB.find(c=>_normStr2(c.bl)===_normStr2(bl)&&c.cliente)?.cliente||records.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.cliente)?.cliente||'');
-  const _getBLArmazem=bl=>_normStr2(coilsDB.find(c=>_normStr2(c.bl)===_normStr2(bl)&&c.armazem)?.armazem||records.find(r=>_normStr2(r.bl)===_normStr2(bl)&&r.armazem)?.armazem||'');
+  const _getBLNavio  =bl=>_fatBLNavio(bl);
+  const _getBLCliente=bl=>_fatBLCliente(bl);
+  const _getBLArmazem=bl=>_fatBLArmazem(bl);
+  // mesma regra do render: armazém PORTO não é faturado por nós
+  bls=bls.filter(bl=>!_getBLArmazem(bl).includes('PORTO'));
   if(fc) bls=bls.filter(bl=>_getBLCliente(bl)===_normStr2(fc));
   if(fn) bls=bls.filter(bl=>_getBLNavio(bl)===_normStr2(fn));
   if(fa) bls=bls.filter(bl=>_getBLArmazem(bl)===_normStr2(fa));
@@ -7732,9 +8101,12 @@ function _getFatBLsFiltrados(){
     const dbC=coilsDB.filter(c=>c.bl===bl);
     const desc=dbC.filter(c=>records.find(r=>r.coil===c.coil)).length;
     const exp=dbC.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
-    if(fs==='incompleta') return desc<dbC.length;
-    if(fs==='estoque')    return desc===dbC.length&&desc>exp;
-    if(fs==='zerada')     return desc===dbC.length&&desc<=exp;
+    const cgR=_fatCgResumo(bl);
+    const incompleta=(desc<dbC.length)||cgR.incompleta;
+    const estoque=(desc-exp)+cgR.emEstoque;
+    if(fs==='incompleta') return incompleta;
+    if(fs==='estoque')    return !incompleta&&estoque>0;
+    if(fs==='zerada')     return !incompleta&&estoque<=0;
     if(fs==='vencido'||fs==='cobrado'){
       const fat=calcPeriodosBL(bl,periodoDias);
       if(!fat||!fat.periodos.length) return false;
@@ -7895,6 +8267,7 @@ function applyFatConfig(rows){
     if(k.startsWith('handling_'))  _fatSet('sp_fat_'+k, v);
     if(k.startsWith('state_'))     _fatSet('sp_fat_'+k, v);
     if(k.startsWith('peso_'))      _fatSet('sp_fat_'+k, v);
+    if(k.startsWith('porto_'))     _fatSet('sp_fat_'+k, v);   // config da API do Porto
   });
 }
 
@@ -9170,6 +9543,7 @@ async function cgSyncNow(showFeedback=false){
       _cgReconcile('bulk_expedicoes', cgExpedicoes, exps);
     }
     _cgPruneTombstones(descs, exps);
+    _tkFlushPending();          // tickets presos neste aparelho sobem junto com o sync da CG
     _cgRenderAfterSync();
     _cgSetSyncStatus('ok');
     if(showFeedback) showToast('↻ Dados sincronizados!','#22c55e','#000');
@@ -9243,10 +9617,305 @@ function cgRelSetMonth(offset){
   renderCgRelatorio();
 }
 
+// ══════════════════════════════════
+// INTEGRAÇÃO — PESAGENS DO PORTO (API rest-pesagens / ticketOperadores)
+// Escopo: Carga Geral, apenas BLs cujo item no banco está com armazém PORTO.
+// Objetivo: trazer o peso de ENTRADA e de SAÍDA da balança do Porto para
+// conferir o líquido contra o peso que calculamos.
+// A API limita cada consulta a 2 dias — o período é fatiado automaticamente.
+// ══════════════════════════════════
+const PORTO_API_PADRAO='https://portonet.portosaofrancisco.com.br/sfs/zf/api/rest-pesagens/ticketOperadores';
+let _portoResultado=[];
+
+function _portoCfg(){
+  // modo 'edge'  = via Edge Function do Supabase (a senha fica no servidor)
+  // modo 'direto'= o navegador chama o Porto direto (a senha fica exposta no cliente)
+  const edgePadrao = (SUPA_URL? SUPA_URL.replace(/\/$/,'')+'/functions/v1/porto-pesagens' : '');
+  return {
+    modo: _fatGet('sp_fat_porto_modo') || 'edge',
+    edge: _fatGet('sp_fat_porto_edge') || edgePadrao,
+    url:  _fatGet('sp_fat_porto_url')  || PORTO_API_PADRAO,
+    user: _fatGet('sp_fat_porto_user') || '',
+    pass: _fatGet('sp_fat_porto_pass') || ''
+  };
+}
+async function salvarPortoCfg(){
+  if(session?.role!=='admin'){ showToast('Apenas administradores podem alterar a integração.','#e05c1a','#fff'); return; }
+  const modo=(document.getElementById('porto-modo')?.value||'edge');
+  const edge=(document.getElementById('porto-edge')?.value||'').trim();
+  const url =(document.getElementById('porto-url')?.value||'').trim()||PORTO_API_PADRAO;
+  const user=(document.getElementById('porto-user')?.value||'').trim();
+  const pass=(document.getElementById('porto-pass')?.value||'').trim();
+  await fatConfigSet('porto_modo', modo);
+  await fatConfigSet('porto_edge', edge);
+  await fatConfigSet('porto_url', url);
+  // No modo Edge as credenciais vivem nos secrets do Supabase - nao guardamos aqui.
+  await fatConfigSet('porto_user', modo==='edge' ? '' : user);
+  await fatConfigSet('porto_pass', modo==='edge' ? '' : pass);
+  showToast('✓ Integração salva (válida para todos os dispositivos).','#22c55e','#000');
+}
+
+// A placa vem sem hífen na API do Porto ("MEL5H02") e com hífen aqui ("MEL-5H02").
+function _portoPlaca(v){ return String(v||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function _portoData(dthr){
+  const m=String(dthr||'').match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return m? (m[3]+'-'+m[2]+'-'+m[1]) : '';
+}
+function _portoHora(dthr){ const m=String(dthr||'').match(/(\d{2}:\d{2})/); return m?m[1]:''; }
+function _portoNum(v){ return parseFloat(String(v==null?'':v).replace(',','.'))||0; }
+
+// BLs da Carga Geral com armazém PORTO no banco de itens — o escopo pedido.
+function _portoBLsAlvo(){
+  const arr=(typeof cgItems!=='undefined'&&Array.isArray(cgItems))?cgItems:[];
+  const escopo=document.getElementById('porto-escopo-sel')?.value||'porto';
+  const navio =document.getElementById('porto-navio')?.value||'';
+  return [...new Set(arr.filter(it=>{
+      if(escopo==='porto' && _fatNorm(it.armazem)!=='PORTO') return false;
+      if(navio && _fatNorm(it.navio)!==_fatNorm(navio)) return false;
+      return true;
+    }).map(it=>String(it.bl||'').trim()).filter(Boolean))];
+}
+
+// Consulta a API fatiando o período em blocos de 2 dias (limite do endpoint).
+async function _portoBuscar(dtIni, dtFim, onProgress){
+  const cfg=_portoCfg();
+  // Caminho recomendado: a Edge Function guarda a senha e ja devolve o periodo
+  // inteiro fatiado, sem CPF de motorista.
+  if(cfg.modo==='edge'){
+    if(!cfg.edge) throw new Error('URL da Edge Function não configurada.');
+    if(onProgress) onProgress(1,1);
+    let js;
+    try{
+      const res=await fetch(cfg.edge,{
+        method:'POST',
+        headers:{'Content-Type':'application/json',
+                 'Authorization':'Bearer '+SUPA_KEY,
+                 'apikey':SUPA_KEY},
+        body:JSON.stringify({dt_inicial:dtIni, dt_final:dtFim})
+      });
+      js=await res.json();
+      if(!res.ok||js.erro) throw new Error(js.erro||('HTTP '+res.status));
+    }catch(e){
+      throw new Error('Edge Function porto-pesagens: '+e.message
+        +'. Verifique se ela foi publicada (supabase functions deploy porto-pesagens) '
+        +'e se os segredos PORTO_USER/PORTO_PASS foram definidos.');
+    }
+    return Array.isArray(js.tickets)?js.tickets:[];
+  }
+  if(!cfg.user||!cfg.pass) throw new Error('Configure o usuário e a senha da API do Porto.');
+  const ini=new Date(dtIni+'T00:00:00'), fim=new Date(dtFim+'T00:00:00');
+  if(isNaN(ini)||isNaN(fim)) throw new Error('Datas inválidas.');
+  if(fim<ini) throw new Error('A data final é anterior à inicial.');
+  const dias=Math.floor((fim-ini)/86400000)+1;
+  if(dias>62) throw new Error('Período muito longo ('+dias+' dias). Consulte no máximo 2 meses por vez.');
+  const br=d=>String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear();
+  const total=Math.ceil(dias/2);
+  const vistos=new Set(); const out=[];
+  let cur=new Date(ini), bloco=0;
+  while(cur<=fim){
+    const f=new Date(cur); f.setDate(f.getDate()+1); if(f>fim) f.setTime(fim.getTime());
+    const url=cfg.url+'?user='+encodeURIComponent(cfg.user)+'&pass='+encodeURIComponent(cfg.pass)
+             +'&dt_inicial='+br(cur)+'&dt_final='+br(f);
+    let js;
+    try{
+      const res=await fetch(url);
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      js=await res.json();
+    }catch(e){
+      throw new Error('Falha ao consultar o Porto ('+br(cur)+' a '+br(f)+'): '+e.message);
+    }
+    if(js && js.status && js.status!=='sucesso')
+      throw new Error('A API do Porto recusou a consulta: '+JSON.stringify(js.message||js.status));
+    (Array.isArray(js&&js.message)?js.message:[]).forEach(t=>{
+      if(t&&t.TICKET&&!vistos.has(String(t.TICKET))){ vistos.add(String(t.TICKET)); out.push(t); }
+    });
+    bloco++; if(onProgress) onProgress(bloco,total);
+    cur.setDate(cur.getDate()+2);
+  }
+  return out;
+}
+
+// Casa cada ticket do Porto com nossos registros de Carga Geral dos BLs alvo.
+// Chave: placa normalizada + data (entrada OU saída da balança).
+function _portoCasar(tickets){
+  const blsAlvo=new Set(_portoBLsAlvo().map(b=>_fatNorm(b)));
+  const itensAlvo=((typeof cgItems!=='undefined'&&Array.isArray(cgItems))?cgItems:[])
+                    .filter(it=>blsAlvo.has(_fatNorm(it.bl)));
+  const naviosAlvo=new Set(itensAlvo.map(it=>_fatNorm(it.navio)).filter(Boolean));
+  const cand=[
+    ...((typeof cgExpedicoes!=='undefined'?cgExpedicoes:[])||[]).filter(r=>blsAlvo.has(_fatNorm(r.bl))).map(r=>({r,tipo:'EXPEDIÇÃO'})),
+    ...((typeof cgDescargas !=='undefined'?cgDescargas :[])||[]).filter(r=>blsAlvo.has(_fatNorm(r.bl))).map(r=>({r,tipo:'DESCARGA'}))
+  ];
+  return tickets.map(t=>{
+    const placa=_portoPlaca(t.PL_VEICULO);
+    const dEntr=_portoData(t.DTHR_PESO_1);
+    const dSaida=_portoData(t.DTHR_PESO_2)||dEntr;
+    const casa=cand.filter(c=>_portoPlaca(c.r.veiculo)===placa &&
+                             (c.r.data===dSaida || c.r.data===dEntr));
+    const nossoPeso=casa.reduce((a,c)=>a+(parseFloat(c.r.peso_kg)||0),0);
+    const liquido=_portoNum(t.PESO_LIQUIDO);
+    return {
+      t, placa, dEntr, dSaida,
+      hEntr:_portoHora(t.DTHR_PESO_1), hSaida:_portoHora(t.DTHR_PESO_2),
+      peso1:_portoNum(t.PESO_1), peso2:_portoNum(t.PESO_2), liquido,
+      navioAlvo: naviosAlvo.size===0 || naviosAlvo.has(_fatNorm(t.NAVIO)),
+      registros:casa.map(c=>c.r), tipos:[...new Set(casa.map(c=>c.tipo))],
+      nossoPeso, diferenca: casa.length? (liquido-nossoPeso) : null,
+      bl:[...new Set(casa.map(c=>c.r.bl))].join(', ')
+    };
+  });
+}
+
+async function importarPesagensPorto(){
+  const ini=document.getElementById('porto-dt-ini')?.value||'';
+  const fim=document.getElementById('porto-dt-fim')?.value||'';
+  const el=document.getElementById('porto-result');
+  const btn=document.getElementById('btn-porto-importar');
+  if(!ini||!fim){ showToast('Informe o período.','#f59e0b','#000'); return; }
+  const alvo=_portoBLsAlvo();
+  btn.disabled=true; const rot0=btn.textContent;
+  el.innerHTML='<div style="padding:1rem;color:var(--muted);font-size:12px;">Consultando a API do Porto…</div>';
+  try{
+    const tickets=await _portoBuscar(ini,fim,(b,tt)=>{ btn.textContent='CONSULTANDO '+b+'/'+tt+'…'; });
+    _portoResultado=_portoCasar(tickets);
+    _portoRender(tickets.length, alvo);
+  }catch(e){
+    el.innerHTML='<div style="background:rgba(224,92,26,.10);border:1px solid rgba(224,92,26,.4);border-radius:8px;padding:.9rem 1rem;font-size:12px;">'
+      +'<b style="color:#e05c1a;">Erro:</b> '+_esc(e.message)+'</div>';
+  }finally{ btn.disabled=false; btn.textContent=rot0; }
+}
+
+function _portoRender(totalApi, alvo){
+  const el=document.getElementById('porto-result');
+  const soCasados=document.getElementById('porto-so-casados')?.checked;
+  const btnSalvar=document.getElementById('btn-porto-salvar');
+  const lista=_portoResultado.filter(x=>soCasados? x.registros.length>0 : (x.registros.length>0||x.navioAlvo));
+  const casados=_portoResultado.filter(x=>x.registros.length>0).length;
+
+  const cabecalho='<div style="font-size:12px;color:var(--muted);margin-bottom:.6rem;line-height:1.6;">'
+    +totalApi+' ticket(s) retornado(s) pelo Porto · <b style="color:var(--accent);">'+casados+'</b> casado(s) com registros nossos'
+    +'<br>Escopo: '+((document.getElementById('porto-escopo-sel')?.value||'porto')==='porto'?'BL(s) com armazém PORTO':'todos os BL(s) da Carga Geral')
+    +(document.getElementById('porto-navio')?.value? ' · navio '+_esc(document.getElementById('porto-navio').value):'')
+    +' — '+(alvo.length? _esc(alvo.join(', ')) : '<b style="color:#e05c1a;">nenhum BL no escopo</b>')+'</div>';
+
+  if(!lista.length){
+    el.innerHTML=cabecalho+'<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">⚖</span>Nenhuma pesagem para exibir neste período.</div>';
+    if(btnSalvar) btnSalvar.style.display='none';
+    return;
+  }
+  const kg=v=>Number(v||0).toLocaleString('pt-BR');
+  el.innerHTML=cabecalho+'<div style="overflow:auto;max-height:400px;border:1px solid var(--border);border-radius:8px;">'
+    +'<table style="min-width:1050px;width:100%;font-size:12px;"><thead><tr>'
+    +'<th>TICKET</th><th>PLACA</th><th>MOTORISTA</th><th>NAVIO</th>'
+    +'<th>ENTRADA</th><th>SAÍDA</th><th>LÍQUIDO (PORTO)</th><th>NOSSO PESO</th><th>DIFERENÇA</th><th>REGISTRO</th></tr></thead><tbody>'
+    +lista.map((x,i)=>{
+      const dif=x.diferenca;
+      const corDif = dif===null?'var(--muted)' : (Math.abs(dif)<=50?'var(--success)':(Math.abs(dif)<=500?'#f59e0b':'var(--danger)'));
+      return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+        +'<td style="font-family:\'JetBrains Mono\',monospace;white-space:nowrap;">'+_esc(x.t.TICKET)+'</td>'
+        +'<td style="font-weight:700;white-space:nowrap;">'+_esc(x.t.PL_VEICULO)+'</td>'
+        +'<td style="font-size:11px;">'+_esc(x.t.NOME_MOTORISTA||'—')+'</td>'
+        +'<td style="font-size:11px;">'+_esc(x.t.NAVIO||'—')+'</td>'
+        +'<td style="white-space:nowrap;">'+(x.dEntr? x.dEntr.split('-').reverse().join('/')+' '+x.hEntr:'—')+'<br><b>'+kg(x.peso1)+' kg</b></td>'
+        +'<td style="white-space:nowrap;">'+(x.dSaida? x.dSaida.split('-').reverse().join('/')+' '+x.hSaida:'—')+'<br><b>'+kg(x.peso2)+' kg</b></td>'
+        +'<td style="font-weight:700;white-space:nowrap;">'+kg(x.liquido)+' kg</td>'
+        +'<td style="white-space:nowrap;">'+(x.registros.length? kg(x.nossoPeso)+' kg':'—')+'</td>'
+        +'<td style="white-space:nowrap;font-weight:700;color:'+corDif+';">'+(dif===null?'—':(dif>0?'+':'')+kg(dif)+' kg')+'</td>'
+        +'<td style="font-size:11px;">'+(x.registros.length
+            ? _esc(x.tipos.join('/'))+'<br>BL '+_esc(x.bl)
+            : '<span style="color:var(--muted);">sem registro nosso</span>')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+  if(btnSalvar){ btnSalvar.style.display=''; btnSalvar.textContent='↓ SALVAR '+lista.length+' PESAGEM(NS)'; }
+}
+
+function portoToggleFiltro(){ _portoRender(_portoResultado.length, _portoBLsAlvo()); }
+
+// Grava as pesagens no Supabase (tabela pesagens_porto).
+// Não gravamos o CPF do motorista — dado pessoal que não precisamos guardar.
+async function salvarPesagensPorto(){
+  const soCasados=document.getElementById('porto-so-casados')?.checked;
+  const lista=_portoResultado.filter(x=>soCasados? x.registros.length>0 : (x.registros.length>0||x.navioAlvo));
+  if(!lista.length){ showToast('Nada para salvar.','#f59e0b','#000'); return; }
+  if(!SUPA_URL||!SUPA_KEY){ showToast('Supabase não configurado.','#e05c1a','#fff'); return; }
+  const btn=document.getElementById('btn-porto-salvar');
+  btn.disabled=true; const rot0=btn.textContent; btn.textContent='SALVANDO…';
+  const linhas=lista.map(x=>({
+    ticket:String(x.t.TICKET), pl_veiculo:x.t.PL_VEICULO||'', placa_norm:x.placa,
+    dt_entrada:x.dEntr||null, hr_entrada:x.hEntr||'', dt_saida:x.dSaida||null, hr_saida:x.hSaida||'',
+    peso_entrada:x.peso1, peso_saida:x.peso2, peso_liquido:x.liquido,
+    documento:x.t.DOCUMENTO||'', pasta:x.t.PASTA||'', navio:x.t.NAVIO||'', operacao:x.t.OPERACAO||'',
+    nome_motorista:x.t.NOME_MOTORISTA||'', transportadora:x.t.TRANSPORTADORA||'',
+    cnpj_transportadora:x.t.CNPJ_TRANSPORTADORA||'', armazem_porto:x.t.ARMAZEM||'',
+    pl_carreta1:x.t.PL_CARRETA1||'', observacao:x.t.OBSERVACAO||'',
+    bl:x.bl||'', exp_ids:(x.registros.map(r=>r.id).join(',')||''),
+    nosso_peso:x.registros.length?x.nossoPeso:null,
+    importado_por: session?.nome||''
+  }));
+  try{
+    for(let i=0;i<linhas.length;i+=100){
+      await supa('pesagens_porto?on_conflict=ticket',{method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify(linhas.slice(i,i+100))});
+    }
+    addAuditLog('PORTO_PESAGENS', linhas.length+' pesagem(ns) importada(s) da API do Porto');
+    showToast('✓ '+linhas.length+' pesagem(ns) salva(s).','#22c55e','#000');
+  }catch(e){
+    showToast('Erro ao salvar: '+e.message+' — a tabela pesagens_porto já foi criada no Supabase?','#e05c1a','#fff');
+  }finally{ btn.disabled=false; btn.textContent=rot0; }
+}
+
+function renderPesagensPorto(){
+  const cfg=_portoCfg();
+  const setv=(id,v)=>{const e=document.getElementById(id); if(e&&!e.value) e.value=v;};
+  const setsel=(id,v)=>{const e=document.getElementById(id); if(e) e.value=v;};
+  setv('porto-edge',cfg.edge); setv('porto-url',cfg.url);
+  setv('porto-user',cfg.user); setv('porto-pass',cfg.pass);
+  setsel('porto-modo',cfg.modo);
+  const hoje=new Date().toISOString().split('T')[0];
+  setv('porto-dt-ini',hoje); setv('porto-dt-fim',hoje);
+  const box=document.getElementById('porto-cfg-box');
+  if(box) box.style.display = (session?.role==='admin') ? '' : 'none';
+  // navios disponiveis no banco de itens
+  const sel=document.getElementById('porto-navio');
+  if(sel && !sel.dataset.pronto){
+    const navios=[...new Set(((typeof cgItems!=='undefined'?cgItems:[])||[]).map(i=>i.navio).filter(Boolean))].sort();
+    sel.innerHTML='<option value="">— Todos os navios —</option>'+navios.map(n=>'<option value="'+_esc(n)+'">'+_esc(n)+'</option>').join('');
+    sel.dataset.pronto='1';
+  }
+  portoAtualizarEscopo();
+}
+
+function portoAtualizarEscopo(){
+  const alvo=_portoBLsAlvo();
+  const escopo=document.getElementById('porto-escopo-sel')?.value||'porto';
+  const av=document.getElementById('porto-escopo');
+  if(!av) return;
+  if(!alvo.length){
+    av.innerHTML = escopo==='porto'
+      ? '<b style="color:#e05c1a;">Nenhum BL com armazém PORTO no banco de itens</b> — marque o armazém dos itens ou troque o escopo para "todos os BLs".'
+      : '<b style="color:#e05c1a;">Nenhum BL encontrado</b> para o navio selecionado.';
+    return;
+  }
+  const rot = escopo==='porto' ? 'BLs com armazém PORTO' : 'todos os BLs da Carga Geral';
+  av.innerHTML='Escopo atual ('+rot+'): <b>'+_esc(alvo.slice(0,12).join(', '))+(alvo.length>12?' … (+'+(alvo.length-12)+')':'')+'</b>';
+}
+
+function portoModoMudou(){
+  const modo=document.getElementById('porto-modo')?.value||'edge';
+  const dir=document.getElementById('porto-direto-box');
+  const edg=document.getElementById('porto-edge-box');
+  if(dir) dir.style.display = modo==='direto' ? '' : 'none';
+  if(edg) edg.style.display = modo==='edge'   ? '' : 'none';
+  const av=document.getElementById('porto-modo-aviso');
+  if(av) av.innerHTML = modo==='direto'
+    ? '<b style="color:#e05c1a;">⚠ Modo direto:</b> a senha do Porto fica legível para qualquer pessoa que abrir o sistema. Use apenas para teste.'
+    : 'A senha fica nos segredos do Supabase; o navegador nunca a recebe. O CPF do motorista também é removido no servidor.';
+}
+
 function renderCargaGeral(){
   const _perms=session?.perms||{};
   const fullAccess=_perms.cargaGeral===true;
-  ['cg-tab-descarga','cg-tab-expedicao','cg-tab-banco','cg-tab-historico'].forEach(id=>{
+  ['cg-tab-descarga','cg-tab-expedicao','cg-tab-banco','cg-tab-historico','cg-tab-pesagens'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display=fullAccess?'':'none';
   });
   if(fullAccess){ renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico(); }
@@ -9263,7 +9932,7 @@ function renderCargaGeral(){
 }
 
 function showCgTab(tab){
-  ['banco','descarga','expedicao','historico','relatorio'].forEach(t=>{
+  ['banco','descarga','expedicao','historico','relatorio','pesagens'].forEach(t=>{
     document.getElementById('cg-tab-'+t)?.classList.toggle('active',t===tab);
     document.getElementById('cg-panel-'+t)?.classList.toggle('active',t===tab);
   });
@@ -9271,6 +9940,7 @@ function showCgTab(tab){
   if(tab==='expedicao') { renderCgExpHoje();  cgRenderItems('exp'); }
   if(tab==='historico') renderCgHistorico();
   if(tab==='relatorio') { cgRelPopulateBLFilter(); renderCgRelatorio(); }
+  if(tab==='pesagens')  renderPesagensPorto();
 }
 
 function updateCgStats(){
@@ -9555,6 +10225,169 @@ function excluirCgItem(id){
   showToast('Item excluído.','#6b7280','#fff');
 }
 
+// ═════════════════════════════
+// SINCRONIZAR REGISTROS COM O BANCO DE ITENS
+// Descarga/expedicao guardam uma COPIA dos dados do item (bl, cliente, navio,
+// produto, unidade) e o peso calculado no ato do lancamento. Editar o banco
+// depois NAO mexe nos registros ja lancados - esta ferramenta compara, mostra
+// o que mudaria e so aplica apos confirmacao.
+// ═════════════════════════════
+let _cgSyncDiffs = [];
+
+function _cgUp(v){ return String(v||'').trim().toUpperCase(); }
+
+// Reencontra o item do banco correspondente a um registro.
+// Se o BL foi renomeado no banco, o casamento por BL falha - dai os fallbacks.
+function _cgRelinkItem(reg){
+  let it = cgItems.find(x=>_cgUp(x.bl)===_cgUp(reg.bl) && _cgUp(x.descricao)===_cgUp(reg.descricao));
+  if(it) return {item:it, via:'BL + descricao'};
+  let c = cgItems.filter(x=>_cgUp(x.navio)===_cgUp(reg.navio) && _cgUp(x.descricao)===_cgUp(reg.descricao));
+  if(c.length===1) return {item:c[0], via:'navio + descricao (BL mudou)'};
+  if(c.length>1)   return {erro:'ambiguo — '+c.length+' itens com esse navio + descricao'};
+  c = cgItems.filter(x=>_cgUp(x.descricao)===_cgUp(reg.descricao));
+  if(c.length===1) return {item:c[0], via:'descricao unica no banco'};
+  return {erro: c.length ? ('ambiguo — '+c.length+' itens com essa descricao') : 'nenhum item correspondente no banco'};
+}
+
+// peso do registro = peso unitario do item x quantidade x fator de unidade
+function _cgPesoDoRegistro(item, qtd, fator){
+  if(!item.peso || !item.qtd_total) return null;
+  return Math.round((item.peso/item.qtd_total) * (parseFloat(qtd)||0) * (fator||1));
+}
+
+function _cgDiffRegistro(reg, fator){
+  const r=_cgRelinkItem(reg);
+  if(r.erro) return {erro:r.erro};
+  const it=r.item, mud={};
+  // campo vazio no banco NAO apaga o que ja esta no registro
+  const cmp=(campo,novo)=>{
+    if(novo===undefined||novo===null||String(novo).trim()==='') return;
+    if(String(reg[campo]||'')!==String(novo)) mud[campo]={de:(reg[campo]||'—'),para:novo};
+  };
+  cmp('bl',it.bl); cmp('cliente',it.cliente); cmp('navio',it.navio);
+  cmp('produto',it.produto); cmp('unidade',it.unidade);
+  const novoPeso=_cgPesoDoRegistro(it, reg.quantidade, fator);
+  if(novoPeso!==null && Number(reg.peso_kg||0)!==novoPeso) mud.peso_kg={de:Number(reg.peso_kg||0),para:novoPeso};
+  return {item:it, via:r.via, mudancas:mud};
+}
+
+function abrirCgSyncItens(){
+  if(session?.role!=='admin'){ showToast('Apenas administradores podem sincronizar registros.','#e05c1a','#fff'); return; }
+  const sel=document.getElementById('cg-sync-navio');
+  if(sel){
+    const navios=[...new Set(cgItems.map(i=>i.navio).filter(Boolean))].sort();
+    sel.innerHTML='<option value="">— Todos os navios —</option>'+navios.map(n=>'<option value="'+_esc(n)+'">'+_esc(n)+'</option>').join('');
+  }
+  _cgSyncDiffs=[];
+  const res=document.getElementById('cg-sync-result'); if(res) res.innerHTML='';
+  const btn=document.getElementById('btn-cg-sync-aplicar'); if(btn) btn.style.display='none';
+  document.getElementById('modal-cg-sync').classList.add('open');
+}
+
+function cgPreviewSyncItens(){
+  const navio = document.getElementById('cg-sync-navio')?.value||'';
+  const tipo  = document.getElementById('cg-sync-tipo')?.value||'ambos';
+  const fator = parseFloat(document.getElementById('cg-sync-fator')?.value||'1')||1;
+
+  const fontes=[];
+  if(tipo!=='exp')  fontes.push({arr:cgDescargas,  tipo:'DESCARGA',  modo:'desc'});
+  if(tipo!=='desc') fontes.push({arr:cgExpedicoes, tipo:'EXPEDICAO', modo:'exp'});
+
+  _cgSyncDiffs=[]; const problemas=[]; let analisados=0;
+  fontes.forEach(f=>f.arr.forEach(reg=>{
+    if(navio){
+      const it=cgItems.find(x=>_cgUp(x.bl)===_cgUp(reg.bl)&&_cgUp(x.descricao)===_cgUp(reg.descricao));
+      const navioReg = it ? it.navio : reg.navio;   // o registro pode ter navio desatualizado
+      if(_cgUp(navioReg)!==_cgUp(navio)) return;
+    }
+    analisados++;
+    const d=_cgDiffRegistro(reg,fator);
+    if(d.erro){ problemas.push({reg,tipo:f.tipo,erro:d.erro}); return; }
+    if(Object.keys(d.mudancas).length) _cgSyncDiffs.push({reg,tipo:f.tipo,modo:f.modo,...d});
+  }));
+
+  const el=document.getElementById('cg-sync-result');
+  const btn=document.getElementById('btn-cg-sync-aplicar');
+
+  // Peso unitario muito baixo => banco provavelmente preenchido em toneladas
+  const suspeitos=_cgSyncDiffs.filter(d=>d.mudancas.peso_kg && d.mudancas.peso_kg.para>0 &&
+    (d.mudancas.peso_kg.para/(parseFloat(d.reg.quantidade)||1))<50);
+  const alertaUnidade = (suspeitos.length && fator===1) ?
+    '<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:12px;line-height:1.55;">'+
+    '<b style="color:#f59e0b;">⚠ Confira a unidade do peso.</b> Em <b>'+suspeitos.length+'</b> registro(s) o peso calculado ficou abaixo de 50 kg por unidade — '+
+    'sinal de que o peso lançado no banco de itens está em <b>toneladas</b>, não em kg. Se for o caso, mude o campo '+
+    '"Peso do banco está em" para <b>toneladas</b> e analise de novo.</div>' : '';
+
+  const avisos = problemas.length ?
+    '<div style="background:rgba(224,92,26,.10);border:1px solid rgba(224,92,26,.4);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;font-size:12px;line-height:1.55;">'+
+    '<b style="color:#e05c1a;">'+problemas.length+' registro(s) sem item correspondente</b> — não serão alterados:'+
+    '<div style="margin-top:.4rem;max-height:120px;overflow:auto;font-family:\'JetBrains Mono\',monospace;font-size:11px;color:var(--muted);">'+
+    problemas.slice(0,40).map(pb=>_esc(pb.tipo)+' · '+(pb.reg.data||'')+' · BL '+_esc(pb.reg.bl)+' · '+_esc(pb.reg.descricao)+' → '+_esc(pb.erro)).join('<br>')+
+    (problemas.length>40?'<br>… e mais '+(problemas.length-40):'')+'</div></div>' : '';
+
+  if(!_cgSyncDiffs.length){
+    el.innerHTML = alertaUnidade + avisos +
+      '<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">✓</span>'+
+      analisados+' registro(s) analisado(s) — nenhum está diferente do banco de itens.</div>';
+    btn.style.display='none';
+    return;
+  }
+
+  const rot={bl:'BL',cliente:'CLIENTE',navio:'NAVIO',produto:'PRODUTO',unidade:'UNIDADE',peso_kg:'PESO (kg)'};
+  el.innerHTML = alertaUnidade + avisos +
+    '<div style="font-size:12px;color:var(--muted);margin-bottom:.5rem;">'+analisados+
+    ' registro(s) analisado(s) · <b style="color:var(--accent);">'+_cgSyncDiffs.length+'</b> serão corrigidos</div>'+
+    '<div style="overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:8px;">'+
+    '<table style="min-width:720px;width:100%;font-size:12px;">'+
+    '<thead><tr><th>TIPO</th><th>DATA</th><th>BL</th><th>DESCRIÇÃO</th><th>ALTERAÇÕES</th><th>CASADO POR</th></tr></thead><tbody>'+
+    _cgSyncDiffs.map((d,i)=>'<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'+
+      '<td style="white-space:nowrap;"><span style="font-weight:700;color:'+(d.tipo==='DESCARGA'?'var(--info)':'var(--exp)')+';">'+d.tipo+'</span></td>'+
+      '<td style="white-space:nowrap;">'+(d.reg.data?d.reg.data.split('-').reverse().join('/'):'—')+'</td>'+
+      '<td style="font-family:\'JetBrains Mono\',monospace;white-space:nowrap;">'+_esc(d.reg.bl)+'</td>'+
+      '<td>'+_esc(d.reg.descricao)+'</td>'+
+      '<td>'+Object.keys(d.mudancas).map(k=>'<div><b>'+(rot[k]||k)+':</b> '+
+        '<span style="color:var(--danger);text-decoration:line-through;">'+_esc(String(d.mudancas[k].de))+'</span> → '+
+        '<span style="color:var(--success);font-weight:700;">'+_esc(String(d.mudancas[k].para))+'</span></div>').join('')+'</td>'+
+      '<td style="font-size:11px;color:var(--muted);white-space:nowrap;">'+_esc(d.via)+'</td></tr>').join('')+
+    '</tbody></table></div>';
+  btn.style.display='';
+  btn.textContent='✓ APLICAR '+_cgSyncDiffs.length+' CORREÇÃO(ÕES)';
+}
+
+async function cgAplicarSyncItens(){
+  if(!_cgSyncDiffs.length) return;
+  if(!confirm('Aplicar '+_cgSyncDiffs.length+' correção(ões)?\n\nOs valores atuais dos registros serão substituídos pelos do banco de itens. Esta ação não tem desfazer automático.')) return;
+  const btn=document.getElementById('btn-cg-sync-aplicar');
+  btn.disabled=true; const rot0=btn.textContent; btn.textContent='APLICANDO...';
+  _cgSetSyncStatus('syncing');
+  let ok=0, falhas=0;
+  for(const d of _cgSyncDiffs){
+    const patch={}; Object.keys(d.mudancas).forEach(k=>patch[k]=d.mudancas[k].para);
+    const arr = d.modo==='desc'?cgDescargas:cgExpedicoes;
+    const idx = arr.findIndex(r=>String(r.id)===String(d.reg.id));
+    if(idx<0){ falhas++; continue; }
+    arr[idx]={...arr[idx],...patch};
+    _cgMarkEdited(d.reg.id);          // sem isto o sync periodico reverteria a correcao
+    if(SUPA_URL&&SUPA_KEY){
+      const tbl=d.modo==='desc'?'bulk_descargas':'bulk_expedicoes';
+      try{
+        await supa(tbl+'?id=eq.'+d.reg.id,{method:'PATCH',headers:{'Prefer':'return=minimal'},
+          body:JSON.stringify(_cgSanitizeReg(tbl,patch))});
+        _cgClearEdited(d.reg.id); ok++;
+      }catch(e){ falhas++; console.warn('[sync banco->registros]',e.message); }
+    } else ok++;
+  }
+  saveCgDescargas(); saveCgExpedicoes();
+  addAuditLog('CG_SYNC_ITENS', ok+' registro(s) atualizado(s) a partir do banco de itens'+(falhas?(' · '+falhas+' falha(s)'):''));
+  _cgSetSyncStatus(falhas?'error':'ok');
+  btn.disabled=false; btn.textContent=rot0;
+  renderCgDescHoje(); if(typeof renderCgExpHoje==='function') renderCgExpHoje();
+  renderCgHistorico(); renderCgBanco(); updateCgStats();
+  showToast(falhas?('⚠ '+ok+' corrigido(s), '+falhas+' falha(s) — veja o console.'):('✓ '+ok+' registro(s) corrigido(s).'),
+            falhas?'#f59e0b':'#22c55e','#000');
+  cgPreviewSyncItens();   // reanalisa para mostrar o resultado
+}
+
 // ── Selects de BL ─────────────────────────────────────────────
 function cgPopulateBLSelects(){
   const bls=[...new Set(cgItems.map(it=>it.bl))].sort();
@@ -9691,7 +10524,7 @@ function renderCgDescHoje(){
       <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.motorista)||'—'}</td>
       <td>${_esc(r.armazem)||'—'}</td><td>${_esc(r.periodo)||'—'}</td><td>${_esc(r.obs)||'—'}</td>
       <td style="color:var(--muted);font-size:12px;">${_esc(r.created_by)||'—'}</td>
-      <td style="white-space:nowrap;">${canAct?`<button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="editarCgReg('desc','${r.id}')">✎</button>`:''} ${canAct?`<button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button>`:''}</td>
+      <td style="white-space:nowrap;"><button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="printCgTicketDescarga('${r.id}')" title="Imprimir ticket desta descarga">🖨</button>${canAct?`<button class="btn btn-sm btn-secondary" style="margin-right:.2rem;" onclick="editarCgReg('desc','${r.id}')">✎</button>`:''} ${canAct?`<button class="btn btn-sm btn-danger" onclick="excluirCgDescarga('${r.id}')">✕</button>`:''}</td>
     </tr>`;}).join('')}</tbody>
   </table></div>`;
 }
@@ -11430,8 +12263,10 @@ alter table users add column if not exists email text;
         <select id="reprint-tipo" onchange="filterReprintList(document.getElementById('reprint-search').value)"
           style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;">
           <option value="">Todos</option>
-          <option value="EXP">Bobinas (EXP)</option>
-          <option value="CGX">Carga Geral (CGX)</option>
+          <option value="EXP">Expedição Bobinas (EXP)</option>
+          <option value="CGX">Expedição Carga Geral (CGX)</option>
+          <option value="DSC">Descarga Bobinas (DSC)</option>
+          <option value="CGD">Descarga Carga Geral (CGD)</option>
         </select>
       </div>
       <div id="reprint-list" style="display:flex;flex-direction:column;gap:.5rem;max-height:440px;overflow-y:auto;"></div>
@@ -11847,6 +12682,7 @@ alter table users add column if not exists email text;
       <div class="cg-tab"        id="cg-tab-banco"    onclick="showCgTab('banco')">🗄 BANCO DE ITENS</div>
       <div class="cg-tab"        id="cg-tab-historico"onclick="showCgTab('historico')">🕐 HISTÓRICO</div>
       <div class="cg-tab" id="cg-tab-relatorio" onclick="showCgTab('relatorio')">📊 RELATÓRIO</div>
+      <div class="cg-tab" id="cg-tab-pesagens" onclick="showCgTab('pesagens')">⚖ PESAGENS PORTO</div>
     </div>
 
     <!-- ── TAB: BANCO ── -->
@@ -11859,6 +12695,7 @@ alter table users add column if not exists email text;
             <button class="btn btn-info btn-sm" onclick="exportCgBancoPDF()">↓ PDF</button>
             <button class="btn btn-secondary btn-sm" onclick="downloadCgTemplate()">↓ MODELO EXCEL</button>
             <button class="btn btn-info btn-sm" onclick="openCgImportModal()">↑ IMPORTAR EXCEL</button>
+            <button class="btn btn-secondary btn-sm" onclick="abrirCgSyncItens()" title="Aplicar mudanças do banco de itens nos registros já lançados">↻ SINCRONIZAR REGISTROS</button>
             <button class="btn btn-primary btn-sm" onclick="abrirModalCgItem()">+ NOVO ITEM</button>
           </div>
         </div>
@@ -12058,6 +12895,74 @@ alter table users add column if not exists email text;
     </div>
 
     <!-- ── TAB: RELATÓRIO ── -->
+    <div id="cg-panel-pesagens" class="cg-panel">
+      <div class="rpt-section">
+        <div class="rpt-section-title">⚖ PESAGENS DA BALANÇA DO PORTO</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:1rem;">
+          Importa os tickets de pesagem do Porto de São Francisco (API <b>rest-pesagens / ticketOperadores</b>)
+          e confere o peso de <b>entrada</b> e <b>saída</b> do caminhão contra o peso dos nossos registros.
+          <div id="porto-escopo" style="margin-top:.4rem;"></div>
+        </div>
+
+        <div id="porto-cfg-box" style="border:1px solid var(--border);border-radius:8px;padding:.9rem 1rem;margin-bottom:1rem;background:var(--surface2);">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.5px;margin-bottom:.6rem;">CONFIGURAÇÃO DA API (somente admin)</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem;">
+            <div>
+              <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ACESSO À API</label>
+              <select id="porto-modo" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="portoModoMudou()">
+                <option value="edge">Via Edge Function (recomendado)</option>
+                <option value="direto">Direto do navegador</option>
+              </select>
+            </div>
+            <div style="grid-column:1/-1;" id="porto-edge-box">
+              <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">URL DA EDGE FUNCTION</label>
+              <input type="text" id="porto-edge" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" placeholder="https://SEU-PROJETO.supabase.co/functions/v1/porto-pesagens">
+            </div>
+            <div style="grid-column:1/-1;display:none;" id="porto-direto-box">
+              <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ENDPOINT DO PORTO</label>
+              <input type="text" id="porto-url" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.6rem;">
+                <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">USUÁRIO</label><input type="text" id="porto-user" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" autocomplete="off"></div>
+                <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">SENHA</label><input type="password" id="porto-pass" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" autocomplete="new-password"></div>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-end;"><button class="btn btn-secondary btn-sm" style="width:100%;" onclick="salvarPortoCfg()">✓ SALVAR</button></div>
+          </div>
+          <div id="porto-modo-aviso" style="margin-top:.6rem;font-size:11px;color:var(--muted);line-height:1.5;"></div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.75rem;margin-bottom:1rem;">
+          <div>
+            <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ESCOPO</label>
+            <select id="porto-escopo-sel" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="portoAtualizarEscopo()">
+              <option value="porto">Armazém PORTO</option>
+              <option value="todos">Todos os BLs da Carga Geral</option>
+            </select>
+          </div>
+          <div>
+            <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">NAVIO</label>
+            <select id="porto-navio" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="portoAtualizarEscopo()"></select>
+          </div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">DE</label><input type="date" id="porto-dt-ini" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ATÉ</label><input type="date" id="porto-dt-fim" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div style="display:flex;align-items:flex-end;">
+            <button class="btn btn-info btn-sm" id="btn-porto-importar" style="width:100%;" onclick="importarPesagensPorto()">↓ CONSULTAR PORTO</button>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:.4rem;font-size:12px;color:var(--muted);">
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+              <input type="checkbox" id="porto-so-casados" onchange="portoToggleFiltro()"> só os casados
+            </label>
+          </div>
+        </div>
+
+        <div id="porto-result"></div>
+
+        <div style="margin-top:1rem;display:flex;justify-content:flex-end;">
+          <button class="btn btn-primary btn-sm" id="btn-porto-salvar" style="display:none;" onclick="salvarPesagensPorto()">↓ SALVAR PESAGENS</button>
+        </div>
+      </div>
+    </div>
+
     <div id="cg-panel-relatorio" class="cg-panel">
       <div class="rpt-section">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.75rem;margin-bottom:1.25rem;">
@@ -12241,6 +13146,50 @@ o</label>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeModal('modal-cg-confirm')">VOLTAR</button>
       <button class="btn btn-primary" id="btn-cg-confirmar" onclick="cgConfirmar()">✓ CONFIRMAR REGISTRO</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: SINCRONIZAR REGISTROS COM O BANCO DE ITENS -->
+<div class="modal-overlay" id="modal-cg-sync">
+  <div class="modal" style="max-width:940px;">
+    <div class="modal-title">↻ SINCRONIZAR REGISTROS COM O BANCO DE ITENS</div>
+    <div class="modal-body" style="margin-bottom:1.2rem;">
+      <div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:1rem;">
+        Cada lançamento de descarga/expedição guarda uma <b>cópia</b> dos dados do item
+        (BL, cliente, navio, produto, unidade) e o peso calculado no momento do registro.
+        Ao editar o banco de itens, os registros antigos <b>não mudam sozinhos</b>.
+        Aqui você compara e corrige — nada é alterado antes de você conferir a lista.
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:.75rem;margin-bottom:1rem;">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">NAVIO</label>
+          <select id="cg-sync-navio" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">REGISTROS</label>
+          <select id="cg-sync-tipo" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;">
+            <option value="ambos">Descargas e expedições</option>
+            <option value="desc">Somente descargas</option>
+            <option value="exp">Somente expedições</option>
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">PESO DO BANCO ESTÁ EM</label>
+          <select id="cg-sync-fator" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;">
+            <option value="1">kg (padrão do sistema)</option>
+            <option value="1000">toneladas (converter × 1000)</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn btn-info btn-sm" style="width:100%;" onclick="cgPreviewSyncItens()">🔍 ANALISAR</button>
+        </div>
+      </div>
+      <div id="cg-sync-result"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cg-sync')">FECHAR</button>
+      <button class="btn btn-primary" id="btn-cg-sync-aplicar" style="display:none;" onclick="cgAplicarSyncItens()">✓ APLICAR CORREÇÕES</button>
     </div>
   </div>
 </div>
