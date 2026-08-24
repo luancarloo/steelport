@@ -3600,7 +3600,7 @@ function _renderCgTicketWindow(t){
     <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
     <div class="header-name">4SIDES - STEELPORT</div>
   </div>
-  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'} - CARGA GERAL</div>
+  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'} - CARGA GERAL${t.pesagem?' + PESAGEM':''}</div>
   <div class="sep">${DLINE}</div>
   <div class="tnum">${ticketNum}</div>
   <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
@@ -3636,6 +3636,24 @@ function _renderCgTicketWindow(t){
 
   <div class="total-row"><span>QTDE TOTAL:</span><span>${totalQtd} UN</span></div>
   ${totalPeso?`<div class="total-row"><span>PESO TOTAL:</span><span>${Number(totalPeso).toLocaleString('pt-BR')} KG</span></div>`:''}
+  ${(()=>{ const pz=t.pesagem; if(!pz) return '';
+     const br=d=>d?String(d).split('-').reverse().join('/'):'-';
+     const kg=v=>Number(v||0).toLocaleString('pt-BR')+' KG';
+     const dif=Number(pz.peso_liquido||0)-Number(totalPeso||0);
+     return '<div class="sep">'+LINE+'</div>'
+       +'<div class="stitle">PESAGEM - PORTO SAO FRANCISCO</div>'
+       +row('TICKET:', pz.ticket)
+       +row('ENTRADA:', br(pz.dt_entrada)+' '+(pz.hr_entrada||''))
+       +row('PESO ENTRADA:', kg(pz.peso_entrada))
+       +row('SAIDA:', br(pz.dt_saida)+' '+(pz.hr_saida||''))
+       +row('PESO SAIDA:', kg(pz.peso_saida))
+       +'<div class="total-row"><span>PESO LIQUIDO:</span><span>'+kg(pz.peso_liquido)+'</span></div>'
+       + (totalPeso ? ('<div class="sep">'+LINE+'</div>'
+            +row('PESO SISTEMA:', kg(totalPeso))
+            +row('DIFERENCA:', (dif>0?'+':'')+Number(dif).toLocaleString('pt-BR')+' KG')) : '')
+       + (pz.documento? row('DOCUMENTO:', pz.documento):'')
+       + (pz.transportadora? row('TRANSPORTADORA:', pz.transportadora):'');
+   })()}
   ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${escapeHtml(obs.toString().toUpperCase())}</div>`:''}
   <div class="sep">${DLINE}</div>
 
@@ -9406,6 +9424,7 @@ async function loadCgFromSupabase(){
     if(descs!==null){ cgDescargas=_cgMergeRecords(cgDescargas, descs); saveCgDescargas(); _cgReconcile('bulk_descargas', cgDescargas, descs); }
     if(exps!==null){ cgExpedicoes=_cgMergeRecords(cgExpedicoes, exps); saveCgExpedicoes(); _cgReconcile('bulk_expedicoes', cgExpedicoes, exps); }
     _cgPruneTombstones(descs, exps);
+    await _portoCarregar();
   }catch(e){ console.warn('CG load error:',e.message); }
 }
 
@@ -9543,6 +9562,7 @@ async function cgSyncNow(showFeedback=false){
       _cgReconcile('bulk_expedicoes', cgExpedicoes, exps);
     }
     _cgPruneTombstones(descs, exps);
+    _portoCarregar();           // pesagens do Porto acompanham o sync
     _tkFlushPending();          // tickets presos neste aparelho sobem junto com o sync da CG
     _cgRenderAfterSync();
     _cgSetSyncStatus('ok');
@@ -9857,10 +9877,13 @@ async function salvarPesagensPorto(){
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body:JSON.stringify(linhas.slice(i,i+100))});
     }
-    addAuditLog('PORTO_PESAGENS', linhas.length+' pesagem(ns) importada(s) da API do Porto');
+    try{ registrarAudit('PORTO_PESAGENS', linhas.length+' pesagem(ns) importada(s) da API do Porto'); }
+    catch(e){ console.warn('[auditoria] falhou, mas as pesagens foram salvas:', e.message); }
     showToast('✓ '+linhas.length+' pesagem(ns) salva(s).','#22c55e','#000');
   }catch(e){
-    showToast('Erro ao salvar: '+e.message+' — a tabela pesagens_porto já foi criada no Supabase?','#e05c1a','#fff');
+    const dica = /pesagens_porto|PGRST|schema cache|404/i.test(e.message)
+      ? ' — a tabela pesagens_porto foi criada no Supabase?' : '';
+    showToast('Erro ao salvar: '+e.message+dica,'#e05c1a','#fff');
   }finally{ btn.disabled=false; btn.textContent=rot0; }
 }
 
@@ -9912,13 +9935,205 @@ function portoModoMudou(){
     : 'A senha fica nos segredos do Supabase; o navegador nunca a recebe. O CPF do motorista também é removido no servidor.';
 }
 
+// ── Pesagens do Porto em memória ─────────────────────
+// Carregadas junto com os dados da Carga Geral para que a expedição mostre
+// o peso da balança sem ninguém precisar importar nada à mão.
+let pesagensPorto = [];
+
+async function _portoCarregar(){
+  if(!SUPA_URL||!SUPA_KEY) return;
+  try{ pesagensPorto = await supaAll('pesagens_porto?select=*&order=dt_saida.desc'); }
+  catch(e){ console.warn('[porto] leitura das pesagens falhou:', e.message); }
+}
+
+// Pesagem correspondente a um registro nosso: placa normalizada + data.
+function _pesagemDoRegistro(reg){
+  if(!reg) return null;
+  const placa=_portoPlaca(reg.veiculo);
+  if(!placa) return null;
+  return (pesagensPorto||[]).find(pz=>
+    (pz.placa_norm||_portoPlaca(pz.pl_veiculo))===placa &&
+    (pz.dt_saida===reg.data || pz.dt_entrada===reg.data)) || null;
+}
+
+// Converte um ticket cru da API na linha da tabela pesagens_porto.
+function _portoLinhaDe(t){
+  const placa=_portoPlaca(t.PL_VEICULO);
+  const dEntr=_portoData(t.DTHR_PESO_1);
+  const dSaida=_portoData(t.DTHR_PESO_2)||dEntr;
+  const casa=((typeof cgExpedicoes!=='undefined'?cgExpedicoes:[])||[])
+    .filter(r=>_portoPlaca(r.veiculo)===placa && (r.data===dSaida||r.data===dEntr));
+  return {
+    ticket:String(t.TICKET), pl_veiculo:t.PL_VEICULO||'', placa_norm:placa,
+    dt_entrada:dEntr||null, hr_entrada:_portoHora(t.DTHR_PESO_1),
+    dt_saida:dSaida||null,  hr_saida:_portoHora(t.DTHR_PESO_2),
+    peso_entrada:_portoNum(t.PESO_1), peso_saida:_portoNum(t.PESO_2), peso_liquido:_portoNum(t.PESO_LIQUIDO),
+    documento:t.DOCUMENTO||'', pasta:t.PASTA||'', navio:t.NAVIO||'', operacao:t.OPERACAO||'',
+    nome_motorista:t.NOME_MOTORISTA||'', transportadora:t.TRANSPORTADORA||'',
+    cnpj_transportadora:t.CNPJ_TRANSPORTADORA||'', armazem_porto:t.ARMAZEM||'',
+    pl_carreta1:t.PL_CARRETA1||'', observacao:t.OBSERVACAO||'',
+    bl:[...new Set(casa.map(r=>r.bl))].join(', '),
+    exp_ids:casa.map(r=>r.id).join(','),
+    nosso_peso:casa.length?casa.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0):null,
+    importado_por:(session?.nome||'automático')
+  };
+}
+
+// Importação automática: busca os últimos dias e grava o que for novo.
+// No máximo uma vez a cada 30 min por dispositivo, e em silêncio.
+async function _portoAutoImport(dias){
+  if(!SUPA_URL||!SUPA_KEY) return 0;
+  const cfg=_portoCfg();
+  const configurado = cfg.modo==='edge' ? !!cfg.edge : !!(cfg.user&&cfg.pass);
+  if(!configurado) return 0;
+  const K='sp_porto_auto_ts';
+  if(Date.now()-parseInt(localStorage.getItem(K)||'0',10) < 30*60*1000) return 0;
+  localStorage.setItem(K,String(Date.now()));
+  try{
+    const hoje=new Date(); const ini=new Date(hoje); ini.setDate(ini.getDate()-(dias||3));
+    const fmt=d=>d.toISOString().split('T')[0];
+    const tickets=await _portoBuscar(fmt(ini),fmt(hoje));
+    if(!tickets.length) return 0;
+    const linhas=tickets.map(_portoLinhaDe);
+    for(let i=0;i<linhas.length;i+=100){
+      await supa('pesagens_porto?on_conflict=ticket',{method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body:JSON.stringify(linhas.slice(i,i+100))});
+    }
+    await _portoCarregar();
+    console.info('[porto] importação automática: '+linhas.length+' pesagem(ns).');
+    return linhas.length;
+  }catch(e){ console.warn('[porto] importação automática falhou:', e.message); return 0; }
+}
+
+// Força a atualização (botão da aba), ignorando o intervalo de 30 min.
+async function portoAtualizarAgora(){
+  localStorage.removeItem('sp_porto_auto_ts');
+  const btn=document.getElementById('btn-tp-atualizar');
+  if(btn){ btn.disabled=true; btn.textContent='ATUALIZANDO…'; }
+  const n=await _portoAutoImport(7);
+  if(btn){ btn.disabled=false; btn.textContent='↻ ATUALIZAR PESAGENS'; }
+  renderTicketsPorto(); renderCgExpHoje();
+  showToast(n? ('✓ '+n+' pesagem(ns) sincronizada(s).') : 'Nenhuma pesagem nova.', n?'#22c55e':'#6b7280', n?'#000':'#fff');
+}
+
+// ── Ticket de expedição + pesagem do Porto ───────────────
+// Mesmo documento que já emitimos na expedição, com as linhas da balança
+// acrescentadas. Reaproveita o número do ticket CGX do mesmo carregamento
+// para que a expedição tenha UM número só, e não dois documentos diferentes.
+function _tpCarregamentos(dtIni, dtFim){
+  const exps=((typeof cgExpedicoes!=='undefined'?cgExpedicoes:[])||[])
+    .filter(r=>r.data && (!dtIni||r.data>=dtIni) && (!dtFim||r.data<=dtFim));
+  const grupos=[]; const usados=new Set();
+  exps.sort((a,b)=>String(b.data+(b.created_at||'')).localeCompare(String(a.data+(a.created_at||''))));
+  exps.forEach(r=>{
+    if(usados.has(r.id)) return;
+    const irmaos=exps.filter(x=>!usados.has(x.id)&&_mesmoCarregamento(x,r,'created_at'));
+    irmaos.forEach(x=>usados.add(x.id));
+    const regs=irmaos.length?irmaos:[r];
+    grupos.push({
+      chave:r.id, regs,
+      data:r.data, veiculo:r.veiculo, motorista:r.motorista, destino:r.destino,
+      periodo:r.periodo, obs:r.obs, navio:r.navio,
+      bls:[...new Set(regs.map(x=>x.bl))].join(', '),
+      qtd:regs.reduce((a,x)=>a+(parseFloat(x.quantidade)||0),0),
+      peso:regs.reduce((a,x)=>a+(parseFloat(x.peso_kg)||0),0),
+      pesagem:_pesagemDoRegistro(r)
+    });
+  });
+  return grupos;
+}
+
+async function printTicketPortoExp(expId){
+  const rec=((typeof cgExpedicoes!=='undefined'?cgExpedicoes:[])||[]).find(r=>String(r.id)===String(expId));
+  if(!rec){ showToast('Expedição não encontrada.','#e05c1a','#fff'); return; }
+  const irmaos=cgExpedicoes.filter(x=>_mesmoCarregamento(x,rec,'created_at'));
+  const regs=irmaos.length?irmaos:[rec];
+  const ids=new Set(regs.map(r=>String(r.id)));
+  const pz=_pesagemDoRegistro(rec);
+  if(!pz && !confirm('Este carregamento ainda não tem pesagem do Porto.\n\nEmitir o ticket assim mesmo?')) return;
+
+  // reaproveita o número do ticket de expedição, se já existir
+  let num=null;
+  const jaTem=await _tkBuscarPorRegistros('CGX', ids);
+  if(jaTem) num=jaTem.ticketNum;
+
+  const ticketData={
+    id: jaTem? jaTem.id : Date.now(),
+    ticketNum: num || await getNextTicketNum('CGX'),
+    tipo:'CGX', doc:'EXPEDICAO',
+    regs, veiculo:rec.veiculo, motorista:rec.motorista, destino:rec.destino,
+    data:rec.data, periodo:rec.periodo, obs:rec.obs,
+    emitidoEm: jaTem? jaTem.emitidoEm : new Date().toISOString(),
+    usuario: jaTem? jaTem.usuario : (session?.nome||'—'),
+    userId: jaTem? jaTem.userId : (session?.user||''),
+    pesagem: pz
+  };
+  if(!jaTem) _tkRegistrar(ticketData, regs);   // só grava se for um número novo
+  _renderCgTicketWindow(ticketData);
+}
+
+function renderTicketsPorto(){
+  const el=document.getElementById('tp-list'); if(!el) return;
+  const ini=document.getElementById('tp-dt-ini')?.value||'';
+  const fim=document.getElementById('tp-dt-fim')?.value||'';
+  const soSem=document.getElementById('tp-so-sem')?.checked;
+  let grupos=_tpCarregamentos(ini,fim);
+  if(soSem) grupos=grupos.filter(g=>!g.pesagem);
+  const info=document.getElementById('tp-info');
+  const comP=_tpCarregamentos(ini,fim).filter(g=>g.pesagem).length;
+  const tot=_tpCarregamentos(ini,fim).length;
+  if(info) info.innerHTML=tot+' carregamento(s) no período · <b style="color:var(--accent);">'+comP+'</b> com pesagem do Porto'
+    +' · '+((pesagensPorto||[]).length)+' pesagem(ns) na base';
+  if(!grupos.length){
+    el.innerHTML='<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">🎫</span>Nenhum carregamento no período.</div>';
+    return;
+  }
+  const kg=v=>Number(v||0).toLocaleString('pt-BR');
+  el.innerHTML='<div style="overflow:auto;max-height:460px;border:1px solid var(--border);border-radius:8px;">'
+   +'<table style="min-width:1020px;width:100%;font-size:12px;"><thead><tr>'
+   +'<th>DATA</th><th>VEÍCULO</th><th>MOTORISTA</th><th>BL</th><th>ITENS</th><th>NOSSO PESO</th>'
+   +'<th>TICKET PORTO</th><th>ENTRADA / SAÍDA</th><th>LÍQUIDO</th><th>DIF.</th><th></th></tr></thead><tbody>'
+   +grupos.map((g,i)=>{
+      const pz=g.pesagem;
+      const dif=pz? Number(pz.peso_liquido||0)-g.peso : null;
+      const cor=dif===null?'var(--muted)':(Math.abs(dif)<=50?'var(--success)':(Math.abs(dif)<=500?'#f59e0b':'var(--danger)'));
+      return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+      +'<td style="white-space:nowrap;">'+(g.data?g.data.split('-').reverse().join('/'):'—')+'</td>'
+      +'<td style="font-weight:700;white-space:nowrap;">'+_esc(g.veiculo)+'</td>'
+      +'<td style="font-size:11px;">'+_esc(g.motorista||'—')+'</td>'
+      +'<td style="font-family:\'JetBrains Mono\',monospace;">'+_esc(g.bls)+'</td>'
+      +'<td>'+g.regs.length+'</td>'
+      +'<td style="white-space:nowrap;font-family:\'JetBrains Mono\',monospace;">'+kg(g.peso)+' kg</td>'
+      +'<td style="font-family:\'JetBrains Mono\',monospace;white-space:nowrap;">'+(pz?_esc(pz.ticket):'<span style="color:var(--muted);">—</span>')+'</td>'
+      +'<td style="white-space:nowrap;font-size:11px;">'+(pz
+          ? (pz.hr_entrada||'')+' → '+(pz.hr_saida||'')+'<br>'+kg(pz.peso_entrada)+' / '+kg(pz.peso_saida)+' kg'
+          : '—')+'</td>'
+      +'<td style="white-space:nowrap;font-weight:700;">'+(pz?kg(pz.peso_liquido)+' kg':'—')+'</td>'
+      +'<td style="white-space:nowrap;font-weight:700;color:'+cor+';">'+(dif===null?'—':(dif>0?'+':'')+kg(dif)+' kg')+'</td>'
+      +'<td style="white-space:nowrap;"><button class="btn btn-sm '+(pz?'btn-primary':'btn-secondary')+'" onclick="printTicketPortoExp(\''+g.chave+'\')">🎫 TICKET</button></td>'
+      +'</tr>';
+   }).join('')+'</tbody></table></div>';
+}
+
+function tpSetPeriodoPadrao(){
+  const hoje=new Date(); const ini=new Date(hoje); ini.setDate(ini.getDate()-7);
+  const f=d=>d.toISOString().split('T')[0];
+  const a=document.getElementById('tp-dt-ini'), b=document.getElementById('tp-dt-fim');
+  if(a&&!a.value) a.value=f(ini);
+  if(b&&!b.value) b.value=f(hoje);
+}
+
 function renderCargaGeral(){
   const _perms=session?.perms||{};
   const fullAccess=_perms.cargaGeral===true;
-  ['cg-tab-descarga','cg-tab-expedicao','cg-tab-banco','cg-tab-historico','cg-tab-pesagens'].forEach(id=>{
+  ['cg-tab-descarga','cg-tab-expedicao','cg-tab-banco','cg-tab-historico','cg-tab-pesagens','cg-tab-ticketsporto'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display=fullAccess?'':'none';
   });
   if(fullAccess){ renderCgBanco(); renderCgDescHoje(); renderCgExpHoje(); renderCgHistorico(); }
+  // Pesagens do Porto entram sozinhas: importa em segundo plano e redesenha.
+  _portoCarregar().then(()=>{ renderCgExpHoje(); if(typeof renderTicketsPorto==='function') renderTicketsPorto(); });
+  _portoAutoImport(3).then(n=>{ if(n){ renderCgExpHoje(); if(typeof renderTicketsPorto==='function') renderTicketsPorto(); } });
   updateCgStats();
   cgPopulateBLSelects();
   cgStartSync();
@@ -9932,7 +10147,7 @@ function renderCargaGeral(){
 }
 
 function showCgTab(tab){
-  ['banco','descarga','expedicao','historico','relatorio','pesagens'].forEach(t=>{
+  ['banco','descarga','expedicao','historico','relatorio','pesagens','ticketsporto'].forEach(t=>{
     document.getElementById('cg-tab-'+t)?.classList.toggle('active',t===tab);
     document.getElementById('cg-panel-'+t)?.classList.toggle('active',t===tab);
   });
@@ -9941,6 +10156,7 @@ function showCgTab(tab){
   if(tab==='historico') renderCgHistorico();
   if(tab==='relatorio') { cgRelPopulateBLFilter(); renderCgRelatorio(); }
   if(tab==='pesagens')  renderPesagensPorto();
+  if(tab==='ticketsporto'){ tpSetPeriodoPadrao(); renderTicketsPorto(); }
 }
 
 function updateCgStats(){
@@ -10378,7 +10594,8 @@ async function cgAplicarSyncItens(){
     } else ok++;
   }
   saveCgDescargas(); saveCgExpedicoes();
-  addAuditLog('CG_SYNC_ITENS', ok+' registro(s) atualizado(s) a partir do banco de itens'+(falhas?(' · '+falhas+' falha(s)'):''));
+  try{ registrarAudit('CG_SYNC_ITENS', ok+' registro(s) atualizado(s) a partir do banco de itens'+(falhas?(' · '+falhas+' falha(s)'):'')); }
+  catch(e){ console.warn('[auditoria] falhou, mas as correções foram aplicadas:', e.message); }
   _cgSetSyncStatus(falhas?'error':'ok');
   btn.disabled=false; btn.textContent=rot0;
   renderCgDescHoje(); if(typeof renderCgExpHoje==='function') renderCgExpHoje();
@@ -10483,7 +10700,7 @@ function registrarCgDescarga(){
   saveCgDescargas();
 
   // Registra na auditoria
-  addAuditLog('CG_DESCARGA',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
+  registrarAudit('CG_DESCARGA',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
 
   // Sync Supabase
   if(SUPA_URL&&SUPA_KEY){
@@ -10572,7 +10789,7 @@ function registrarCgExpedicao(){
   cgExpedicoes.push(reg);
   saveCgExpedicoes();
 
-  addAuditLog('CG_EXPEDICAO',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
+  registrarAudit('CG_EXPEDICAO',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
 
   if(SUPA_URL&&SUPA_KEY){
     supa('bulk_expedicoes',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)}).catch(e=>console.warn(e));
@@ -10595,7 +10812,7 @@ function renderCgExpHoje(){
   if(!lista.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">📤</span>Nenhuma expedição para esta data.</div>'; return; }
   const isAdmin=session?.role==='admin';
   el.innerHTML=`<div style="overflow-x:auto;"><table style="min-width:1000px;">
-    <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>VEÍCULO</th><th>MOTORISTA</th><th>DESTINO</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
+    <thead><tr><th>BL</th><th>NAVIO</th><th>PRODUTO</th><th>DESCRIÇÃO</th><th>QTD</th><th>PESO (kg)</th><th>⚖ PESAGEM PORTO</th><th>VEÍCULO</th><th>MOTORISTA</th><th>DESTINO</th><th>PERÍODO</th><th>OBS</th><th>USUÁRIO</th><th></th></tr></thead>
     <tbody>${lista.map((r,i)=>{
       const canAct=isAdmin||(r.created_by&&r.created_by===session?.nome);
       return `<tr style="${i%2===0?'background:var(--surface2)':''}">
@@ -10605,6 +10822,15 @@ function renderCgExpHoje(){
       <td>${_esc(r.descricao)}</td>
       <td style="font-weight:700;color:var(--exp);">${r.quantidade} ${_esc(r.unidade)||'UN'}</td>
       <td style="font-family:'JetBrains Mono',monospace;">${r.peso_kg?Number(r.peso_kg).toLocaleString('pt-BR'):'—'}</td>
+      ${(()=>{ const pz=_pesagemDoRegistro(r);
+         if(!pz) return '<td style="color:var(--muted);font-size:11px;white-space:nowrap;">—</td>';
+         const dif=Number(pz.peso_liquido||0)-Number(r.peso_kg||0);
+         const cor=Math.abs(dif)<=50?'var(--success)':(Math.abs(dif)<=500?'#f59e0b':'var(--danger)');
+         return '<td style="white-space:nowrap;font-size:11px;">'
+           +'<b style="font-family:\'JetBrains Mono\',monospace;">'+Number(pz.peso_liquido||0).toLocaleString('pt-BR')+' kg</b>'
+           +'<br><span style="color:'+cor+';font-weight:700;">'+(dif>0?'+':'')+dif.toLocaleString('pt-BR')+' kg</span>'
+           +'<br><span style="color:var(--muted);">tk '+_esc(pz.ticket)+'</span></td>';
+       })()}
       <td>${_esc(r.veiculo)||'—'}</td><td>${_esc(r.motorista)||'—'}</td>
       <td>${_esc(r.destino)||'—'}</td><td>${_esc(r.periodo)||'—'}</td><td>${_esc(r.obs)||'—'}</td>
       <td style="color:var(--muted);font-size:12px;">${_esc(r.created_by)||'—'}</td>
@@ -12682,6 +12908,7 @@ alter table users add column if not exists email text;
       <div class="cg-tab"        id="cg-tab-banco"    onclick="showCgTab('banco')">🗄 BANCO DE ITENS</div>
       <div class="cg-tab"        id="cg-tab-historico"onclick="showCgTab('historico')">🕐 HISTÓRICO</div>
       <div class="cg-tab" id="cg-tab-relatorio" onclick="showCgTab('relatorio')">📊 RELATÓRIO</div>
+      <div class="cg-tab" id="cg-tab-ticketsporto" onclick="showCgTab('ticketsporto')">🎫 TICKETS PORTO</div>
       <div class="cg-tab" id="cg-tab-pesagens" onclick="showCgTab('pesagens')">⚖ PESAGENS PORTO</div>
     </div>
 
@@ -12895,6 +13122,31 @@ alter table users add column if not exists email text;
     </div>
 
     <!-- ── TAB: RELATÓRIO ── -->
+    <div id="cg-panel-ticketsporto" class="cg-panel">
+      <div class="rpt-section">
+        <div class="rpt-section-title">🎫 TICKETS COM PESAGEM DO PORTO</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:1rem;">
+          Cada linha é um carregamento da expedição (veículo + data). As pesagens do Porto são
+          buscadas <b>automaticamente</b> ao abrir a Carga Geral. O botão emite o mesmo ticket da
+          expedição, com as linhas da balança acrescentadas.
+          <div id="tp-info" style="margin-top:.4rem;"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem;">
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">DE</label><input type="date" id="tp-dt-ini" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="renderTicketsPorto()"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ATÉ</label><input type="date" id="tp-dt-fim" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="renderTicketsPorto()"></div>
+          <div style="display:flex;align-items:flex-end;">
+            <button class="btn btn-info btn-sm" id="btn-tp-atualizar" style="width:100%;" onclick="portoAtualizarAgora()">↻ ATUALIZAR PESAGENS</button>
+          </div>
+          <div style="display:flex;align-items:flex-end;font-size:12px;color:var(--muted);">
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
+              <input type="checkbox" id="tp-so-sem" onchange="renderTicketsPorto()"> só sem pesagem
+            </label>
+          </div>
+        </div>
+        <div id="tp-list"></div>
+      </div>
+    </div>
+
     <div id="cg-panel-pesagens" class="cg-panel">
       <div class="rpt-section">
         <div class="rpt-section-title">⚖ PESAGENS DA BALANÇA DO PORTO</div>
