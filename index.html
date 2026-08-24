@@ -10990,6 +10990,27 @@ const _cgHistCols=[
   {key:'obs',      label:'OBS',       val:r=>r.obs}
 ];
 
+// Preenche os selects de navio do Histórico e do Relatório com os navios que
+// realmente existem nos dados. Só reconstrói quando a lista muda, para não
+// perder a seleção a cada tecla digitada nos outros filtros.
+function _cgFillNavioFilters(){
+  const navios=[...new Set([
+    ...((typeof cgDescargas !=='undefined'?cgDescargas :[])||[]).map(r=>r.navio),
+    ...((typeof cgExpedicoes!=='undefined'?cgExpedicoes:[])||[]).map(r=>r.navio),
+    ...((typeof cgItems     !=='undefined'?cgItems     :[])||[]).map(i=>i.navio)
+  ].filter(Boolean).map(n=>String(n).trim()))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const assinatura=navios.join('|');
+  ['cg-h-navio','cg-rel-navio'].forEach(id=>{
+    const sel=document.getElementById(id); if(!sel) return;
+    if(sel.dataset.assinatura===assinatura) return;
+    const cur=sel.value;
+    sel.innerHTML='<option value="">Todos</option>'
+      +navios.map(n=>'<option value="'+_esc(n)+'">'+_esc(n)+'</option>').join('');
+    if(navios.includes(cur)) sel.value=cur;
+    sel.dataset.assinatura=assinatura;
+  });
+}
+
 function _cgHistRows(){
   const fBl   =(_cgV('cg-h-bl')).toLowerCase();
   const fTipo = _cgV('cg-h-tipo');
@@ -11001,6 +11022,7 @@ function _cgHistRows(){
   const fUser =(_cgV('cg-h-usuario')).toLowerCase();
   const fPraca=(_cgV('cg-h-praca')).toLowerCase();
   const fVeic =(_cgV('cg-h-veiculo')).toLowerCase();
+  const fNav  =(_cgV('cg-h-navio')).toLowerCase();
   let todos=[];
   if(!fTipo||fTipo==='descarga') cgDescargas.forEach(r=>todos.push({...r,_tipo:'DESCARGA'}));
   if(!fTipo||fTipo==='expedicao') cgExpedicoes.forEach(r=>todos.push({...r,_tipo:'EXPEDIÇÃO'}));
@@ -11014,12 +11036,14 @@ function _cgHistRows(){
     if(fUser&&!(r.created_by||'').toLowerCase().includes(fUser)) return false;
     if(fPraca&&!(r.armazem||'').toLowerCase().includes(fPraca)) return false;
     if(fVeic&&!(r.veiculo||'').toLowerCase().includes(fVeic)) return false;
+    if(fNav&&String(r.navio||'').trim().toLowerCase()!==fNav) return false;
     return true;
   }).sort((a,b)=>b.data>a.data?1:b.data<a.data?-1:b.created_at>a.created_at?1:-1);
   return _cgSortRows(todos,'hist',_cgHistCols);
 }
 
 function renderCgHistorico(){
+  _cgFillNavioFilters();
   const todos=_cgHistRows();
   const el=document.getElementById('cg-historico-list'); if(!el) return;
   if(!todos.length){ el.innerHTML='<div class="empty-state"><span class="empty-icon">🕐</span>Nenhum registro encontrado.</div>'; return; }
@@ -11098,6 +11122,7 @@ function _cgRelData(){
   const fUser =(_cgV('cg-rel-usuario')).toLowerCase();
   const fPraca=(_cgV('cg-rel-praca')).toLowerCase();
   const fVeic =(_cgV('cg-rel-veiculo')).toLowerCase();
+  const fNav  = _cgV('cg-rel-navio');
   const inRange = d => (!fIni||d>=fIni) && (!fFim||d<=fFim);
   const match = r =>
     inRange(r.data) && (!fBl||r.bl===fBl) && (!fPer||r.periodo===fPer) &&
@@ -11105,7 +11130,8 @@ function _cgRelData(){
     (!fDesc ||(r.descricao||'').toLowerCase().includes(fDesc)) &&
     (!fUser ||(r.created_by||'').toLowerCase().includes(fUser)) &&
     (!fPraca||(r.armazem||'').toLowerCase().includes(fPraca)) &&
-    (!fVeic ||(r.veiculo||'').toLowerCase().includes(fVeic));
+    (!fVeic ||(r.veiculo||'').toLowerCase().includes(fVeic)) &&
+    (!fNav  ||String(r.navio||'').trim()===fNav);
   const descs=_cgSortRows(cgDescargas.filter(match),'relD',_cgRelDCols);
   const exps =_cgSortRows(cgExpedicoes.filter(match),'relE',_cgRelECols);
   return {descs, exps};
@@ -11121,6 +11147,7 @@ function cgRelSetPage(which, p){
 
 // Entrada pública: filtros/ordenação mudaram → volta para a 1ª página
 function renderCgRelatorio(){
+  _cgFillNavioFilters();
   _cgSort.relD.page=0; _cgSort.relE.page=0;
   _cgRelRender();
 }
@@ -13090,6 +13117,10 @@ alter table users add column if not exists email text;
             <input type="text" id="cg-h-praca" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Navio</label>
+            <select id="cg-h-navio" onchange="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:150px;"><option value="">Todos</option></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Veículo</label>
             <input type="text" id="cg-h-veiculo" placeholder="Filtrar…" oninput="renderCgHistorico()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
           </div>
@@ -13257,6 +13288,10 @@ alter table users add column if not exists email text;
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Praça</span>
             <input type="text" id="cg-rel-praca" placeholder="Filtrar…" oninput="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:110px;">
+          </div>
+          <div style="display:flex;flex-direction:column;gap:.25rem;">
+            <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Navio</span>
+            <select id="cg-rel-navio" onchange="renderCgRelatorio()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.4rem .7rem;border-radius:6px;font-size:13px;outline:none;min-width:150px;"><option value="">Todos</option></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:.25rem;">
             <span style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;">Veículo</span>
