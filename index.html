@@ -3546,7 +3546,9 @@ async function printTicketDescargaBobinas(recId){
   _renderTicketWindow(ticketData);
 }
 
-function _renderCgTicketWindow(t){
+// Corpo de UM ticket da Carga Geral (sem <html>/<style>).
+// Separado para que a impressão em lote possa juntar vários no mesmo arquivo.
+function _cgTicketCorpo(t){
   const {ticketNum, veiculo, motorista, destino, data, periodo, obs, usuario} = t;
   const isDesc = (t.doc==='DESCARGA' || t.tipo==='CGD');   // mesmo layout, cabecalho/campos trocados
   const destLbl = isDesc ? 'PRACA:' : 'DESTINO:';
@@ -3560,43 +3562,7 @@ function _renderCgTicketWindow(t){
   const totalPeso=regs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const cliente=[...new Set(regs.map(r=>r.cliente).filter(Boolean))].join(' / ').toUpperCase()||'-';
   const navio=[...new Set(regs.map(r=>r.navio).filter(Boolean))].join(' / ').toUpperCase()||'-';
-  const w=window.open('','_blank','width=400,height=750');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>${ticketNum}</title>
-  <style>
-    *{box-sizing:border-box;margin:0;padding:0;}
-    @page{size:80mm auto;margin:3mm 2mm;}
-    body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#000;background:#fff;width:76mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
-    .no-print{margin-bottom:10px;display:flex;gap:8px;}
-    .no-print button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:700;font-family:Arial,sans-serif;text-transform:uppercase;}
-    .header{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin-bottom:4px;}
-    .header img{height:52px;width:auto;filter:contrast(1.4) grayscale(1);}
-    .header-name{font-size:20px;font-weight:900;letter-spacing:1.5px;line-height:1.1;color:#000;}
-    .header-sub{text-align:center;font-size:12px;font-weight:700;margin-bottom:2px;color:#000;}
-    .tnum{text-align:center;font-size:18px;font-weight:900;letter-spacing:2px;margin:3px 0;color:#000;}
-    .tdate{text-align:center;font-size:12px;margin-bottom:2px;color:#000;}
-    .sep{border-top:1.5px dashed #000;height:0;margin:6px 0;font-size:0;line-height:0;overflow:hidden;}
-    .stitle{font-size:14px;font-weight:900;margin-bottom:3px;color:#000;}
-    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:13px;color:#000;}
-    .lbl{flex-shrink:0;margin-right:6px;font-weight:700;}
-    .val{font-weight:900;text-align:right;word-break:break-all;}
-    .item-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #000;color:#000;}
-    .item-row:last-child{border-bottom:none;}
-    .item-desc{font-weight:700;flex:1;padding-right:6px;word-break:break-word;}
-    .item-qtd{text-align:right;flex-shrink:0;font-weight:900;}
-    .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:3px 0;color:#000;}
-    .sign-area{margin-top:24px;}
-    .sign-line{border-top:1.5px solid #000;margin-top:52px;padding-top:3px;text-align:center;font-size:12px;font-weight:700;color:#000;}
-    .footer{text-align:center;font-size:11px;margin-top:10px;color:#000;}
-    @media print{.no-print{display:none!important;}body{width:76mm;margin:0;padding:0;}}
-  </style></head><body>
-
-  <div class="no-print">
-    <button onclick="window.print()" style="background:#000;color:#fff;">IMPRIMIR</button>
-    <button onclick="window.close()" style="background:#ddd;color:#000;">FECHAR</button>
-  </div>
-
-  <div class="header">
+  return `  <div class="header">
     <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
     <div class="header-name">4SIDES - STEELPORT</div>
   </div>
@@ -3664,12 +3630,61 @@ function _renderCgTicketWindow(t){
       <div style="font-size:14px;font-weight:900;text-align:center;color:#000;">${escapeHtml((usuario||'—').toUpperCase())}</div>
     </div>
   </div>
-  <div class="footer">4SIDES - STEELPORT WAREHOUSE SYSTEMS</div>
+  <div class="footer">4SIDES - STEELPORT WAREHOUSE SYSTEMS</div>`;
+}
+
+// Documento com um ou vários tickets. Entre eles vai uma quebra de página,
+// para a impressora térmica cortar no lugar certo.
+function _cgTicketDoc(lista){
+  const tickets = Array.isArray(lista) ? lista : [lista];
+  if(!tickets.length) return;
+  const titulo = tickets.length===1
+    ? (tickets[0].ticketNum||'TICKET')
+    : (tickets.length+' TICKETS');
+  const w=window.open('','_blank','width=400,height=750');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${titulo}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    @page{size:80mm auto;margin:3mm 2mm;}
+    body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#000;background:#fff;width:76mm;margin:0 auto;padding:4px 0;text-transform:uppercase;}
+    .no-print{margin-bottom:10px;display:flex;gap:8px;}
+    .no-print button{padding:8px 16px;border:none;border-radius:4px;cursor:pointer;font-size:15px;font-weight:700;font-family:Arial,sans-serif;text-transform:uppercase;}
+    .header{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;margin-bottom:4px;}
+    .header img{height:52px;width:auto;filter:contrast(1.4) grayscale(1);}
+    .header-name{font-size:20px;font-weight:900;letter-spacing:1.5px;line-height:1.1;color:#000;}
+    .header-sub{text-align:center;font-size:12px;font-weight:700;margin-bottom:2px;color:#000;}
+    .tnum{text-align:center;font-size:18px;font-weight:900;letter-spacing:2px;margin:3px 0;color:#000;}
+    .tdate{text-align:center;font-size:12px;margin-bottom:2px;color:#000;}
+    .sep{border-top:1.5px dashed #000;height:0;margin:6px 0;font-size:0;line-height:0;overflow:hidden;}
+    .stitle{font-size:14px;font-weight:900;margin-bottom:3px;color:#000;}
+    .row{display:flex;justify-content:space-between;align-items:baseline;margin:2px 0;font-size:13px;color:#000;}
+    .lbl{flex-shrink:0;margin-right:6px;font-weight:700;}
+    .val{font-weight:900;text-align:right;word-break:break-all;}
+    .item-row{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;border-bottom:1px dashed #000;color:#000;}
+    .item-row:last-child{border-bottom:none;}
+    .item-desc{font-weight:700;flex:1;padding-right:6px;word-break:break-word;}
+    .item-qtd{text-align:right;flex-shrink:0;font-weight:900;}
+    .total-row{display:flex;justify-content:space-between;font-size:15px;font-weight:900;margin:3px 0;color:#000;}
+    .sign-area{margin-top:24px;}
+    .sign-line{border-top:1.5px solid #000;margin-top:52px;padding-top:3px;text-align:center;font-size:12px;font-weight:700;color:#000;}
+    .footer{text-align:center;font-size:11px;margin-top:10px;color:#000;}
+    @media print{.no-print{display:none!important;}body{width:76mm;margin:0;padding:0;}.quebra{page-break-after:always;break-after:page;}}.quebra{border-top:3px double #000;margin:14px 0;height:0;}
+  </style></head><body>
+
+  <div class="no-print">
+    <button onclick="window.print()" style="background:#000;color:#fff;">IMPRIMIR</button>
+    <button onclick="window.close()" style="background:#ddd;color:#000;">FECHAR</button>
+  </div>
+
+  ${tickets.map((tk,i)=>_cgTicketCorpo(tk)+(i<tickets.length-1?'<div class="quebra"></div>':'')).join('')}
 
   <script>setTimeout(()=>window.print(),400);<\/script>
   </body></html>`);
   w.document.close();
 }
+
+function _renderCgTicketWindow(t){ _cgTicketDoc(Array.isArray(t)?t:[t]); }
 
 function _renderTicketWindow(t){
   const {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs} = t;
@@ -9942,7 +9957,7 @@ let pesagensPorto = [];
 
 async function _portoCarregar(){
   if(!SUPA_URL||!SUPA_KEY) return;
-  try{ pesagensPorto = await supaAll('pesagens_porto?select=*&order=dt_saida.desc'); }
+  try{ pesagensPorto = await supaAll('pesagens_porto?select=*&order=dt_saida.desc'); if(typeof _tpInvalidaCache==='function') _tpInvalidaCache(); }
   catch(e){ console.warn('[porto] leitura das pesagens falhou:', e.message); }
 }
 
@@ -10073,36 +10088,137 @@ async function printTicketPortoExp(expId){
   _renderCgTicketWindow(ticketData);
 }
 
+const TP_PAGE = 50;                 // registros por página
+let _tpState = { page: 0 };
+let _tpSel   = new Set();           // carregamentos marcados (persiste entre páginas)
+let _tpCache = { sig:'', dados:[] };
+let _tkCgxCarregado = false;
+
+// Agrupar 700+ expedições é caro; só refaz quando os dados mudam.
+function _tpTodos(){
+  const sig=((typeof cgExpedicoes!=='undefined'?cgExpedicoes.length:0))+'|'
+           +((typeof pesagensPorto!=='undefined'?pesagensPorto.length:0));
+  if(_tpCache.sig!==sig) _tpCache={sig, dados:_tpCarregamentos('','')};
+  return _tpCache.dados;
+}
+function _tpInvalidaCache(){ _tpCache={sig:'',dados:[]}; }
+
+function _tpV(id){ return (document.getElementById(id)?.value||'').trim(); }
+
+function _tpFiltrados(){
+  const ini=_tpV('tp-dt-ini'), fim=_tpV('tp-dt-fim');
+  const fNav=_tpV('tp-navio'), fBl=_tpV('tp-bl'), fPer=_tpV('tp-periodo');
+  const fPlaca=_tpV('tp-placa').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const fMot=_tpV('tp-motorista').toLowerCase();
+  const fTk=_tpV('tp-ticket');
+  const fSit=_tpV('tp-situacao');
+  return _tpTodos().filter(g=>{
+    if(ini && (g.data||'')<ini) return false;
+    if(fim && (g.data||'')>fim) return false;
+    if(fNav && String(g.navio||'').trim()!==fNav) return false;
+    if(fBl  && !String(g.bls||'').split(',').map(x=>x.trim()).includes(fBl)) return false;
+    if(fPer && String(g.periodo||'')!==fPer) return false;
+    if(fPlaca && !_portoPlaca(g.veiculo).includes(fPlaca)) return false;
+    if(fMot && !String(g.motorista||'').toLowerCase().includes(fMot)) return false;
+    if(fTk && !(g.pesagem && String(g.pesagem.ticket||'').includes(fTk))) return false;
+    if(fSit==='com' && !g.pesagem) return false;
+    if(fSit==='sem' &&  g.pesagem) return false;
+    return true;
+  });
+}
+
+// Selects preenchidos com o que existe nos dados (não reconstrói à toa).
+function _tpFillFilters(){
+  const todos=_tpTodos();
+  const uniq=a=>[...new Set(a.filter(Boolean).map(x=>String(x).trim()))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const fill=(id,vals,rot)=>{
+    const sel=document.getElementById(id); if(!sel) return;
+    const sig=vals.join('|'); if(sel.dataset.sig===sig) return;
+    const cur=sel.value;
+    sel.innerHTML='<option value="">'+rot+'</option>'
+      +vals.map(v=>'<option value="'+_esc(v)+'">'+_esc(v)+'</option>').join('');
+    if(vals.includes(cur)) sel.value=cur;
+    sel.dataset.sig=sig;
+  };
+  fill('tp-navio',   uniq(todos.map(g=>g.navio)), 'Todos');
+  fill('tp-bl',      uniq(todos.flatMap(g=>String(g.bls||'').split(','))), 'Todos');
+  fill('tp-periodo', uniq(todos.map(g=>g.periodo)), 'Todos');
+}
+
+function tpFiltrar(){ _tpState.page=0; renderTicketsPorto(); }
+function tpSetPage(p){ _tpState.page=Math.max(0,p); renderTicketsPorto(); }
+function tpLimparFiltros(){
+  ['tp-navio','tp-bl','tp-periodo','tp-placa','tp-motorista','tp-ticket','tp-situacao']
+    .forEach(id=>{ const e=document.getElementById(id); if(e) e.value=''; });
+  tpFiltrar();
+}
+
+function tpToggleSel(ch, marcado){
+  if(marcado) _tpSel.add(ch); else _tpSel.delete(ch);
+  _tpBarraSelecao();
+}
+function tpSelPagina(marcar){
+  const lista=_tpFiltrados();
+  const ini=_tpState.page*TP_PAGE;
+  lista.slice(ini,ini+TP_PAGE).forEach(g=>{ if(marcar) _tpSel.add(g.chave); else _tpSel.delete(g.chave); });
+  renderTicketsPorto();
+}
+function tpSelTudoFiltrado(){ _tpFiltrados().forEach(g=>_tpSel.add(g.chave)); renderTicketsPorto(); }
+function tpLimparSel(){ _tpSel.clear(); renderTicketsPorto(); }
+
+function _tpBarraSelecao(){
+  const el=document.getElementById('tp-barra-sel'); if(!el) return;
+  const n=_tpSel.size;
+  el.style.display = n? '' : 'none';
+  const bt=document.getElementById('btn-tp-lote');
+  if(bt) bt.textContent='\uD83C\uDFAB EMITIR '+n+' TICKET'+(n>1?'S':'')+' EM UM ARQUIVO';
+  const lb=document.getElementById('tp-sel-count');
+  if(lb) lb.textContent=n+' carregamento(s) selecionado(s)';
+}
+
 function renderTicketsPorto(){
   const el=document.getElementById('tp-list'); if(!el) return;
-  const ini=document.getElementById('tp-dt-ini')?.value||'';
-  const fim=document.getElementById('tp-dt-fim')?.value||'';
-  const soSem=document.getElementById('tp-so-sem')?.checked;
-  let grupos=_tpCarregamentos(ini,fim);
-  if(soSem) grupos=grupos.filter(g=>!g.pesagem);
+  _tpFillFilters();
+  const lista=_tpFiltrados();
+  const total=lista.length;
+  const pages=Math.max(1,Math.ceil(total/TP_PAGE));
+  if(_tpState.page>pages-1) _tpState.page=pages-1;
+  const de=_tpState.page*TP_PAGE;
+  const pagina=lista.slice(de,de+TP_PAGE);
+
+  const todos=_tpTodos();
   const info=document.getElementById('tp-info');
-  const comP=_tpCarregamentos(ini,fim).filter(g=>g.pesagem).length;
-  const tot=_tpCarregamentos(ini,fim).length;
-  if(info) info.innerHTML=tot+' carregamento(s) no período · <b style="color:var(--accent);">'+comP+'</b> com pesagem do Porto'
-    +' · '+((pesagensPorto||[]).length)+' pesagem(ns) na base';
-  if(!grupos.length){
-    el.innerHTML='<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">🎫</span>Nenhum carregamento no período.</div>';
-    return;
+  if(info) info.innerHTML=total+' carregamento(s) no filtro · <b style="color:var(--accent);">'
+    +lista.filter(g=>g.pesagem).length+'</b> com pesagem · '
+    +todos.length+' no total · '+((typeof pesagensPorto!=='undefined'?pesagensPorto.length:0))+' pesagem(ns) na base';
+
+  if(!total){
+    el.innerHTML='<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">\uD83C\uDFAB</span>Nenhum carregamento com esses filtros.</div>';
+    _tpBarraSelecao(); return;
   }
+
   const kg=v=>Number(v||0).toLocaleString('pt-BR');
-  el.innerHTML='<div style="overflow:auto;max-height:460px;border:1px solid var(--border);border-radius:8px;">'
-   +'<table style="min-width:1020px;width:100%;font-size:12px;"><thead><tr>'
-   +'<th>DATA</th><th>VEÍCULO</th><th>MOTORISTA</th><th>BL</th><th>ITENS</th><th>NOSSO PESO</th>'
-   +'<th>TICKET PORTO</th><th>ENTRADA / SAÍDA</th><th>LÍQUIDO</th><th>DIF.</th><th></th></tr></thead><tbody>'
-   +grupos.map((g,i)=>{
+  const marcadosNaPagina=pagina.filter(g=>_tpSel.has(g.chave)).length;
+
+  el.innerHTML='<div style="overflow:auto;max-height:520px;border:1px solid var(--border);border-radius:8px;">'
+   +'<table style="min-width:1120px;width:100%;font-size:12px;"><thead><tr>'
+   +'<th style="width:34px;"><input type="checkbox" onchange="tpSelPagina(this.checked)"'
+     +(marcadosNaPagina===pagina.length?' checked':'')+' title="Selecionar a página"></th>'
+   +'<th>DATA</th><th>NAVIO</th><th>VEÍCULO</th><th>MOTORISTA</th><th>BL</th><th>PER.</th><th>ITENS</th>'
+   +'<th>NOSSO PESO</th><th>TICKET PORTO</th><th>ENTRADA / SAÍDA</th><th>LÍQUIDO</th><th>DIF.</th><th></th></tr></thead><tbody>'
+   +pagina.map((g,i)=>{
       const pz=g.pesagem;
       const dif=pz? Number(pz.peso_liquido||0)-g.peso : null;
       const cor=dif===null?'var(--muted)':(Math.abs(dif)<=50?'var(--success)':(Math.abs(dif)<=500?'#f59e0b':'var(--danger)'));
-      return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+      const marc=_tpSel.has(g.chave);
+      return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+(marc?';outline:1px solid var(--accent);outline-offset:-1px;':'')+'">'
+      +'<td><input type="checkbox" '+(marc?'checked':'')+' onchange="tpToggleSel(\''+g.chave+'\',this.checked)"></td>'
       +'<td style="white-space:nowrap;">'+(g.data?g.data.split('-').reverse().join('/'):'—')+'</td>'
+      +'<td style="font-size:11px;">'+_esc(g.navio||'—')+'</td>'
       +'<td style="font-weight:700;white-space:nowrap;">'+_esc(g.veiculo)+'</td>'
       +'<td style="font-size:11px;">'+_esc(g.motorista||'—')+'</td>'
       +'<td style="font-family:\'JetBrains Mono\',monospace;">'+_esc(g.bls)+'</td>'
+      +'<td style="white-space:nowrap;">'+_esc(g.periodo||'—')+'</td>'
       +'<td>'+g.regs.length+'</td>'
       +'<td style="white-space:nowrap;font-family:\'JetBrains Mono\',monospace;">'+kg(g.peso)+' kg</td>'
       +'<td style="font-family:\'JetBrains Mono\',monospace;white-space:nowrap;">'+(pz?_esc(pz.ticket):'<span style="color:var(--muted);">—</span>')+'</td>'
@@ -10111,9 +10227,80 @@ function renderTicketsPorto(){
           : '—')+'</td>'
       +'<td style="white-space:nowrap;font-weight:700;">'+(pz?kg(pz.peso_liquido)+' kg':'—')+'</td>'
       +'<td style="white-space:nowrap;font-weight:700;color:'+cor+';">'+(dif===null?'—':(dif>0?'+':'')+kg(dif)+' kg')+'</td>'
-      +'<td style="white-space:nowrap;"><button class="btn btn-sm '+(pz?'btn-primary':'btn-secondary')+'" onclick="printTicketPortoExp(\''+g.chave+'\')">🎫 TICKET</button></td>'
+      +'<td style="white-space:nowrap;"><button class="btn btn-sm '+(pz?'btn-primary':'btn-secondary')+'" onclick="printTicketPortoExp(\''+g.chave+'\')">\uD83C\uDFAB</button></td>'
       +'</tr>';
-   }).join('')+'</tbody></table></div>';
+   }).join('')+'</tbody></table></div>'
+   + _tpPager(total,pages,de,pagina.length);
+  _tpBarraSelecao();
+}
+
+// Paginador próprio (o global usa PAGE_SIZE=100; aqui são 50 por página).
+function _tpPager(total,pages,de,naPagina){
+  if(pages<=1) return '<div style="padding:.5rem 0;font-size:12px;color:var(--muted);">'+total+' registro(s)</div>';
+  const p=_tpState.page;
+  const b=(rot,alvo,dis,ativo)=>'<button class="btn '+(ativo?'btn-primary':'btn-secondary')
+    +' btn-sm" '+(dis?'disabled':'')+' onclick="tpSetPage('+alvo+')" style="font-size:11px;padding:2px 7px;min-width:28px;">'+rot+'</button>';
+  const btns=[b('«',0,p===0), b('‹',p-1,p===0)];
+  const lo=Math.max(0,p-2), hi=Math.min(pages-1,lo+4);
+  for(let i=lo;i<=hi;i++) btns.push(b(i+1,i,false,i===p));
+  btns.push(b('›',p+1,p===pages-1), b('»',pages-1,p===pages-1));
+  return '<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;padding:.6rem 0;font-size:12px;color:var(--muted);">'
+    +btns.join('')+'<span style="margin-left:.5rem;">'+(de+1)+'–'+(de+naPagina)+' de '+total+'</span></div>';
+}
+
+// Carrega os tickets CGX do servidor UMA vez por sessão (o lote consulta muitos).
+async function _tkCarregarCGX(){
+  if(_tkCgxCarregado || !SUPA_URL || !SUPA_KEY) return;
+  try{
+    const remote=await supaAll('tickets?select=*&tipo=eq.CGX&order=ts.desc&limit=1000');
+    const norm=(remote||[]).map(x=>({
+      id:x.id, ticketNum:x.ticket_num, tipo:'CGX', emitidoEm:x.ts, usuario:x.usuario, userId:x.user_id,
+      veiculo:x.veiculo, motorista:x.motorista, destino:x.destino, data:x.data, periodo:x.periodo, obs:x.obs,
+      regs: typeof x.entries==='string'?JSON.parse(x.entries||'[]'):(x.entries||[])
+    }));
+    const byId={}; [...ticketHistory,...norm].forEach(k=>{ if(k.id) byId[k.id]=k; });
+    ticketHistory=Object.values(byId).sort((a,b)=>new Date(b.emitidoEm||0)-new Date(a.emitidoEm||0));
+    try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+    _tkCgxCarregado=true;
+  }catch(e){ console.warn('[tickets] carga dos CGX falhou:', e.message); }
+}
+function _tkAchaCGXLocal(ids){
+  return ticketHistory.find(t=>String(t.tipo)==='CGX' &&
+    ((t.regs||t.entries||[]).some(r=>ids.has(String(r.id))))) || null;
+}
+
+// Emite os selecionados num único arquivo, um ticket por página.
+async function printTicketsPortoLote(){
+  if(!_tpSel.size){ showToast('Selecione ao menos um carregamento.','#f59e0b','#000'); return; }
+  const btn=document.getElementById('btn-tp-lote');
+  const rot0=btn?btn.textContent:''; if(btn){ btn.disabled=true; }
+  try{
+    await _tkCarregarCGX();
+    const alvo=_tpTodos().filter(g=>_tpSel.has(g.chave));   // mantém a ordem da tela
+    const docs=[]; let novos=0;
+    for(const g of alvo){
+      if(btn) btn.textContent='PREPARANDO '+(docs.length+1)+'/'+alvo.length+'…';
+      const ids=new Set(g.regs.map(r=>String(r.id)));
+      const ja=_tkAchaCGXLocal(ids);
+      const td={
+        id: ja? ja.id : (Date.now()+docs.length),
+        ticketNum: ja? ja.ticketNum : await getNextTicketNum('CGX'),
+        tipo:'CGX', doc:'EXPEDICAO', regs:g.regs,
+        veiculo:g.veiculo, motorista:g.motorista, destino:g.destino,
+        data:g.data, periodo:g.periodo, obs:g.obs,
+        emitidoEm: ja? ja.emitidoEm : new Date().toISOString(),
+        usuario: ja? ja.usuario : (session?.nome||'—'),
+        userId: ja? ja.userId : (session?.user||''),
+        pesagem: g.pesagem
+      };
+      if(!ja){ _tkRegistrar(td,g.regs); novos++; }
+      docs.push(td);
+    }
+    if(!docs.length){ showToast('Nada a imprimir.','#f59e0b','#000'); return; }
+    _cgTicketDoc(docs);
+    showToast('✓ '+docs.length+' ticket(s) no mesmo arquivo'
+      +(novos?(' · '+novos+' número(s) novo(s)'):'')+'.','#22c55e','#000');
+  } finally { if(btn){ btn.disabled=false; btn.textContent=rot0; _tpBarraSelecao(); } }
 }
 
 function tpSetPeriodoPadrao(){
@@ -13162,17 +13349,38 @@ alter table users add column if not exists email text;
           expedição, com as linhas da balança acrescentadas.
           <div id="tp-info" style="margin-top:.4rem;"></div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:.75rem;margin-bottom:1rem;">
-          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">DE</label><input type="date" id="tp-dt-ini" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="renderTicketsPorto()"></div>
-          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ATÉ</label><input type="date" id="tp-dt-fim" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="renderTicketsPorto()"></div>
-          <div style="display:flex;align-items:flex-end;">
-            <button class="btn btn-info btn-sm" id="btn-tp-atualizar" style="width:100%;" onclick="portoAtualizarAgora()">↻ ATUALIZAR PESAGENS</button>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:.7rem;">
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">DE</label><input type="date" id="tp-dt-ini" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="tpFiltrar()"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ATÉ</label><input type="date" id="tp-dt-fim" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="tpFiltrar()"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">NAVIO</label><select id="tp-navio" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="tpFiltrar()"><option value="">Todos</option></select></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">BL</label><select id="tp-bl" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="tpFiltrar()"><option value="">Todos</option></select></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">PERÍODO</label><select id="tp-periodo" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="tpFiltrar()"><option value="">Todos</option></select></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">PLACA</label><input type="text" id="tp-placa" placeholder="ex.: ENI-6F98" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" oninput="tpFiltrar()"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">MOTORISTA</label><input type="text" id="tp-motorista" placeholder="Filtrar…" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" oninput="tpFiltrar()"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">TICKET PORTO</label><input type="text" id="tp-ticket" placeholder="número" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" oninput="tpFiltrar()"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">SITUAÇÃO</label>
+            <select id="tp-situacao" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;" onchange="tpFiltrar()">
+              <option value="">Todas</option>
+              <option value="com">Com pesagem</option>
+              <option value="sem">Sem pesagem</option>
+            </select>
           </div>
-          <div style="display:flex;align-items:flex-end;font-size:12px;color:var(--muted);">
-            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;">
-              <input type="checkbox" id="tp-so-sem" onchange="renderTicketsPorto()"> só sem pesagem
-            </label>
+          <div style="display:flex;align-items:flex-end;gap:.4rem;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="tpLimparFiltros()">✕ LIMPAR</button>
+            <button class="btn btn-info btn-sm" id="btn-tp-atualizar" style="flex:2;" onclick="portoAtualizarAgora()">↻ PESAGENS</button>
           </div>
+        </div>
+
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;margin-bottom:.7rem;">
+          <button class="btn btn-secondary btn-sm" onclick="tpSelTudoFiltrado()">✓ SELECIONAR TUDO DO FILTRO</button>
+          <button class="btn btn-secondary btn-sm" onclick="tpLimparSel()">✕ LIMPAR SELEÇÃO</button>
+        </div>
+
+        <div id="tp-barra-sel" style="display:none;align-items:center;gap:.75rem;flex-wrap:wrap;background:rgba(240,165,0,.10);border:1px solid rgba(240,165,0,.35);border-radius:8px;padding:.6rem .9rem;margin-bottom:.8rem;">
+          <span id="tp-sel-count" style="font-size:12px;font-weight:700;color:var(--accent);"></span>
+          <button class="btn btn-primary btn-sm" id="btn-tp-lote" onclick="printTicketsPortoLote()" style="margin-left:auto;">🎫 EMITIR TICKETS</button>
         </div>
         <div id="tp-list"></div>
       </div>
