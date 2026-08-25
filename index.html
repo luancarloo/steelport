@@ -7343,11 +7343,17 @@ function _fatBLNavio(bl){
     || expedicoes.find(r=>_fatNorm(r.bl)===k&&r.navio)?.navio
     || _fatCgItens(bl).find(it=>it.navio)?.navio || '');
 }
+// Clientes distintos dos itens de Carga Geral do BL, em ordem estável.
+function _fatCgClientes(bl){
+  return [...new Set(_fatCgItens(bl).map(it=>String(it.cliente||'').trim()).filter(Boolean))]
+    .sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
 function _fatBLCliente(bl){
   const k=_fatNorm(bl);
+  // ordenado: sem isso o cliente do card mudava conforme a ordem em que os itens chegavam
   return _fatNorm(coilsDB.find(c=>_fatNorm(c.bl)===k&&c.cliente)?.cliente
     || records.find(r=>_fatNorm(r.bl)===k&&r.cliente)?.cliente
-    || _fatCgItens(bl).find(it=>it.cliente)?.cliente || '');
+    || _fatCgClientes(bl)[0] || '');
 }
 function _fatBLArmazem(bl){
   const k=_fatNorm(bl);
@@ -7510,7 +7516,8 @@ function renderFaturamento(){
     const dbCoils=coilsDB.filter(c=>normStr(c.bl)===blK);
     const recBL=records.find(r=>normStr(r.bl)===blK);
     const cgIt=_fatCgItens(bl)[0];   // BL de Carga Geral: dados vem do banco de itens
-    const cliente=dbCoils[0]?.cliente||recBL?.cliente||cgIt?.cliente||'—';
+    const cgClis=_fatCgClientes(bl);
+    const cliente=dbCoils[0]?.cliente||recBL?.cliente||cgClis[0]||'—';
     const navio  =dbCoils[0]?.navio  ||recBL?.navio  ||cgIt?.navio  ||'—';
     const viagem =dbCoils[0]?.viagem||'—';
     const produto=dbCoils[0]?.produto||cgIt?.produto||'—';
@@ -7624,6 +7631,7 @@ function renderFaturamento(){
       <div style="background:var(--surface2);border-bottom:1px solid var(--border);padding:.75rem 1.2rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
         <div style="font-family:'JetBrains Mono',monospace;font-weight:700;font-size:14px;color:var(--accent);">BL: ${_esc(bl)}</div>
         <div style="font-size:13px;color:var(--text);font-weight:600;">${_esc(cliente)}</div>
+        ${cgClis.length>1?`<div title="Este BL tem itens de mais de um cliente: ${_esc(cgClis.join(' / '))}. A fatura sai em nome de um só — confira antes de cobrar." style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(245,158,11,.15);color:#f59e0b;border:1px solid rgba(245,158,11,.4);font-family:'JetBrains Mono',monospace;">⚠ ${cgClis.length} CLIENTES NESTE BL</div>`:''}
         <div style="font-size:12px;color:var(--muted);">🚢 ${_esc(navio)}${viagem&&viagem!=='—'?' · '+_esc(viagem):''}</div>
         <div style="font-size:12px;color:var(--muted);">${_esc(produto)}</div>
         ${statusBadge}
