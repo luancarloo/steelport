@@ -1579,6 +1579,17 @@ async function doLogin(){
     setTimeout(checkBackupAutomatico, 3000);
     // Follow-UP: carregar configs e iniciar agendador
     loadCgData(); updateCgStats();
+    // Os dados da Carga Geral também alimentam o Faturamento (BLs com armazém
+    // PRATICO). Até aqui eles vinham SÓ do localStorage, e do servidor apenas
+    // quando alguém abria o módulo Carga Geral — por isso, num computador que
+    // nunca abriu aquela aba, os BLs de carga geral não apareciam no Faturamento.
+    // Carrega em segundo plano (nunca bloqueante: não pode travar o login).
+    loadCgFromSupabase().then(()=>{
+      updateCgStats();
+      if(typeof _tpInvalidaCache==='function') _tpInvalidaCache();
+      const fs=document.getElementById('screen-faturamento');
+      if(fs&&fs.classList.contains('active')){ buildFatSelects(); renderFaturamento(); }
+    }).catch(e=>console.warn('[CG] carga em segundo plano falhou:', e.message));
     loadFollowupConfigs(); loadFollowupHistory(); loadExchangeCfg();
     renderFollowupStats(); startFollowupScheduler();
     // Sync faturamento: push dados locais → pull dados do Supabase
