@@ -1242,6 +1242,9 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
               <input type="checkbox" id="perm-faturamento" style="accent-color:var(--success);width:16px;height:16px;"> 💰 Faturamento
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-dash-fat" style="accent-color:var(--success);width:16px;height:16px;"> 📈 Dashboard Fat.
+            </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-mapeamento" style="accent-color:#22d3ee;width:16px;height:16px;"> 🗺 Mapeamento
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
@@ -1696,7 +1699,7 @@ function applySessionUI(){
     if(usrCard)  usrCard.style.display ='none';
     if(cfgCard)  cfgCard.style.display ='none';
     if(fatCard)  fatCard.style.display =(perms.faturamento===true)?'':'none';
-    if(dashFatCard) dashFatCard.style.display=(perms.faturamento===true)?'':'none';
+    if(dashFatCard) dashFatCard.style.display=canAccess('dash-fat')?'':'none';
     if(histCard) histCard.style.display='none';
     if(bkpCard)  bkpCard.style.display='none';
     if(fuCard)   fuCard.style.display=(perms.followup===true)?'':'none';
@@ -1718,7 +1721,12 @@ function canAccess(mod){
   if(mod==='relatorios') return (perms.relatorios === true);
   if(mod==='database')   return (perms.consultaDB === true);
   if(mod==='faturamento')return (perms.faturamento === true);
-  if(mod==='dash-fat')   return (perms.faturamento === true);
+  // Dashboard do Faturamento é um privilégio próprio. Quem foi cadastrado antes de
+  // ele existir não tem o campo — nesse caso herda do Faturamento, para ninguém
+  // perder acesso. Uma vez salvo pelo formulário, vale o que o admin marcou.
+  if(mod==='dash-fat')   return (perms.dashFat !== undefined)
+                                ? (perms.dashFat === true)
+                                : (perms.faturamento === true);
   if(mod==='mapeamento') return (perms.mapeamento  === true);
   if(mod==='followup')   return (perms.followup    === true);
   if(mod==='carga-geral')return (perms.cargaGeral===true || perms.cgRelatorio===true);
@@ -1813,6 +1821,7 @@ async function saveUser(){
         relatorios:  document.getElementById('perm-relatorios').checked,
         consultaDB:  document.getElementById('perm-consulta-db').checked,
         faturamento: document.getElementById('perm-faturamento').checked,
+        dashFat:     document.getElementById('perm-dash-fat').checked,
         mapeamento:  document.getElementById('perm-mapeamento').checked,
         cargaGeral:  document.getElementById('perm-carga-geral').checked,
         cgRelatorio: document.getElementById('perm-cg-relatorio').checked
@@ -1860,6 +1869,10 @@ function editUser(id){
     document.getElementById('perm-relatorios').checked= u.perms?.relatorios === true;
     document.getElementById('perm-consulta-db').checked= u.perms?.consultaDB === true;
     document.getElementById('perm-faturamento').checked= u.perms?.faturamento === true;
+    // Sem o campo (cadastro antigo), mostra marcado se ele tem Faturamento — é o
+    // acesso que a pessoa tem hoje na prática.
+    document.getElementById('perm-dash-fat').checked = (u.perms?.dashFat !== undefined)
+      ? (u.perms.dashFat === true) : (u.perms?.faturamento === true);
     document.getElementById('perm-mapeamento').checked  = u.perms?.mapeamento  === true;
     document.getElementById('perm-carga-geral').checked   = u.perms?.cargaGeral  === true;
     document.getElementById('perm-cg-relatorio').checked  = u.perms?.cgRelatorio === true;
@@ -1901,6 +1914,7 @@ function clearUserForm(){
   document.getElementById('perm-relatorios').checked=false;
   document.getElementById('perm-consulta-db').checked=false;
   document.getElementById('perm-faturamento').checked=false;
+  document.getElementById('perm-dash-fat').checked=false;
   document.getElementById('perm-mapeamento').checked=false;
   document.getElementById('perm-carga-geral').checked=false;
   document.getElementById('perm-cg-relatorio').checked=false;
@@ -2067,6 +2081,19 @@ const SUPA_PAGE = 1000;
 //             "limit" na URL sobrescreve o primeiro e o teto pretendido é perdido em silêncio.
 // O path DEVE trazer "order=": sem ordem definida o banco pode devolver a mesma linha em
 // duas páginas e omitir outra, porque a ordem física muda a cada gravação.
+// Quantas linhas a consulta tem, lido do cabeçalho Content-Range.
+// Serve para saber de antemão quantas páginas existem e buscá-las TODAS de uma vez.
+async function _supaTotal(path){
+  if(!SUPA_URL||!SUPA_KEY) return null;
+  try{
+    const sep = path.includes('?') ? '&' : '?';
+    const res = await fetch(SUPA_URL+'/rest/v1/'+path+sep+'limit=1',
+      { headers: supaHeaders({'Prefer':'count=exact','Range-Unit':'items','Range':'0-0'}) });
+    const n = parseInt(String(res.headers.get('content-range')||'').split('/')[1], 10);
+    return isNaN(n) ? null : n;
+  }catch(e){ return null; }
+}
+
 async function supaAll(path, opts={}){
   const { max, ...rest } = opts;
   const teto = (typeof max==='number' && max>0) ? max : Infinity;
@@ -2074,21 +2101,40 @@ async function supaAll(path, opts={}){
     console.warn('[supa] consulta paginada sem "order=" — a ordem entre páginas não é estável:', path);
   if(/[?&]limit=/.test(path))
     console.warn('[supa] "limit=" no path é sobrescrito pela paginação — use {max:N}:', path);
+
+  const sep  = path.includes('?') ? '&' : '?';
+  const pede = (offset, quantas) => supa(
+    `${path}${sep}limit=${quantas}&offset=${offset}`,
+    { ...rest, headers:{ ...(rest.headers||{}), 'Range-Unit':'items', 'Range':`${offset}-${offset+quantas-1}` } }
+  );
+
   let all=[], offset=0;
+
+  // Caminho rápido: sabendo o total, busca as páginas EM PARALELO.
+  // Antes cada página esperava a anterior — 14 páginas em records eram 14 idas e voltas
+  // somadas, e era isso que fazia o "Carregando dados do Supabase..." demorar.
+  const total = await _supaTotal(path);
+  if(total !== null){
+    const alvo = Math.min(total, teto);
+    if(alvo <= 0) return [];
+    const offs=[];
+    for(let o=0; o<alvo; o+=SUPA_PAGE) offs.push(o);
+    const partes = await Promise.all(offs.map(o=>pede(o, Math.min(SUPA_PAGE, alvo-o))));
+    all = partes.flat();
+    offset = alvo;
+    // Se entraram linhas entre a contagem e a busca, completa em série (raro).
+  }
+
   while(all.length < teto){
-    const sep  = path.includes('?') ? '&' : '?';
-    const pede = Math.min(SUPA_PAGE, teto-all.length);
-    const page = await supa(
-      `${path}${sep}limit=${pede}&offset=${offset}`,
-      { ...rest, headers:{ ...(rest.headers||{}), 'Range-Unit':'items', 'Range':`${offset}-${offset+pede-1}` } }
-    );
+    const quantas = Math.min(SUPA_PAGE, teto-all.length);
+    const page = await pede(offset, quantas);
     if(!page || !page.length) break;          // acabou
     all = all.concat(page);
-    if(page.length < pede) break;             // última página
+    if(page.length < quantas) break;          // última página
     offset += page.length;                    // avança pelo que veio DE FATO
     if(offset > 500000){ console.warn('[supa] paginação interrompida por segurança em', offset, path); break; }
   }
-  return all;
+  return teto===Infinity ? all : all.slice(0, teto);
 }
 
 async function supaUpsert(table, rows, onConflict='id'){
@@ -2159,22 +2205,75 @@ function showLoading(msg){
 function hideLoading(){ document.getElementById('loading-overlay').style.display='none'; }
 
 // ── Carrega todos os dados em paralelo ─────────────────────────
-async function loadAllData(){
-  showLoading('Carregando dados do Supabase...');
-  try{
-    const [rec,exp,coils,usrs,navs]=await Promise.all([
+// ══════════════════════════════════════════════════════
+// CARGA SOB DEMANDA DAS TABELAS GRANDES
+// ══════════════════════════════════════════════════════
+// records + expedicoes + coilsdb somam ~36 mil linhas e eram baixadas SEMPRE no login,
+// mesmo para quem só usa a Carga Geral. Agora o login traz apenas usuários e navios
+// (poucos KB) e libera a tela; as tabelas grandes só são buscadas quando um módulo que
+// depende delas é aberto. Para quem tem acesso a esses módulos, a busca já começa em
+// segundo plano assim que a tela inicial aparece, então na prática ela já chegou.
+// As três andam juntas de propósito: descarga precisa do banco para o preenchimento
+// automático e das expedições para o saldo, e assim por diante.
+let _bobinasEstado = 'vazio';        // vazio | carregando | pronto
+let _bobinasPromise = null;
+
+const MODULOS_COM_BOBINAS = ['descarga','expedicao','database','relatorios',
+                             'faturamento','dash-fat','mapeamento','backup','followup'];
+
+function bobinasProntas(){ return _bobinasEstado==='pronto'; }
+function usuarioUsaBobinas(){ return MODULOS_COM_BOBINAS.some(m=>canAccess(m)); }
+
+async function carregarBobinas(forcar){
+  if(_bobinasEstado==='pronto' && !forcar) return true;
+  if(_bobinasPromise && !forcar) return _bobinasPromise;   // já está a caminho
+  _bobinasEstado='carregando';
+  _bobinasPromise = (async()=>{
+    const [rec,exp,coils] = await Promise.all([
       supaAll('records?select=*&order=id.asc'),
       supaAll('expedicoes?select=*&order=id.asc'),
-      supaAll('coilsdb?select=*&order=coil.asc'),
+      supaAll('coilsdb?select=*&order=coil.asc')
+    ]);
+    records    = (rec  ||[]).map(normalizeRecord);
+    expedicoes = (exp  ||[]).map(normalizeRecord);
+    coilsDB    = coils ||[];
+    applyArmazemRestriction();   // respeita os armazéns permitidos da sessão
+    _bobinasEstado='pronto';
+    try{ refreshHome(); }catch(e){}
+    return true;
+  })();
+  _bobinasPromise.catch(()=>{ _bobinasEstado='vazio'; _bobinasPromise=null; });
+  return _bobinasPromise;
+}
+
+// Espera o que o módulo precisa. O aviso de carregamento só aparece se os dados
+// ainda não chegaram — quando já chegaram, a abertura é instantânea.
+async function garantirDadosDoModulo(mod){
+  if(!MODULOS_COM_BOBINAS.includes(mod)) return true;
+  if(bobinasProntas()) return true;
+  showLoading('Carregando dados do Supabase...');
+  try{
+    await carregarBobinas();
+    return true;
+  }catch(e){
+    showToast('\u26a0 Não foi possível carregar os dados: '+e.message,'#e05c1a','#fff');
+    return false;
+  }finally{ hideLoading(); }
+}
+
+async function loadAllData(forcarBobinas){
+  showLoading('Entrando...');
+  try{
+    // Só o essencial bloqueia o login: usuários e navios (poucos KB).
+    const [usrs,navs]=await Promise.all([
       supaAll('users?select=*&order=id.asc'),
       supaAll('navios?select=nome&order=nome.asc')
     ]);
     // fat_config NÃO entra no carregamento bloqueante: é config do faturamento e não pode
     // impedir o login. Carrega em segundo plano (o autoSyncFatConfig também recarrega depois).
-    carregarFatConfig();
-    records    = (rec  ||[]).map(normalizeRecord);
-    expedicoes = (exp  ||[]).map(normalizeRecord);
-    coilsDB    = coils ||[];
+    // fat_config só interessa a quem fatura — evita 4 requisições por login
+    // para operador de pátio. Quem abrir o módulo depois carrega pelo autoSync.
+    if(canAccess('faturamento')) carregarFatConfig();
     navios     = (navs ||[]).map(r=>r.nome).filter(Boolean);
     users      = (usrs ||[]).map(normalizeUser);
     if(!users.length) users=[DEFAULT_ADMIN];
@@ -2193,9 +2292,21 @@ async function loadAllData(){
       localStorage.setItem('sp_session', JSON.stringify(session));
       applySessionUI(); // reaplica visibilidade dos módulos com as permissões novas
     }
-    // Restringe os dados em memória aos armazéns permitidos pela sessão atual
-    applyArmazemRestriction();
-    saveUsers();
+    // As tabelas grandes vão em segundo plano — e só para quem usa esses módulos.
+    // Quem só tem Carga Geral não baixa nenhuma das 36 mil linhas.
+    if(usuarioUsaBobinas()){
+      const carga = carregarBobinas(forcarBobinas)
+        .then(()=>{ try{ refreshHome(); }catch(e){} })
+        .catch(e=>console.warn('[bobinas] carga em segundo plano falhou:', e.message));
+      // No login não bloqueia. Já num "Sincronizar" manual precisa esperar, senão a
+      // função avisaria "Sincronizado!" e redesenharia a tela com os dados antigos.
+      if(forcarBobinas) await carga;
+    }
+    // Os usuários ACABARAM de vir do servidor: aqui basta guardar em cache local.
+    // Antes chamava saveUsers(), que faz um upsert POR USUÁRIO — eram 28 requisições de
+    // escrita a cada login, só para devolver ao servidor o que ele mesmo tinha mandado.
+    // Pior: uma sessão com cópia velha reescrevia por cima do dado novo de outra.
+    try{ localStorage.setItem('sp_users', JSON.stringify(users)); }catch(e){}
     // fat_config é aplicado em segundo plano (ver acima)
     hideLoading();
     setSyncBadge('ok', new Date().toISOString());
@@ -2350,7 +2461,7 @@ function setSyncBadge(state, ts){
 async function syncData(){
   setSyncBadge('syncing');
   showToast('Sincronizando...','#3b82f6','#fff');
-  const ok=await loadAllData();
+  const ok=await loadAllData(true);   // true = recarrega também as tabelas grandes
   if(ok){
     setSyncBadge('ok', new Date().toISOString());
     showToast('✓ Sincronizado!','#22c55e','#000');
@@ -2445,13 +2556,15 @@ function goHome(){
   refreshHome();
 }
 
-function openModule(mod){
+async function openModule(mod){
   if(!canAccess(mod)){
     showToast('⚠ Você não tem permissão para acessar este módulo.','#e05c1a','#fff');
     return;
   }
   if(!_confirmDirty()) return;
   window._dirtyForm = false;
+  // Carga sob demanda: espera as tabelas de que este módulo depende.
+  if(!await garantirDadosDoModulo(mod)) return;
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+mod).classList.add('active');
   document.getElementById('btn-back').style.display='';
@@ -2468,9 +2581,9 @@ function openModule(mod){
   if(mod==='followup')   { renderFollowup(); showFuTab('regras'); }
   if(mod==='carga-geral'){
     renderCargaGeral();
-    const _perms=session?.perms||{};
-    if(_perms.cargaGeral) showCgTab('descarga');
-    else if(_perms.cgRelatorio) showCgTab('relatorio');
+    // Abre na Descarga quem tem acesso completo; quem só tem o relatório abre nele.
+    if(cgAcessoCompleto()) showCgTab('descarga');
+    else showCgTab('relatorio');
   }
 }
 
@@ -2537,6 +2650,20 @@ function showModuleTab(mod, tab){
 }
 
 function refreshHome(){
+  // Carga sob demanda: os números de bobinas podem ainda não ter chegado.
+  // Mostra "…" enquanto vêm, e "—" para quem não tem acesso a esses módulos
+  // (nesse caso as tabelas nem chegam a ser baixadas).
+  if(!bobinasProntas()){
+    const marca = usuarioUsaBobinas() ? '\u2026' : '\u2014';
+    ['home-desc-count','home-desc-peso','home-exp-count','home-exp-peso','home-db-count',
+     'home-db-navios','home-rep-navios','home-rep-clientes','home-map-pilhas','home-map-bls',
+     'op-estoque','op-estoque-peso','op-desc','op-desc-peso','op-exp','op-exp-peso','op-inconsist']
+      .forEach(id=>{ const el=document.getElementById(id); if(el) el.textContent=marca; });
+    const bg=document.getElementById('op-inconsist-badge');
+    if(bg) bg.innerHTML='<span class="op-alert ok">'+(marca==='\u2026'?'carregando\u2026':'sem acesso')+'</span>';
+    const uc=document.getElementById('home-users-count'); if(uc) uc.textContent=users.length;
+    return;
+  }
   const totalDescPB = records.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   const totalExpPB  = expedicoes.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   document.getElementById('home-desc-count').textContent = records.length;
@@ -10875,9 +11002,17 @@ function tpSetPeriodoPadrao(){
   if(b&&!b.value) b.value=f(hoje);
 }
 
+// Acesso completo à Carga Geral (todas as abas) x só a aba Relatório.
+// O administrador tem tudo por definição: as permissões granulares valem para
+// operador. Antes isto lia perms.cargaGeral direto, e como os administradores não têm
+// esse campo preenchido, eles ficavam vendo apenas a aba Relatório.
+function cgAcessoCompleto(){
+  if(session?.role==='admin') return true;
+  return (session?.perms||{}).cargaGeral===true;
+}
+
 function renderCargaGeral(){
-  const _perms=session?.perms||{};
-  const fullAccess=_perms.cargaGeral===true;
+  const fullAccess=cgAcessoCompleto();
   ['cg-tab-descarga','cg-tab-expedicao','cg-tab-banco','cg-tab-historico','cg-tab-pesagens','cg-tab-ticketsporto'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.style.display=fullAccess?'':'none';
   });
