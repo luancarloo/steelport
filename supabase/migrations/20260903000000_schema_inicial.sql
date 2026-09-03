@@ -9,9 +9,9 @@
 -- políticas virá numa migration própria, para poder ser revista e revertida
 -- separadamente.
 --
--- Descreve apenas as tabelas do Steel Port. O banco de produção ainda tem cinco
--- tabelas com prefixo wp_, de outro sistema (WoodPort), que tem banco próprio e
--- não pertence a este projeto — por isso ficam de fora desta migration.
+-- São as 14 tabelas do Steel Port. Havia mais cinco, com prefixo wp_, do WoodPort
+-- — outro sistema, com banco próprio, que tinha ficado aqui por engano. Foram
+-- removidas do banco em 03/09/2026 e nunca fizeram parte deste projeto.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ───────────────────────────────────────────────────────────────────────────
