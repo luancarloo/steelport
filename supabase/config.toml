@@ -1,0 +1,28 @@
+# Configuração do projeto Supabase — Steel Port
+# Necessária para o branching: é por este arquivo que o Supabase reconhece o
+# repositório como fonte do schema e aplica as migrations em cada branch.
+
+project_id = "vvkhjadutrmjjprsoooy"
+
+[db]
+# Mesma versão do banco de produção (PostgreSQL 17.6)
+major_version = 17
+
+[api]
+enabled = true
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+# Teto de linhas por requisição. É este limite que obriga toda leitura de lista
+# do sistema a passar por supaAll() com paginação — ver index.html.
+max_rows = 1000
+
+[auth]
+enabled = true
+# Ajustar para o domínio de produção quando a Fase 2 (login pelo Supabase Auth) entrar
+site_url = "https://app.4sides.com.br"
+additional_redirect_urls = ["https://app.4sides.com.br"]
+jwt_expiry = 3600
+enable_signup = false          # contas são criadas por administrador, não por auto-cadastro
+
+[auth.email]
+enable_confirmations = false
