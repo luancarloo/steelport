@@ -1933,6 +1933,10 @@ let ticketHistory = JSON.parse(localStorage.getItem('sp_tickets')||'[]'); // per
 let navios     = [];
 let coilsDB    = [];
 let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
+// Chave da bobina como ela está NO SERVIDOR quando a edição começa.
+// A chave primária de coilsdb é (coil, navio, bl) — se qualquer um dos três mudar,
+// o UPDATE precisa ser filtrado pelos valores ANTIGOS, senão não encontra a linha.
+let editCoilKey = null;
 let dbPageSize=50, dbPage=1;
 let ddbPageSize=50, ddbPage=1;
 let fatPageSize=50, fatPage=1;
@@ -4657,28 +4661,82 @@ async function saveCoilDB(){
   const coil=sanitizeCoil(document.getElementById('db-coil').value);
   if(!coil){ showToast('Informe o Nº da bobina.','#e05c1a','#fff'); return; }
   const entry={coil,armazem:armazemLabel(document.getElementById('db-armazem').value),bl:document.getElementById('db-bl').value.trim(),cliente:document.getElementById('db-cliente').value.trim(),navio:document.getElementById('db-navio-coil').value.trim(),viagem:document.getElementById('db-viagem').value.trim(),produto:document.getElementById('db-produto').value.trim(),pesob:document.getElementById('db-pesob').value,pesol:document.getElementById('db-pesol').value};
-  if(editCoilIdx!==null){ coilsDB[editCoilIdx]=entry; editCoilIdx=null; document.getElementById('db-edit-badge').style.display='none'; }
-  else { const ex=coilsDB.findIndex(c=>c.coil===coil); if(ex>=0) coilsDB[ex]=entry; else coilsDB.unshift(entry); }
-  buildDBNavSelect(); renderCoilsGrouped(); closeCoilForm(); refreshHome();
-  // Descongelar pesos do BL para que o faturamento recalcule com o novo peso
-  if(entry.bl) descongelarPesosBL(entry.bl);
-  try {
-    await supa(`coilsdb?coil=eq.${encodeURIComponent(coil)}&navio=eq.${encodeURIComponent(entry.navio||'')}&bl=eq.${encodeURIComponent(entry.bl||'')}`,
-      {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify(entry)});
-    // Se PATCH não encontrou o registro (novo coil), faz INSERT
-    showToast('✓ Bobina salva e sincronizada!','#22c55e','#000');
-  } catch(err){
-    // Registro pode não existir ainda — tenta INSERT
-    try {
-      await supa('coilsdb', {method:'POST', headers:{'Prefer':'return=minimal'}, body:JSON.stringify(entry)});
-      showToast('✓ Bobina salva e sincronizada!','#22c55e','#000');
-    } catch(err2){
-      showToast('✓ Bobina salva localmente. Sincronização falhou: '+err2.message,'#f59e0b','#000');
+  // Chave que identifica a linha NO SERVIDOR. Se a bobina está sendo editada, é a
+  // chave antiga; num cadastro novo, é a própria.
+  const chaveAnt = editCoilKey || {coil, navio:entry.navio||'', bl:entry.bl||''};
+  const mudouNumero = chaveAnt.coil !== coil;
+  const mudouChave  = mudouNumero || chaveAnt.navio !== (entry.navio||'') || chaveAnt.bl !== (entry.bl||'');
+
+  // Renumerar a bobina desliga as descargas e expedições dela, que apontam para o
+  // número antigo. Avisa e renomeia junto, senão a bobina aparece como nunca
+  // descarregada e some do faturamento.
+  let movs = 0;
+  if(mudouNumero){
+    movs = records.filter(r=>r.coil===chaveAnt.coil).length
+         + expedicoes.filter(r=>r.coil===chaveAnt.coil).length;
+    if(movs && !confirm(
+        `A bobina ${chaveAnt.coil} tem ${movs} movimentação(ões) registrada(s).\n\n`+
+        `Renumerar para ${coil} vai atualizar também esses registros de descarga e `+
+        `expedição, para que continuem ligados à bobina.\n\nConfirma?`)){
+      return;
     }
   }
+
+  if(editCoilIdx!==null){ coilsDB[editCoilIdx]=entry; }
+  else { const ex=coilsDB.findIndex(c=>c.coil===coil); if(ex>=0) coilsDB[ex]=entry; else coilsDB.unshift(entry); }
+  editCoilIdx=null; document.getElementById('db-edit-badge').style.display='none';
+
+  // Descongelar pesos do BL para que o faturamento recalcule com o novo peso
+  if(entry.bl) descongelarPesosBL(entry.bl);
+  if(chaveAnt.bl && chaveAnt.bl!==entry.bl) descongelarPesosBL(chaveAnt.bl);
+
+  const filtroAnt = `coil=eq.${encodeURIComponent(chaveAnt.coil)}`
+                  + `&navio=eq.${encodeURIComponent(chaveAnt.navio)}`
+                  + `&bl=eq.${encodeURIComponent(chaveAnt.bl)}`;
+  try {
+    // return=representation devolve as linhas afetadas: é assim que se sabe se o
+    // UPDATE realmente pegou. Antes o filtro usava o número NOVO, não encontrava
+    // nada, o servidor respondia 204 e o sistema dizia "sincronizado" — mas nada
+    // tinha mudado, e o valor antigo voltava no sync seguinte.
+    const afetadas = await supa(`coilsdb?${filtroAnt}`,
+      {method:'PATCH', headers:{'Prefer':'return=representation'}, body:JSON.stringify(entry)});
+
+    if(!afetadas || !afetadas.length){
+      await supa('coilsdb', {method:'POST', headers:{'Prefer':'return=minimal'}, body:JSON.stringify(entry)});
+    }
+
+    // Leva o número novo para as movimentações
+    if(mudouNumero && movs){
+      const novo = JSON.stringify({coil});
+      await Promise.all([
+        supa(`records?coil=eq.${encodeURIComponent(chaveAnt.coil)}`,
+          {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:novo}),
+        supa(`expedicoes?coil=eq.${encodeURIComponent(chaveAnt.coil)}`,
+          {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:novo})
+      ]);
+      records.forEach(r=>{ if(r.coil===chaveAnt.coil) r.coil=coil; });
+      expedicoes.forEach(r=>{ if(r.coil===chaveAnt.coil) r.coil=coil; });
+    }
+
+    try{ registrarAudit('edicao',
+      mudouNumero
+        ? `Bobina renumerada: ${chaveAnt.coil} → ${coil}${movs?` (+${movs} movimentação(ões))`:''}`
+        : `Bobina editada: ${coil}`,
+      {de:chaveAnt, para:entry}); }catch(e){}
+
+    showToast(mudouNumero
+      ? `✓ Bobina renumerada para ${coil}${movs?` · ${movs} movimentação(ões) atualizada(s)`:''}`
+      : '✓ Bobina salva e sincronizada!','#22c55e','#000');
+  } catch(err){
+    showToast('⚠ NÃO salvo no servidor: '+err.message,'#e05c1a','#fff');
+  }
+  editCoilKey=null;
+  buildDBNavSelect(); renderCoilsGrouped(); closeCoilForm(); refreshHome();
 }
-function editCoil(idx){ const c=coilsDB[idx]; editCoilIdx=idx; ['coil','armazem','bl','cliente','navio-coil','viagem','produto','pesob','pesol'].forEach(f=>{ document.getElementById('db-'+f).value=c[f==='navio-coil'?'navio':f]||''; }); document.getElementById('db-edit-badge').style.display='inline-block'; document.getElementById('coil-form-wrap').style.display=''; document.getElementById('coil-form-wrap').scrollIntoView({behavior:'smooth'}); showToast('Editando '+c.coil,'#3b82f6','#fff'); }
-function clearCoilForm(){ ['db-coil','db-armazem','db-bl','db-cliente','db-navio-coil','db-viagem','db-produto','db-pesob','db-pesol'].forEach(id=>document.getElementById(id).value=''); editCoilIdx=null; document.getElementById('db-edit-badge').style.display='none'; }
+function editCoil(idx){ const c=coilsDB[idx]; editCoilIdx=idx;
+  editCoilKey = {coil:c.coil, navio:c.navio||'', bl:c.bl||''};
+  ['coil','armazem','bl','cliente','navio-coil','viagem','produto','pesob','pesol'].forEach(f=>{ document.getElementById('db-'+f).value=c[f==='navio-coil'?'navio':f]||''; }); document.getElementById('db-edit-badge').style.display='inline-block'; document.getElementById('coil-form-wrap').style.display=''; document.getElementById('coil-form-wrap').scrollIntoView({behavior:'smooth'}); showToast('Editando '+c.coil,'#3b82f6','#fff'); }
+function clearCoilForm(){ ['db-coil','db-armazem','db-bl','db-cliente','db-navio-coil','db-viagem','db-produto','db-pesob','db-pesol'].forEach(id=>document.getElementById(id).value=''); editCoilIdx=null; editCoilKey=null; document.getElementById('db-edit-badge').style.display='none'; }
 
 // ══════════════════════════════════════════
 // DELETE
@@ -4859,7 +4917,10 @@ function clearRegForm(px){
   window._dirtyForm = false;
 }
 
-function fmtTon(kg){ return (kg/1000).toFixed(2); }
+// 3 casas na tonelada = 1 kg de precisao, que e a unidade real dos dados.
+// Com 2 casas, 101.775 kg aparecia como 101,78 t — arredondado para cima, e o
+// peso do banco de itens deixava de bater com o da expedicao.
+function fmtTon(kg){ return (kg/1000).toFixed(3); }
 function _dateEnvioISO(s){ const m=s&&s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m?`${m[3]}-${m[2]}-${m[1]}`:s||''; }
 function fmtKg(kg){
   const n = Math.round(Number(kg)||0);
@@ -7547,12 +7608,27 @@ function _fatBobinasBL(bl){
                         && !String(c.armazem||'').trim().toUpperCase().includes('PORTO'));
 }
 // true quando o BL não tem NADA faturável (toda a carga ficou no PORTO).
-function _fatBLSoPorto(bl){
+// O BL não tem nada que a gente possa cobrar?
+// É faturável quem tiver ao menos uma bobina fora do PORTO OU um item de carga geral
+// com armazém preenchido e diferente de PORTO.
+//
+// A versão anterior desistia logo no começo quando o BL não tinha bobinas — e como
+// os BLs de carga geral pura não têm nenhuma, eles entravam no faturamento mesmo
+// com toda a carga no PORTO. Foi o caso do GSSWTUJ37073A.
+//
+// Item sem armazém preenchido não conta como faturável: é situação ainda não
+// classificada, mesma regra que _fatCgBLs() já aplicava.
+function _fatBLNaoFaturavel(bl){
   const k=String(bl||'').trim().toUpperCase();
-  const todas=coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===k);
-  if(!todas.length) return false;                       // BL só de Carga Geral
-  if(_fatBobinasBL(bl).length) return false;            // tem bobina fora do PORTO
-  return !(_fatCgItens(bl)||[]).some(it=>!String(it.armazem||'').toUpperCase().includes('PORTO'));
+  const bobinas=coilsDB.filter(c=>String(c.bl||'').trim().toUpperCase()===k);
+  const itens=_fatCgItens(bl)||[];
+  if(_fatBobinasBL(bl).length) return false;            // bobina fora do PORTO
+  const temCgFaturavel = itens.some(it=>{
+    const a=String(it.armazem||'').trim().toUpperCase();
+    return a && !a.includes('PORTO');
+  });
+  if(temCgFaturavel) return false;
+  return bobinas.length>0 || itens.length>0;            // há carga, mas nenhuma cobrável
 }
 
 function getDataFimDescarga(bl){
@@ -7820,7 +7896,7 @@ function atualizarBLsFaturamento(){
   const getBLNavio  =bl=>_fatBLNavio(bl);
   const getBLCliente=bl=>_fatBLCliente(bl);
   const getBLArmazem=bl=>_fatBLArmazem(bl);
-  bls=bls.filter(bl=>!_fatBLSoPorto(bl));   // só sai se TODA a carga ficou no PORTO
+  bls=bls.filter(bl=>!_fatBLNaoFaturavel(bl));   // sai se nada do BL é cobrável
 
   if(fc) bls=bls.filter(bl=>getBLCliente(bl)===normStr(fc));
   if(fn) bls=bls.filter(bl=>getBLNavio(bl)===normStr(fn));
@@ -7906,17 +7982,43 @@ function _fatCgDataFimDescarga(bl){
 // Peso (kg) da Carga Geral em estoque no dia informado.
 // Mesma regra das bobinas: conta o que foi descarregado ATÉ o dia e desconta
 // o que foi expedido ANTES do dia (saída no próprio dia ainda é cobrada).
+// Peso em estoque de um BL da Carga Geral no dia da cobrança.
+//
+// O peso é derivado da QUANTIDADE em estoque, não da subtração dos pesos gravados.
+// Motivo: cada lançamento grava o peso arredondado ao quilo. Um item descarregado em
+// 22 remessas e expedido em 9 acumula 22 arredondamentos de um lado e 9 do outro, e
+// as somas não fecham — sobrava 1 a 3 kg mesmo com a carga inteira já expedida, e
+// esse resíduo abria um novo período de armazenagem que nunca terminava.
+// (Visto nos BLs GSSWTUJ37072A e GSSWTUJ37072C.)
+//
+// Item por item: quantidade em estoque × peso unitário do banco. Quantidade zerada
+// dá peso zero, sempre. Sem peso unitário no banco, cai para a soma dos lançamentos,
+// que é o comportamento antigo.
 function _fatCgPesoNoDia(bl, diaStr){
   const itens=_fatCgItens(bl);
   if(!itens.length) return 0;
   const nb=_fatNorm(bl);
-  const descrs=new Set(itens.map(it=>_fatNorm(it.descricao)));
-  const soma=(arr,cmp)=>(arr||[]).filter(r=>_fatNorm(r.bl)===nb && descrs.has(_fatNorm(r.descricao))
-      && r.data && cmp(r.data))
-    .reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
-  const descarregado=soma(typeof cgDescargas!=='undefined'?cgDescargas:[],  d=>d<=diaStr);
-  const expedido    =soma(typeof cgExpedicoes!=='undefined'?cgExpedicoes:[], d=>d< diaStr);
-  return Math.max(0, descarregado-expedido);
+  const D=(typeof cgDescargas!=='undefined'?cgDescargas:[]);
+  const E=(typeof cgExpedicoes!=='undefined'?cgExpedicoes:[]);
+  const soma=(arr,desc,cmp,campo)=>(arr||[])
+    .filter(r=>_fatNorm(r.bl)===nb && _fatNorm(r.descricao)===desc && r.data && cmp(r.data))
+    .reduce((a,r)=>a+(parseFloat(r[campo])||0),0);
+
+  let total=0;
+  for(const it of itens){
+    const d=_fatNorm(it.descricao);
+    const qtdEstoque = soma(D,d,x=>x<=diaStr,'quantidade') - soma(E,d,x=>x<diaStr,'quantidade');
+    if(qtdEstoque<=0) continue;                       // nada em estoque = peso zero
+    const qtdTotal=parseFloat(it.qtd_total)||0;
+    const pesoTotal=parseFloat(it.peso)||0;
+    if(qtdTotal>0 && pesoTotal>0){
+      total += (pesoTotal/qtdTotal) * qtdEstoque;     // proporcional ao que está no armazém
+    }else{
+      // banco sem peso: usa o que foi gravado nos lançamentos
+      total += Math.max(0, soma(D,d,x=>x<=diaStr,'peso_kg') - soma(E,d,x=>x<diaStr,'peso_kg'));
+    }
+  }
+  return Math.max(0, Math.round(total));
 }
 
 // Tonelagem total do BL na Carga Geral = soma do peso dos itens do banco.
@@ -8121,7 +8223,7 @@ function renderFaturamento(){
   const _arm=k=>_fatBLArmazem(k);
 
   // BLs com armazém "Porto" não são faturados por nós — excluir sempre
-  bls=bls.filter(bl=>!_fatBLSoPorto(bl));   // só sai se TODA a carga ficou no PORTO
+  bls=bls.filter(bl=>!_fatBLNaoFaturavel(bl));   // sai se nada do BL é cobrável
 
   if(fc) bls=bls.filter(bl=>_cli(normStr(bl))===normStr(fc));
   if(fn) bls=bls.filter(bl=>_nav(normStr(bl))===normStr(fn));
@@ -8781,7 +8883,7 @@ function _getFatBLsFiltrados(){
   const _getBLCliente=bl=>_fatBLCliente(bl);
   const _getBLArmazem=bl=>_fatBLArmazem(bl);
   // mesma regra do render: carga que fica no PORTO não é faturada por nós
-  bls=bls.filter(bl=>!_fatBLSoPorto(bl));
+  bls=bls.filter(bl=>!_fatBLNaoFaturavel(bl));
   if(fc) bls=bls.filter(bl=>_getBLCliente(bl)===_normStr2(fc));
   if(fn) bls=bls.filter(bl=>_getBLNavio(bl)===_normStr2(fn));
   if(fa) bls=bls.filter(bl=>_getBLArmazem(bl)===_normStr2(fa));
@@ -9836,6 +9938,7 @@ async function fazerBackupAgora(){
         headers: {'Prefer':'return=minimal'},
         body: JSON.stringify({ts: bkp.ts, label: bkp.label, size_kb: bkp.sizeKB, data: safeData, user_id: session?.id||'system'})
       });
+      limparBackupsAntigos();   // sem isto a tabela cresce para sempre
       showToast(`✓ Backup criado e sincronizado! ${bkp.sizeKB} KB · ${bkp.label}`,'#22c55e','#000');
     } catch(e){
       showToast(`✓ Backup local criado (${bkp.sizeKB} KB) — sync falhou: ${e.message}`,'#f59e0b','#000');
@@ -9844,6 +9947,26 @@ async function fazerBackupAgora(){
     showToast(`✓ Backup criado! ${bkp.sizeKB} KB · ${bkp.label}`,'#22c55e','#000');
   }
   renderBackup();
+}
+
+// Apaga do servidor os backups com mais de BKP_DIAS dias.
+// Cada linha guarda um retrato inteiro do sistema em texto (~10 MB). Sem limpeza
+// a tabela só crescia: em 03/09/2026 eram 690 cópias somando 4,4 GB — mais de
+// duzentas vezes o tamanho dos dados reais. Roda em segundo plano e nunca
+// atrapalha o backup em si: se falhar, apenas registra no console.
+const BKP_DIAS = 7;
+
+async function limparBackupsAntigos(){
+  if(!SUPA_URL || !SUPA_KEY) return;
+  try{
+    const corte = new Date(Date.now() - BKP_DIAS*24*3600*1000).toISOString();
+    await supa(`backups?ts=lt.${encodeURIComponent(corte)}`,
+      {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+  }catch(e){
+    // Apagar muitas linhas de uma vez pode estourar o tempo do servidor.
+    // Não é problema: na próxima execução ele tenta de novo, com menos acumulado.
+    console.warn('[backup] limpeza dos antigos não concluiu:', e.message);
+  }
 }
 
 function checkBackupAutomatico(){
@@ -11050,7 +11173,7 @@ function updateCgStats(){
   const turnoAtual=getPeriodoAtual();   // era uma cópia da regra de turno, que podia divergir
   const usuario=session?.nome||'';
   const pendentes=cgItems.filter(it=>cgSaldoDescarga(it)>0).length;
-  const fmtTon=kg=>{const t=kg/1000;return t>=0.01?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t':'0 t';};
+  const fmtTon=kg=>{const t=kg/1000;return t>=0.001?t.toLocaleString('pt-BR',{minimumFractionDigits:3,maximumFractionDigits:3})+' t':'0 t';};
   const pesoDesc=cgDescargas.filter(r=>r.data===hoje&&r.periodo===turnoAtual&&(!usuario||r.created_by===usuario)).reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const pesoExp =cgExpedicoes.filter(r=>r.data===hoje&&r.periodo===turnoAtual&&(!usuario||r.created_by===usuario)).reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
@@ -11146,9 +11269,10 @@ function _cgBancoRows(){
     const desc=descMap[k]||0, exp=expMap[k]||0;
     const sDesc=Math.max(0,(it.qtd_total||0)-desc);
     const sArm =Math.max(0,desc-exp);
-    const pend=sDesc>0;
-    if(fStatus==='pendente'&&!pend) continue;
-    if(fStatus==='completo'&&pend) continue;
+    const pend=sDesc>0;                       // ainda falta descarregar
+    if(fStatus==='pendente'  && !pend)     continue;
+    if(fStatus==='a_expedir' && sArm<=0)   continue;   // so o que esta em armazem esperando saida
+    if(fStatus==='completo'  && pend)      continue;
     const pct=it.qtd_total>0?Math.round(desc/it.qtd_total*100):0;
     rows.push({it,desc,exp,sDesc,sArm,pct});
   }
@@ -12069,7 +12193,7 @@ function _cgRelRender(){
   const fmtDate = d => d?d.split('-').reverse().join('/'):'—';
   const totalDescPeso = descs.reduce((a,r)=>a+(parseFloat(r.peso_kg)||0),0);
   const totalExpPeso  = exps.reduce((a,r) =>a+(parseFloat(r.peso_kg)||0),0);
-  const fmtTon = kg => { const t=kg/1000; return t>=0.01?t.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+' t':'0 t'; };
+  const fmtTon = kg => { const t=kg/1000; return t>=0.001?t.toLocaleString('pt-BR',{minimumFractionDigits:3,maximumFractionDigits:3})+' t':'0 t'; };
   let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem;">
     <div class="rpt-summary-card"><div class="rpt-sum-val">${descs.length}</div><div class="rpt-sum-label">Descargas</div><div class="rpt-sum-unit">${fmtTon(totalDescPeso)}</div></div>
     <div class="rpt-summary-card"><div class="rpt-sum-val">${exps.length}</div><div class="rpt-sum-label">Expedições</div><div class="rpt-sum-unit">${fmtTon(totalExpPeso)}</div></div>
@@ -13877,7 +14001,8 @@ alter table users add column if not exists email text;
             <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:4px;">Status</label>
             <select id="cg-f-status" onchange="renderCgBanco()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .8rem;border-radius:6px;font-size:13px;outline:none;">
               <option value="">Todos</option>
-              <option value="pendente">Com saldo</option>
+              <option value="pendente">A descarregar</option>
+              <option value="a_expedir">A expedir</option>
               <option value="completo">Completo</option>
             </select>
           </div>
