@@ -24,7 +24,7 @@
 // Precisa subir sempre que a lista abaixo mudar — senão quem já instalou
 // continua com os arquivos velhos guardados. (v2: ícones novos, do logo
 // do login, no lugar dos SVG provisórios.)
-const VERSAO = 'steelport-v3';
+const VERSAO = 'steelport-v6';
 const CASCA = [
   './',
   './index.html',

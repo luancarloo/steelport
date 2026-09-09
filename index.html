@@ -1169,9 +1169,21 @@ body{
     <div id="dbpanel-bobinas">
       <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;margin-bottom:1.5rem;">
         <input type="text" id="db-search" placeholder="⌕  Buscar bobina..." style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;" oninput="dbPage=1;renderCoilsGrouped()">
-        <select id="db-filter-navio" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()"><option value="">Todos os navios</option></select>
+        <select id="db-filter-navio" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()"><option value="">Todos os navios</option></select>
+        <select id="db-filter-bl" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()"><option value="">Todos os BLs</option></select>
+        <select id="db-filter-cliente" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()"><option value="">Todos os clientes</option></select>
+        <select id="db-filter-armazem" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()"><option value="">Todos os armazéns</option></select>
+        <select id="db-filter-status" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;" onchange="dbPage=1;renderCoilsGrouped()">
+          <option value="">Qualquer situação</option>
+          <option value="pendente">Pendente de descarga</option>
+          <option value="estoque">Em estoque (descarregada)</option>
+          <option value="expedida">Já expedida</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="limparFiltrosDB()">✕ LIMPAR</button>
         <button class="btn btn-secondary btn-sm" onclick="exportCoilsCSV()">↓ CSV</button>
         <button class="btn btn-info btn-sm" onclick="openImportModal()">↑ IMPORTAR EXCEL</button>
+        <button class="btn btn-secondary btn-sm" onclick="abrirTransferirBL()"
+          title="Copiar as bobinas de um BL para outro armazém, com uma letra na frente">⇄ TRANSFERIR BL</button>
         <button class="btn btn-primary btn-sm" onclick="openAddCoilForm()">+ NOVA BOBINA</button>
       </div>
 
@@ -3598,7 +3610,7 @@ function _bobMontaTela(px){
         style="max-height:26vh;overflow-y:auto;padding:.5rem .75rem;font-family:'JetBrains Mono',monospace;font-size:12px;"></div>
       <div style="display:flex;gap:.5rem;border-top:1px solid rgba(255,255,255,.1);
                   padding:.7rem .7rem calc(.7rem + env(safe-area-inset-bottom,0px));">
-        <button onclick="_bobLerTexto()" class="btn btn-secondary" style="flex:1;">
+        <button id="bob-cam-ler" onclick="_bobLerTexto()" class="btn btn-secondary" style="flex:1;">
           🔤 LER O COIL No.</button>
         <button onclick="fecharCamBobina()" class="btn" style="flex:1;background:${cor};color:#fff;">
           CONCLUIR</button>
@@ -4341,6 +4353,13 @@ function _bobVariantes(txt){
   const s = _bobLimpaOCR(txt);
   const v = [s];
   if(/^T[0-9]/.test(s)) v.push(s.slice(1));
+  // Bobina transferida do Porto para a Pratico ganha um P na frente no banco,
+  // mas a etiqueta colada nela continua sem o P. Então o número lido também é
+  // procurado com o P — ACRESCENTANDO, nunca removendo: 69 bobinas do FINCH
+  // ARROW começam com P de verdade (P26118145100) e sumiriam se ele fosse
+  // arrancado. A variante só vale se existir no estoque pendente, então ela
+  // não inventa bobina nenhuma.
+  v.push('P' + s);
   return v.filter(x => x.length >= 8);
 }
 
@@ -4425,7 +4444,7 @@ function _bobCasa(leituras, pesos, px){
   }).sort((a, b) => (a.perto - b.perto) || (a.soma - b.soma));
 
   const melhor = notas[0];
-  if(!melhor || melhor.perto > 3) return { tipo: 'nada', leitura: brutas[0] };
+  if(!melhor || melhor.perto > 3) return _bobPelaCauda(ls, pool, brutas[0]);
   const seg = notas[1];
   const folga = !seg ? 99
               : (seg.perto > melhor.perto ? 99 : seg.soma - melhor.soma);
@@ -4435,6 +4454,43 @@ function _bobCasa(leituras, pesos, px){
              dist: melhor.perto, peso: melhor.bate, leitura: brutas[0] };
   // Sem destaque claro, o sistema NÃO escolhe: mostra as mais próximas.
   return { tipo: 'lista', candidatos: notas.slice(0, 5).map(n => n.c), leitura: brutas[0] };
+}
+
+// Última tentativa: os 6 caracteres finais.
+//
+// É a parte do número que diferencia uma bobina da outra — o começo é o lote e
+// se repete no navio inteiro. Quando a leitura sai ruim no começo e boa no fim,
+// isto salva; e o campo de busca é só o que está PENDENTE (na descarga, o que
+// falta descarregar; na expedição, o que falta expedir), que é bem menor.
+//
+// Nunca aceita sozinho. Medido em 09/09/2026 sobre as 4.558 bobinas pendentes
+// de expedição: 83% têm cauda de 6 única, mas 17% dividem a cauda com outra, e
+// o maior grupo tem 11 bobinas. Ou seja, sozinha a cauda erraria em uma a cada
+// seis — então ela sempre propõe, e o operador confirma.
+function _bobPelaCauda(leituras, pool, mostrar){
+  const N = 6;
+  const caudas = [];
+  (leituras || []).forEach(l => {
+    if(l.length < N) return;
+    if(_bobCaraDeBobina(l) < 0) return;      // pedaço sem cara de número não entra
+    const c = l.slice(-N);
+    if(/[0-9]/.test(c) && caudas.indexOf(c) < 0) caudas.push(c);
+  });
+  if(!caudas.length) return { tipo: 'nada', leitura: mostrar };
+
+  const achadas = [];
+  for(const c of pool){
+    const alvo = _bobSemZeros(c.coil);
+    if(alvo.length >= N && caudas.indexOf(alvo.slice(-N)) >= 0) achadas.push(c);
+    if(achadas.length > 8) break;            // cauda genérica demais, não serve
+  }
+  if(!achadas.length || achadas.length > 8) return { tipo: 'nada', leitura: mostrar };
+
+  if(achadas.length === 1)
+    return { tipo: 'cauda', db: achadas[0], coil: achadas[0].coil,
+             cauda: caudas[0], leitura: mostrar };
+  return { tipo: 'lista', candidatos: achadas.slice(0, 6), leitura: mostrar,
+           cauda: caudas[0] };
 }
 
 // ── a tela de conferência ─────────────────────────────────────────
@@ -4466,11 +4522,56 @@ function _bobEscolha(px, titulo, candidatos, leitura){
   a.style.display = '';
 }
 
+// Enquanto uma leitura está em andamento, o botão fica desligado.
+//
+// É esta a trava que aparecia no pátio: a leitura leva de 10 a 30 segundos no
+// celular, e nesse tempo o botão continuava aceitando toque. Um segundo toque
+// começava um reconhecimento novo no MESMO motor que ainda estava ocupado — e
+// o motor não aceita dois trabalhos ao mesmo tempo: ele para, e a câmera fica
+// presa em "Segure firme…" sem nunca terminar.
+function _bobBotaoLer(ocupado){
+  const b = document.getElementById('bob-cam-ler');
+  if(!b) return;
+  b.disabled = ocupado;
+  b.style.opacity = ocupado ? '.55' : '';
+  b.textContent = ocupado ? '\u23F3 LENDO…' : '\uD83D\uDD24 LER O COIL No.';
+}
+
 async function _bobLerTexto(){
   if(!_bobCam) return;
+  if(_bobCam.lendo) return;                 // já tem uma leitura em andamento
   const video = _bobCam.video, px = _bobCam.px;
   if(!video.videoWidth){ showToast('Câmera ainda iniciando.', '#f59e0b', '#000'); return; }
+  _bobCam.lendo = true;
+  _bobBotaoLer(true);
+  try{
+    await _bobLerTextoAgora(video, px);
+  }finally{
+    // no finally de propósito: se qualquer coisa falhar no meio, o botão
+    // precisa voltar a funcionar, senão a câmera fica inutilizável.
+    if(_bobCam) _bobCam.lendo = false;
+    _bobBotaoLer(false);
+  }
+}
+
+async function _bobLerTextoAgora(video, px){
   _bobCam.parado = true;
+
+  // Cada toque em LER começa do zero: limpa o campo de digitação, o que foi
+  // lido antes e o aviso que estiver na tela.
+  //
+  // Antes as leituras de uma tentativa se somavam às da seguinte. A intenção
+  // era boa — mais leituras, mais chance de acertar — mas o efeito era o
+  // contrário: o número errado da primeira tentativa continuava pesando na
+  // conta, e cada tentativa multiplicava a comparação contra o estoque até a
+  // tela parar de responder. Tentativa nova, leitura nova.
+  const campo = document.getElementById(px + 'l-coil-add');
+  if(campo) campo.value = '';
+  _bobCam.acum = null;
+  _bobCam.ultimo = null;
+  const aviso = document.getElementById('bob-cam-aviso');
+  if(aviso) aviso.style.display = 'none';
+
   _bobMsg('Segure firme… lendo o número escrito', '#f59e0b');
 
   if(!await _bobPreparaOCR()){
@@ -4484,12 +4585,8 @@ async function _bobLerTexto(){
   catch(e){ if(_bobCam) _bobPausa('Não consegui ler o texto: ' + (e.message || e)); return; }
   if(!_bobCam) return;
 
-  // as tentativas se somam: a segunda foto reaproveita o que a primeira leu
-  _bobCam.acum = (_bobCam.acum || { leituras: [], pesos: [] });
-  quadro.leituras.forEach(l => { if(_bobCam.acum.leituras.indexOf(l) < 0) _bobCam.acum.leituras.push(l); });
-  quadro.pesos.forEach(p => { if(_bobCam.acum.pesos.indexOf(p) < 0) _bobCam.acum.pesos.push(p); });
-
-  const r = _bobCasa(_bobCam.acum.leituras, _bobCam.acum.pesos, px);
+  _bobCam.acum = quadro;                    // só desta tentativa
+  const r = _bobCasa(quadro.leituras, quadro.pesos, px);
 
   if(r.tipo === 'exato'){
     _bobCam.acum = null; _bobCam.ultimo = null; _bobCam.parado = false;
@@ -4502,8 +4599,16 @@ async function _bobLerTexto(){
       [r.db], r.leitura);
     return;
   }
+  if(r.tipo === 'cauda'){
+    _bobEscolha(px, 'O número inteiro não saiu limpo, mas os últimos ' + r.cauda.length
+      + ' dígitos (' + r.cauda + ') batem com uma única bobina pendente. Confira e toque:',
+      [r.db], r.leitura);
+    return;
+  }
   if(r.tipo === 'lista'){
-    _bobEscolha(px, 'Não deu para decidir sozinho entre estas. Toque na que está na etiqueta:',
+    _bobEscolha(px, (r.cauda
+        ? 'Pelos últimos dígitos (' + r.cauda + ') há mais de uma pendente. Toque na da etiqueta:'
+        : 'Não deu para decidir sozinho entre estas. Toque na que está na etiqueta:'),
       r.candidatos, r.leitura);
     return;
   }
@@ -4511,8 +4616,8 @@ async function _bobLerTexto(){
   if(r.leitura && inp) inp.value = r.leitura;
   _bobRegistra('? ' + (r.leitura || '(nada)') + '  (do texto, sem correspondência)', '#f59e0b');
   _bobPausa(r.leitura
-    ? 'Li "' + r.leitura + '", mas não achei bobina parecida no estoque. Foi para o campo de digitação — confira, ou toque de novo em LER O NÚMERO ESCRITO para somar outra foto.'
-    : 'Não consegui ler o número. Aproxime, encha a moldura com a etiqueta e toque de novo — cada tentativa soma com a anterior.');
+    ? 'Li "' + r.leitura + '", mas não achei bobina pendente com esse número. Ele foi para o campo de digitação — confira e ajuste, ou toque de novo em LER O COIL No. para uma leitura nova.'
+    : 'Não consegui ler o número. Aproxime, encha a moldura com a etiqueta e toque de novo em LER O COIL No.');
 }
 
 function addCoilLote(px){
@@ -5518,11 +5623,29 @@ function onFilterNavioChange(px){
 }
 
 function buildDBNavSelect(){
-  const navSet=[...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
-  const el=document.getElementById('db-filter-navio'); if(!el) return;
-  const v=el.value;
-  el.innerHTML='<option value="">Todos os navios</option>'+navSet.map(n=>`<option>${n}</option>`).join('');
-  if(v) el.value=v;
+  // Cada lista sai do próprio banco, e a escolha atual é preservada — senão o
+  // filtro se perderia toda vez que a lista fosse remontada.
+  const monta=(id, valores, vazio)=>{
+    const el=document.getElementById(id); if(!el) return;
+    const v=el.value;
+    el.innerHTML='<option value="">'+vazio+'</option>'
+      +valores.map(n=>`<option>${_esc(n)}</option>`).join('');
+    if(v) el.value=v;
+  };
+  const unicos=campo=>[...new Set(coilsDB.map(c=>c[campo]).filter(Boolean))].sort();
+  monta('db-filter-navio',   unicos('navio'),   'Todos os navios');
+  monta('db-filter-bl',      unicos('bl'),      'Todos os BLs');
+  monta('db-filter-cliente', unicos('cliente'), 'Todos os clientes');
+  monta('db-filter-armazem', unicos('armazem'), 'Todos os armazéns');
+}
+
+function limparFiltrosDB(){
+  ['db-search','db-filter-navio','db-filter-bl','db-filter-cliente',
+   'db-filter-armazem','db-filter-status'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value='';
+  });
+  dbPage=1;
+  renderCoilsGrouped();
 }
 
 // Modo "SALDO" da consulta de Expedição: lista bobinas descarregadas ainda pendentes de expedição.
@@ -5758,24 +5881,324 @@ function viewDetail(id, px){
   document.getElementById('modal-detail').classList.add('open');
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// TRANSFERIR BL — PORTO PARA OUTRO ARMAZÉM
+// ══════════════════════════════════════════════════════════════════
+// Quando um BL sai do Porto para a Pratico, a bobina física passa a existir
+// duas vezes no sistema: a original, que encerra o ciclo no Porto, e uma cópia
+// com uma letra na frente, que começa o ciclo no armazém novo com as tarifas
+// de lá.
+//
+// Isso não é gambiarra, é o que o banco permite e o que o faturamento espera:
+// existe um índice único em (bobina, navio), então a MESMA numeração não pode
+// aparecer duas vezes; e a cobrança olha o campo armazém, ignorando tudo que
+// está no PORTO. A cópia com P é o que dá identidade própria à carga na
+// Pratico sem apagar o histórico do Porto.
+//
+// Até aqui isso era feito relançando a planilha à mão. Esta tela faz o mesmo,
+// só que sem digitar e sem chance de esquecer uma bobina.
+
+let _trfSel = new Set();
+
+function _trfArmazens(){
+  const set = new Set(coilsDB.map(c => (c.armazem||'').trim()).filter(Boolean));
+  set.delete('');
+  return [...set].sort();
+}
+
+// As bobinas do BL que ainda podem ser transferidas: estão no armazém de
+// origem e ainda não têm a cópia criada.
+function _trfElegiveis(bl, prefixo, origem){
+  const k = String(bl||'').trim().toUpperCase();
+  const existentes = new Set(coilsDB.map(c => String(c.coil||'').trim().toUpperCase()));
+  return coilsDB.filter(c => {
+    if(String(c.bl||'').trim().toUpperCase() !== k) return false;
+    const arm = String(c.armazem||'').trim().toUpperCase();
+    if(origem && !arm.includes(origem.toUpperCase())) return false;
+    const nova = (prefixo + String(c.coil||'').trim()).toUpperCase();
+    if(existentes.has(nova)) return false;          // já foi transferida antes
+    return true;
+  });
+}
+
+function abrirTransferirBL(){
+  const armz = _trfArmazens();
+  const destinoPadrao = armz.find(a => a.toUpperCase().includes('PRATICO')) || armz[0] || 'Pratico';
+  _trfSel = new Set();
+
+  const m = document.createElement('div');
+  m.className = 'modal-overlay';
+  m.id = 'modal-transferir';
+  m.style.display = 'flex';
+  m.innerHTML = `
+    <div class="modal" style="max-width:720px;">
+      <div class="modal-title">⇄ TRANSFERIR BL PARA OUTRO ARMAZÉM</div>
+      <div class="modal-body">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:1rem;line-height:1.5;">
+          Cria uma cópia de cada bobina do BL com uma letra na frente e o armazém de
+          destino. A bobina original continua como está — é ela que guarda o histórico
+          do Porto. Nada é gravado antes de você conferir a lista.
+        </p>
+        <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:1rem;">
+          <div class="form-group" style="position:relative;">
+            <label>BL *</label>
+            <input type="text" id="trf-bl" autocomplete="off"
+              placeholder="Digite parte do BL..."
+              oninput="this.value=this.value.toUpperCase();_trfSugereBL()"
+              onfocus="_trfSugereBL()"
+              onblur="setTimeout(()=>document.getElementById('trf-bl-sug')?.remove(),200)">
+          </div>
+          <div class="form-group">
+            <label>Armazém de origem</label>
+            <select id="trf-origem" onchange="_trfPreview()">
+              <option value="PORTO">PORTO</option>
+              <option value="">Qualquer um</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Armazém de destino *</label>
+            <input type="text" id="trf-destino" value="${_esc(destinoPadrao)}" list="trf-armazens">
+            <datalist id="trf-armazens">${armz.map(a => `<option>${_esc(a)}</option>`).join('')}</datalist>
+          </div>
+          <div class="form-group">
+            <label>Letra na frente *</label>
+            <input type="text" id="trf-prefixo" value="P" maxlength="3"
+              oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'');_trfPreview()">
+          </div>
+        </div>
+        <div id="trf-resumo"></div>
+        <div id="trf-lista" style="max-height:34vh;overflow-y:auto;margin-top:.75rem;"></div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="fecharTransferirBL()">CANCELAR</button>
+        <button class="btn btn-primary" id="trf-confirmar" onclick="_trfExecutar()" disabled>
+          TRANSFERIR</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  _trfPreview();
+}
+
+// Sugere BLs enquanto se digita. São quase duzentos no banco, então uma lista
+// de seleção não serve — mas a busca livre sozinha também não, porque é fácil
+// digitar um BL que não existe. Aqui a pessoa digita um pedaço e escolhe.
+//
+// Cada linha já mostra quantas bobinas o BL tem e quantas ainda seriam
+// transferidas: é o que permite achar o BL certo sem sair e voltar na tela.
+function _trfSugereBL(){
+  const inp = document.getElementById('trf-bl');
+  if(!inp) return;
+  document.getElementById('trf-bl-sug')?.remove();
+  const q = (inp.value||'').trim().toUpperCase();
+  const pref = document.getElementById('trf-prefixo')?.value || 'P';
+  const origem = document.getElementById('trf-origem')?.value || '';
+
+  const bls = [...new Set(coilsDB.map(c => c.bl).filter(Boolean))]
+    .filter(b => !q || String(b).toUpperCase().includes(q))
+    .sort();
+
+  _trfPreview();                       // o que já foi digitado vale na hora
+
+  if(!bls.length || (bls.length === 1 && bls[0].toUpperCase() === q)) return;
+
+  const cx = document.createElement('div');
+  cx.id = 'trf-bl-sug';
+  // A coluna do formulário tem ~150px; o BL mais a contagem não cabem nisso.
+  // A caixa sai da largura da coluna e vai até onde precisar, sem passar da tela.
+  cx.style.cssText = 'position:absolute;top:100%;left:0;z-index:999;'
+    + 'width:max(100%,26rem);max-width:min(30rem,78vw);'
+    + 'background:var(--surface);border:1px solid var(--accent);border-radius:6px;'
+    + 'max-height:240px;overflow-y:auto;box-shadow:0 8px 26px rgba(0,0,0,.45);';
+
+  bls.slice(0, 40).forEach(b => {
+    const doBL = coilsDB.filter(c => String(c.bl||'').trim().toUpperCase() === String(b).toUpperCase());
+    const eleg = _trfElegiveis(b, pref, origem).length;
+    const d = document.createElement('div');
+    d.style.cssText = 'padding:.5rem .7rem;cursor:pointer;font-size:13px;'
+      + 'border-bottom:1px solid var(--border);display:flex;gap:.6rem;align-items:center;'
+      + 'white-space:nowrap;';
+    d.innerHTML = '<span style="font-family:\'JetBrains Mono\',monospace;font-weight:700;'
+      + 'color:var(--accent);">' + _esc(b) + '</span>'
+      + '<span style="margin-left:auto;color:var(--muted);font-size:11px;">'
+      + doBL.length + ' bobinas' + (eleg ? ' · <b style="color:var(--success)">' + eleg
+      + ' a transferir</b>' : ' · nada a transferir') + '</span>';
+    d.onmousedown = e => {          // mousedown, não click: o blur fecharia antes
+      e.preventDefault();
+      inp.value = b;
+      cx.remove();
+      _trfPreview();
+    };
+    cx.appendChild(d);
+  });
+  if(bls.length > 40){
+    const m = document.createElement('div');
+    m.style.cssText = 'padding:.45rem .7rem;font-size:11px;color:var(--muted);';
+    m.textContent = 'e mais ' + (bls.length - 40) + '… digite mais para reduzir';
+    cx.appendChild(m);
+  }
+  inp.parentElement.appendChild(cx);
+}
+
+function fecharTransferirBL(){
+  document.getElementById('modal-transferir')?.remove();
+  _trfSel = new Set();
+}
+
+function _trfPreview(){
+  const bl = document.getElementById('trf-bl')?.value || '';
+  const pref = document.getElementById('trf-prefixo')?.value || '';
+  const origem = document.getElementById('trf-origem')?.value || '';
+  const resumo = document.getElementById('trf-resumo');
+  const lista = document.getElementById('trf-lista');
+  const bt = document.getElementById('trf-confirmar');
+  if(!resumo || !lista) return;
+
+  if(!bl || !pref){
+    resumo.innerHTML = '<div class="empty-state" style="padding:1.5rem;">Escolha o BL e a letra.</div>';
+    lista.innerHTML = ''; if(bt) bt.disabled = true; return;
+  }
+
+  const k = bl.trim().toUpperCase();
+  const doBL = coilsDB.filter(c => String(c.bl||'').trim().toUpperCase() === k);
+  if(!doBL.length){
+    resumo.innerHTML = '<div class="empty-state" style="padding:1.2rem;">'
+      + '<span class="empty-icon">🔍</span>Nenhum BL com esse número. Continue digitando.</div>';
+    lista.innerHTML = ''; if(bt) bt.disabled = true; return;
+  }
+  const eleg = _trfElegiveis(bl, pref, origem);
+  const jaFeitas = doBL.filter(c => String(c.coil||'').trim().toUpperCase().startsWith(pref)
+    && coilsDB.some(o => String(o.coil||'').trim().toUpperCase()
+        === String(c.coil||'').trim().toUpperCase().slice(pref.length)));
+
+  _trfSel = new Set(eleg.map(c => c.coil));
+
+  const t = arr => arr.reduce((a, c) => a + (parseFloat(c.pesob)||0), 0) / 1000;
+  resumo.innerHTML = `
+    <div class="rpt-summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:0;">
+      <div class="rpt-summary-card"><span class="rpt-sum-label">NO BL</span>
+        <span class="rpt-sum-value">${doBL.length}</span>
+        <span class="rpt-sum-unit">${t(doBL).toFixed(3)} t</span></div>
+      <div class="rpt-summary-card" style="border-left:3px solid var(--success)">
+        <span class="rpt-sum-label">A TRANSFERIR</span>
+        <span class="rpt-sum-value" style="color:var(--success)">${eleg.length}</span>
+        <span class="rpt-sum-unit">${t(eleg).toFixed(3)} t</span></div>
+      <div class="rpt-summary-card"><span class="rpt-sum-label">JÁ TRANSFERIDAS</span>
+        <span class="rpt-sum-value">${jaFeitas.length}</span>
+        <span class="rpt-sum-unit">ficam de fora</span></div>
+    </div>`;
+
+  if(!eleg.length){
+    lista.innerHTML = `<div class="empty-state" style="padding:1.5rem;">
+      <span class="empty-icon">✓</span>Nada a transferir neste BL com estes critérios.</div>`;
+    if(bt) bt.disabled = true;
+    return;
+  }
+
+  lista.innerHTML = eleg.map(c => `
+    <label style="display:flex;gap:.6rem;align-items:center;padding:.4rem .2rem;
+                  border-bottom:1px solid var(--border);font-size:13px;">
+      <input type="checkbox" checked style="width:auto;" onchange="_trfMarca('${_esc(c.coil)}',this.checked)">
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--muted);">${_esc(c.coil)}</span>
+      <span style="font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700;">
+        → ${_esc(pref + c.coil)}</span>
+      <span style="margin-left:auto;color:var(--muted);font-size:12px;">
+        ${_esc(c.armazem)||'—'} · ${c.pesob ? fmtKg(c.pesob)+' kg' : '—'}</span>
+    </label>`).join('');
+  if(bt) bt.disabled = false;
+}
+
+function _trfMarca(coil, marcado){
+  if(marcado) _trfSel.add(coil); else _trfSel.delete(coil);
+  const bt = document.getElementById('trf-confirmar');
+  if(bt) bt.disabled = _trfSel.size === 0;
+}
+
+async function _trfExecutar(){
+  const bl = document.getElementById('trf-bl').value;
+  const pref = document.getElementById('trf-prefixo').value;
+  const destino = armazemLabel(document.getElementById('trf-destino').value);
+  const origem = document.getElementById('trf-origem').value;
+  if(!bl || !pref || !destino){ showToast('Preencha BL, letra e destino.', '#e05c1a', '#fff'); return; }
+
+  const eleg = _trfElegiveis(bl, pref, origem).filter(c => _trfSel.has(c.coil));
+  if(!eleg.length){ showToast('Nenhuma bobina selecionada.', '#f59e0b', '#000'); return; }
+
+  const t = eleg.reduce((a, c) => a + (parseFloat(c.pesob)||0), 0) / 1000;
+  if(!confirm('Criar ' + eleg.length + ' bobinas com "' + pref + '" na frente, no armazém '
+      + destino + '?\n\n' + t.toFixed(3) + ' t do BL ' + bl
+      + '\n\nAs originais não são alteradas.')) return;
+
+  // A cópia leva tudo da original menos a numeração e o armazém — mesmo BL,
+  // mesmo navio, mesmo cliente, mesmo peso. É a mesma carga, em outro lugar.
+  const novas = eleg.map(c => ({
+    coil: pref + String(c.coil).trim(),
+    navio: c.navio || '', bl: c.bl || '',
+    armazem: destino,
+    cliente: c.cliente || '', viagem: c.viagem || '', produto: c.produto || '',
+    pesob: c.pesob || '', pesol: c.pesol || ''
+  }));
+
+  showLoading('Transferindo ' + novas.length + ' bobinas...');
+  try{
+    await supaUpsertBulk('coilsdb', novas, 'coil,navio,bl', 200,
+      (feitas, total) => showLoading('Transferindo ' + feitas + ' de ' + total + '...'));
+    novas.forEach(n => { if(!coilsDB.some(c => c.coil === n.coil)) coilsDB.push(n); });
+    saveData();
+    _bobIdx = null; _bobIdxTam = -1;          // o índice da leitura por foto envelheceu
+    buildDBNavSelect();
+    renderCoilsGrouped();
+    hideLoading();
+    fecharTransferirBL();
+    showToast('✓ ' + novas.length + ' bobinas transferidas para ' + destino, '#22c55e', '#fff');
+  }catch(e){
+    hideLoading();
+    showToast('⚠ Falhou na gravação: ' + (e.message || e), '#e05c1a', '#fff');
+  }
+}
+
 // ══════════════════════════════════════════
 // DB — TABELA PAGINADA
 // ══════════════════════════════════════════
+function _dbFiltrosDB(){
+  const v=id=>document.getElementById(id)?.value||'';
+  return { q: v('db-search').toLowerCase(), navio: v('db-filter-navio'),
+           bl: v('db-filter-bl'), cliente: v('db-filter-cliente'),
+           armazem: v('db-filter-armazem'), status: v('db-filter-status') };
+}
+
+// Algum filtro está em uso? A lista só aparece quando há pelo menos um —
+// mostrar as 14 mil bobinas de uma vez não ajuda ninguém.
+function _dbTemFiltro(f){
+  f = f || _dbFiltrosDB();
+  return !!(f.q || f.navio || f.bl || f.cliente || f.armazem || f.status);
+}
+
 function _dbGetFiltered(){
-  const q=(document.getElementById('db-search')?.value||'').toLowerCase();
-  const fn=document.getElementById('db-filter-navio')?.value||'';
+  const f=_dbFiltrosDB();
+  const desc=new Set(records.map(r=>r.coil));
+  const exp =new Set(expedicoes.map(r=>r.coil));
   return coilsDB.filter(c=>{
-    const mQ=!q||[c.coil,c.bl,c.cliente,c.navio,c.produto,c.armazem,c.viagem].some(f=>f&&f.toLowerCase().includes(q));
-    return mQ&&(!fn||c.navio===fn);
+    if(f.q && ![c.coil,c.bl,c.cliente,c.navio,c.produto,c.armazem,c.viagem]
+        .some(x=>x && String(x).toLowerCase().includes(f.q))) return false;
+    if(f.navio   && c.navio   !== f.navio)   return false;
+    if(f.bl      && c.bl      !== f.bl)      return false;
+    if(f.cliente && c.cliente !== f.cliente) return false;
+    if(f.armazem && c.armazem !== f.armazem) return false;
+    if(f.status){
+      const d=desc.has(c.coil), e=exp.has(c.coil);
+      if(f.status==='pendente' && d) return false;
+      if(f.status==='estoque'  && (!d || e)) return false;
+      if(f.status==='expedida' && !e) return false;
+    }
+    return true;
   });
 }
 
 function renderCoilsGrouped(){
-  const q=(document.getElementById('db-search')?.value||'').toLowerCase();
-  const fn=document.getElementById('db-filter-navio')?.value||'';
   const container=document.getElementById('db-groups-container');
 
-  if(!q&&!fn){
+  if(!_dbTemFiltro()){
     container.innerHTML=`<div class="empty-state" style="padding:3rem 1rem;"><span class="empty-icon">🔍</span><div style="color:var(--muted);font-size:15px;margin-top:.5rem;">Selecione um navio ou utilize a busca para visualizar os registros.</div></div>`;
     return;
   }
@@ -7533,7 +7956,11 @@ function renderReport(){
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
         const vArm=tarifaBL>0?ton*tarifaBL:0;
-        const _hTarifa=(getHandlingBL(bl)||0);const _hTon=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa*_hTon:0;
+        // Handling cobra só o que está fora do PORTO — a mesma regra da tela de
+        // Faturamento. Somar o BL inteiro conta a bobina transferida duas vezes:
+        // a original que ficou no Porto e a cópia com P que foi para a Pratico.
+        // No PG26139XGGSFD21 dava 475,838 t aqui contra 117,765 t na tela.
+        const _hTarifa=(getHandlingBL(bl)||0);const _hTon=_fatBobinasBL(bl).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa*_hTon:0;
         const total=vArm+vHand;
         const state=getFatState(bl,p.num);
         groupRows.push([
@@ -7920,7 +8347,11 @@ async function exportReportXLSX(){
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
         const vArm=tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
-        const _hTarifa2=(getHandlingBL(bl)||0);const _hTon2=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa2*_hTon2:0;
+        // Handling cobra só o que está fora do PORTO — a mesma regra da tela de
+        // Faturamento. Somar o BL inteiro conta a bobina transferida duas vezes:
+        // a original que ficou no Porto e a cópia com P que foi para a Pratico.
+        // No PG26139XGGSFD21 dava 475,838 t aqui contra 117,765 t na tela.
+        const _hTarifa2=(getHandlingBL(bl)||0);const _hTon2=_fatBobinasBL(bl).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa2*_hTon2:0;
         const total=parseFloat((vArm+vHand).toFixed(2));
         const state=getFatState(bl,p.num);
         rows.push([
@@ -8005,7 +8436,11 @@ function exportReportPDF(){
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
         const vArm=tarifaBL>0?ton*tarifaBL:0;
-        const _hTarifa=(getHandlingBL(bl)||0);const _hTon=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa*_hTon:0;
+        // Handling cobra só o que está fora do PORTO — a mesma regra da tela de
+        // Faturamento. Somar o BL inteiro conta a bobina transferida duas vezes:
+        // a original que ficou no Porto e a cópia com P que foi para a Pratico.
+        // No PG26139XGGSFD21 dava 475,838 t aqui contra 117,765 t na tela.
+        const _hTarifa=(getHandlingBL(bl)||0);const _hTon=_fatBobinasBL(bl).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;const vHand=p.num===1?_hTarifa*_hTon:0;
         const total=vArm+vHand;
         const state=getFatState(bl,p.num);
         totalArm+=vArm; totalHand+=vHand; totalGeral+=total;
