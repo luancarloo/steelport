@@ -3536,11 +3536,31 @@ function _bobTrata(px, bruto){
     return;
   }
 
-  // Nenhum pedaço bate: o código pode estar de outra fábrica, ou a bobina não
-  // está no estoque. Entrega o pedaço mais provável para o aviso normal do lote.
+  // Nenhum pedaço bate com o estoque. Aqui NÃO se adiciona nada sozinho: a mesma
+  // etiqueta costuma trazer mais de um código, e um deles é o peso — na Baosteel
+  // a faixa de cima devolve "9630", que é o peso líquido, não a bobina. Entrar no
+  // lote com isso seria criar uma bobina que não existe. Vai para o campo de
+  // digitação, com o aviso, e quem decide é o operador.
   const provavel = campos.slice().sort((a, b) => b.length - a.length)
                          .find(c => c.length <= 24) || campos[0];
-  _bobEntrega(px, _bobLimpaLeitura(provavel), '');
+  // Mas também não para a leitura na primeira vez: com vários códigos na mesma
+  // etiqueta, o do peso costuma cair antes do da bobina, e travar a tela a cada
+  // passagem seria insuportável. Avisa e continua varrendo; só para se o mesmo
+  // número insistir, o que significa que o operador está mirando algo que não
+  // está no estoque.
+  const marca = _bobCam.semPar && _bobCam.semPar.valor === provavel ? _bobCam.semPar.vezes + 1 : 1;
+  _bobCam.semPar = { valor: provavel, vezes: marca };
+  if(marca < 3){
+    _bobMsg('‹ ' + provavel + ' › não é bobina do estoque — procurando o outro código', '#f59e0b');
+    return;
+  }
+  const inp = document.getElementById(px + 'l-coil-add');
+  if(inp) inp.value = _bobLimpaLeitura(provavel);
+  _bobBip(false);
+  _bobRegistra('? ' + provavel + '  (código lido, fora do estoque)', '#f59e0b');
+  _bobPausa('O código diz "' + provavel + '", e esse número não está no estoque. '
+            + 'Pode ser o código do peso, e não o da bobina — há etiqueta com mais de um. '
+            + 'Confira no campo de digitação ou aponte para o outro código.');
 }
 
 // ── varredura ─────────────────────────────────────────────────────
@@ -3596,6 +3616,30 @@ async function _bobVarre(){
     }catch(e){}
   }
 
+  // Sem leitor nativo, o código de barras fica por conta do ZXing — e só em um
+  // quadro a cada dois, porque ele é mais pesado que o jsQR e a imagem precisa
+  // continuar fluindo na tela.
+  //
+  // Ele não aproveita o recorte do QR: código de barras é largo e fino, e some
+  // no quadrado reduzido que serve ao QR. Vai numa faixa horizontal inteira, em
+  // resolução maior, e a faixa desce a cada volta até varrer a etiqueta toda.
+  if(!achou && !_bobCam.detector && _bobCam.passo % 2 === 1){
+    // Faixas de 28% da altura, descendo de 10% em 10%, ampliadas para 1800px de
+    // largura — foi com essa medida que o código da Baosteel decodificou aqui.
+    // O contador é próprio: amarrado ao passo do QR, as faixas de baixo nunca
+    // chegavam a ser visitadas.
+    _bobCam.faixa = ((_bobCam.faixa || 0) + 1) % 8;
+    const by = Math.round(vh * _bobCam.faixa * 0.10);
+    const bh = Math.min(Math.round(vh * 0.28), vh - by);
+    const be = Math.min(2, 1800 / vw);
+    const bc = document.createElement('canvas');
+    bc.width = Math.round(vw * be); bc.height = Math.round(bh * be);
+    const bx = bc.getContext('2d', { willReadFrequently: true });
+    bx.imageSmoothingQuality = 'high';
+    bx.drawImage(video, 0, by, vw, bh, 0, 0, bc.width, bc.height);
+    achou = _bobLeBarras(bc);
+  }
+
   if(!_bobCam) return;
   if(achou) _bobTrata(px, achou);
   if(_bobCam) _bobCam.timer = setTimeout(_bobVarre, achou ? 700 : 90);
@@ -3612,6 +3656,7 @@ async function abrirCamBobina(px){
   }
   if(document.getElementById('bob-cam')) return;
   _bobMontaTela(px);
+  _bobCarregaBarras();                 // em segundo plano; não bloqueia nada
   const video = document.getElementById('bob-cam-video');
   _bobCam = { px: px, video: video, canvas: document.createElement('canvas'), parado: false,
               ultimo: null, ultimoEm: 0, passo: 0, timer: null, detector: null, stream: null };
@@ -3698,6 +3743,47 @@ function fecharCamBobina(){
 
 const _BOB_ALFA = '0123456789ABCDEFGHJKLMNOPQRSTUVWXYZ-';   // 'I' não existe em nenhuma bobina do banco
 let _bobOcrGeral = null, _bobOcrLinha = null, _bobOcrBloco = null;
+
+// Leitor de código de barras.
+//
+// Parte das etiquetas (Baosteel, por exemplo) não traz QR: o número da bobina
+// está num código de barras embaixo dele. O leitor nativo do Android lê os dois
+// pelo mesmo caminho, mas iPhone e navegadores antigos não têm esse leitor —
+// para esses, este aqui entra. Vem do CDN e é carregado em segundo plano ao
+// abrir a câmera: se o pátio estiver sem sinal, o QR embutido continua valendo
+// e nada trava esperando por ele.
+let _bobBarras = null;
+
+function _bobCarregaBarras(){
+  if(_bobBarras || window.ZXing) return;
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+  s.onload = () => {
+    try{
+      const F = ZXing.BarcodeFormat, D = ZXing.DecodeHintType;
+      const dicas = new Map();
+      dicas.set(D.POSSIBLE_FORMATS, [F.CODE_128, F.CODE_39, F.ITF, F.CODABAR, F.EAN_13]);
+      const leitor = new ZXing.MultiFormatReader();
+      leitor.setHints(dicas);
+      _bobBarras = leitor;
+    }catch(e){ _bobBarras = null; }
+  };
+  document.head.appendChild(s);
+}
+
+function _bobLeBarras(canvas){
+  if(!_bobBarras || !window.ZXing) return null;
+  try{
+    const fonte = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+    const bmp = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(fonte));
+    const r = _bobBarras.decode(bmp);
+    return (r && r.getText) ? r.getText() : null;
+  }catch(e){
+    return null;                       // não achou barras neste quadro
+  }finally{
+    try{ _bobBarras.reset(); }catch(e){}
+  }
+}
 
 async function _bobCarregaOCR(){
   if(window.Tesseract) return true;
@@ -3832,13 +3918,23 @@ function _bobJuntaPalavras(ps){
     L.alt = Math.max(L.alt, alt);
   });
 
+  // Só entram na colagem pedaços que tenham dígito (ou um hífen solto). Assim
+  // "163409012" + "-" + "02" vira o número inteiro, mas "GROSS" + "WEIGHT" +
+  // "7628" nunca se junta — era daí que saíam as leituras com nome de campo.
+  const juntavel = w => {
+    const t = _bobLimpaOCR(w.text);
+    return t.length > 0 && (/[0-9]/.test(t) || /^-+$/.test(t));
+  };
+
   // Dentro de cada linha, cola vizinhas que estejam quase encostadas.
   linhas.forEach(L => {
     const fila = L.itens.sort((a, b) => a.bbox.x0 - b.bbox.x0);
     for(let i = 0; i < fila.length; i++){
+      if(!juntavel(fila[i])) continue;
       let junto = fila[i].text, caixa = fila[i].bbox;
       for(let j = i + 1; j < fila.length && j <= i + 3; j++){
         const b = fila[j];
+        if(!juntavel(b)) break;
         const dx = b.bbox.x0 - caixa.x1;
         if(dx < -L.alt * 0.4 || dx > L.alt * 1.4) break;   // longe: outro campo
         junto += b.text;
@@ -3859,6 +3955,24 @@ function _bobJuntaPalavras(ps){
 // estiver logo à direita de uma palavra "Coil" na mesma linha — mas a palavra
 // "COIL" também aparece no título da etiqueta, então a proximidade horizontal é
 // que decide, não a primeira ocorrência.
+// Palavras que aparecem impressas na etiqueta e nunca dentro de um número de
+// bobina. Conferido uma a uma contra as 14.105 do banco em 09/09/2026: nenhuma
+// bobina contém nenhuma delas. Sem esta peneira, "GROSS WEIGHT 7628" virava o
+// pedaço "GROSSWEIGHT7628" e entrava na disputa como se fosse a numeração.
+const _BOB_ROTULOS = ('GROSS NET WEIGHT SIZE LENGTH COATING MASS GRADE COLOR COLOUR '
+  + 'STANDARD CLASSIFICATION CLASS PROPERTY SURFACE TREATMENT PASSIVATED RESIN COATED '
+  + 'OILED DATE PRODUCTION PRODUCT CONTRACT HEAT SPECIFICATION DESTINATION PURCHASER '
+  + 'INSPECTOR FINISH PAINT KEEP DRY MADE CHINA VIETNAM BRAZIL PRIME HOT DIP GALVANIZED '
+  + 'GALVALUME PREPAINTED PAINTED STEEL SHEET ASTM ITEM PACK NUMBER SHEETS CORE BASE '
+  + 'ACTUAL MARKER REFERENCE ALLOY ZINC TEL FAX HTTP WWW COM GROUP COMPANY LTD INC IRON '
+  + 'PLATE INDUSTRIAL PARK STREET WARD CITY JOINT STOCK SPEC QUALITY THICKNESS WIDTH '
+  + 'ORDER LOT BATCH LINE LEVEL LOCATION LABEL').split(' ');
+
+function _bobTemRotulo(t){
+  for(const r of _BOB_ROTULOS) if(t.indexOf(r) >= 0) return true;
+  return false;
+}
+
 // Quanto um pedaço se parece com número de bobina, sem olhar o banco.
 // Serve para escolher entre pedaços quando a etiqueta não traz o rótulo
 // "Coil No." — aí não há proximidade para desempatar, e ir pelo tamanho
@@ -3876,11 +3990,16 @@ function _bobCaraDeBobina(t){
 }
 
 function _bobTokens(ps){
-  // O rótulo muda de fábrica para fábrica: "Coil No.", "COIL NO", "COIL NUMBER".
-  // O que não muda é começar com COIL — e o OCR às vezes troca o O por 0.
+  // O rótulo muda de fábrica para fábrica — "Coil No.", "COIL N0", "COIL/PACK NO",
+  // "COIL NUMBER" — e o leitor ainda troca O por 0 e I por 1. O que não muda é
+  // começar com COIL, então é só isso que se exige. As barras e os pontos já
+  // caíram na limpeza, então "COIL/PACK NO." chega aqui como "COILPACKNO".
+  //
+  // Etiqueta que traz só a numeração em corpo grande, sem escrever COIL em lugar
+  // nenhum, não tem âncora — e aí o caminho sem âncora assume, mais abaixo.
   const coil = ps.filter(p => /^C[O0][I1]?L/.test(_bobLimpaOCR(p.text)));
   return ps.map(p => ({ p: p, t: _bobLimpaOCR(p.text) }))
-    .filter(o => o.t.length >= 8 && /[0-9]/.test(o.t))
+    .filter(o => o.t.length >= 8 && /[0-9]/.test(o.t) && !_bobTemRotulo(o.t))
     .map(o => {
       let perto = 99999;
       coil.forEach(cp => {
@@ -3986,18 +4105,29 @@ function _bobJunta(a, b){
   return r;
 }
 
+// Já dá para parar? Se o que saiu até agora identifica uma bobina do estoque
+// sem sombra de dúvida, não há por que gastar mais passadas. É o que faz a
+// leitura terminar em 10 segundos quando a etiqueta está boa, em vez de rodar
+// todas as tentativas até o fim.
+function _bobResolvido(res){
+  if(!res || !(res.leituras || []).length) return false;
+  const m = _bobCasa(res.leituras, res.pesos, _bobCam ? _bobCam.px : 'd');
+  return m.tipo === 'exato' || (m.tipo === 'provavel' && m.dist <= 1);
+}
+
 async function _bobLeQuadro(video){
   const sabe = _bobCam && _bobCam.giro !== null && _bobCam.giro !== undefined;
   const g0 = sabe ? _bobCam.giro : 0;
 
   let res = await _bobPassada(video, g0, 2000);
+  if(_bobResolvido(res)){ if(_bobCam) _bobCam.giro = g0; return res; }
   if(!_bobPromissora(res)){
     // Etiquetas que trazem só a numeração em corpo grande, sem tabela, somem na
     // passada ampliada: cada dígito fica alto demais. Uma passada menor devolve
     // o mesmo número num tamanho que o leitor entende. As duas se somam.
     res = _bobJunta(res, await _bobPassada(video, g0, 1000));
   }
-  if(sabe || _bobPromissora(res)){ if(_bobCam) _bobCam.giro = g0; return res; }
+  if(sabe || _bobPromissora(res) || _bobResolvido(res)){ if(_bobCam) _bobCam.giro = g0; return res; }
 
   const g = await _bobOrienta(video);
   if(_bobCam) _bobCam.giro = g;
