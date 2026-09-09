@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="4SIDES Steel Port">
+  <rect width="512" height="512" rx="96" fill="#0a0c0f"/>
+  <g fill="none" stroke="#f0a500" stroke-width="14" stroke-linecap="round">
+    <circle cx="256" cy="256" r="150" opacity=".35"/>
+    <circle cx="256" cy="256" r="112" opacity=".2"/>
+  </g>
+  <!-- rosa dos ventos, como na marca -->
+  <g fill="#f0a500">
+    <path d="M256 96 L286 226 L256 256 L226 226 Z"/>
+    <path d="M256 416 L226 286 L256 256 L286 286 Z" opacity=".75"/>
+    <path d="M96 256 L226 226 L256 256 L226 286 Z" opacity=".75"/>
+    <path d="M416 256 L286 286 L256 256 L286 226 Z"/>
+  </g>
+  <circle cx="256" cy="256" r="16" fill="#0a0c0f"/>
+</svg>

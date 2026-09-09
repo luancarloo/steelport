@@ -1,0 +1,27 @@
+{
+  "name": "4SIDES · STEELPORT",
+  "short_name": "STEELPORT",
+  "description": "Gestão de armazém e bobinas — 4SIDES Steel Port",
+  "lang": "pt-BR",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0a0c0f",
+  "theme_color": "#0a0c0f",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "./icone.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icone-mascara.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
