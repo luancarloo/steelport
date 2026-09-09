@@ -3330,7 +3330,14 @@ function _bobLimpaLeitura(txt){
   return s;
 }
 
-function _bobSemZeros(s){ return String(s||'').toUpperCase().replace(/^0+/, ''); }
+// Forma de comparação: sem hífen e sem os zeros da frente.
+//
+// A Baosteel imprime "163409012-02" e o banco guarda "16340901202" — o hífen se
+// perde na importação, às vezes. Não sempre: 1.542 bobinas do banco têm hífen.
+// Como não dá para saber de que lado ele está, ele sai dos dois na comparação.
+// É seguro: nas 14.105 bobinas isso junta apenas 2 pares (HD4251126B1-1 com
+// HD4251126B11), e par junto vira pergunta ao operador, nunca escolha às cegas.
+function _bobSemZeros(s){ return String(s||'').toUpperCase().replace(/-/g, '').replace(/^0+/, ''); }
 
 function _bobIndice(){
   if(_bobIdx && _bobIdxTam === coilsDB.length) return _bobIdx;
@@ -3504,15 +3511,36 @@ function _bobTrata(px, bruto){
   const agora = Date.now();
   if(_bobCam.ultimo === bruto && agora - _bobCam.ultimoEm < 2500) return;
   _bobCam.ultimo = bruto; _bobCam.ultimoEm = agora;
-  const r = _bobAcha(bruto);
-  if(!r) return;
-  if(r.ambiguo){
+
+  const campos = _bobCamposDoCodigo(bruto);
+  if(!campos.length) return;
+
+  // Qual dos pedaços do código é uma bobina de verdade?
+  const achados = [];
+  for(const c of campos){
+    const r = _bobAcha(c);
+    if(!r) continue;
+    if(r.ambiguo){
+      _bobBip(false);
+      _bobPausa('A leitura ' + c + ' bate com mais de uma bobina ('
+                + r.ambiguo.join(', ') + '). Escolha pelo campo de digitação.');
+      return;
+    }
+    if(r.db && !achados.some(a => a.coil === r.coil)) achados.push(r);
+  }
+  if(achados.length === 1){ _bobEntrega(px, achados[0].coil, achados[0].ajuste); return; }
+  if(achados.length > 1){
     _bobBip(false);
-    _bobPausa('A leitura ' + _bobLimpaLeitura(bruto) + ' bate com mais de uma bobina ('
-              + r.ambiguo.join(', ') + '). Escolha pelo campo de digitação.');
+    _bobEscolha(px, 'O código traz mais de um número que existe no estoque. Toque no da etiqueta:',
+                achados.map(a => a.db), campos[0]);
     return;
   }
-  _bobEntrega(px, r.coil, r.ajuste);
+
+  // Nenhum pedaço bate: o código pode estar de outra fábrica, ou a bobina não
+  // está no estoque. Entrega o pedaço mais provável para o aviso normal do lote.
+  const provavel = campos.slice().sort((a, b) => b.length - a.length)
+                         .find(c => c.length <= 24) || campos[0];
+  _bobEntrega(px, _bobLimpaLeitura(provavel), '');
 }
 
 // ── varredura ─────────────────────────────────────────────────────
@@ -3591,8 +3619,13 @@ async function abrirCamBobina(px){
   // O leitor nativo do aparelho, quando existe, é bem mais rápido que o jsQR.
   try{
     if('BarcodeDetector' in window){
+      // A Baosteel não usa QR: o número da bobina está num código de barras
+      // Code 39 embaixo dele. O leitor nativo do aparelho lê os dois formatos
+      // pelo mesmo caminho — o jsQR embutido, não, ele só faz QR.
+      const querem = ['qr_code','code_128','code_39','itf','codabar','data_matrix'];
       const fmts = await window.BarcodeDetector.getSupportedFormats();
-      if(fmts.includes('qr_code')) _bobCam.detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      const usar = querem.filter(f => fmts.includes(f));
+      if(usar.length) _bobCam.detector = new window.BarcodeDetector({ formats: usar });
     }
   }catch(e){}
 
@@ -3746,7 +3779,10 @@ function _bobZoom(c, b, alturaAlvo){
   const x1 = Math.min(c.width, b.x1 + fw), y1 = Math.min(c.height, b.y1 + fh);
   const sw = x1 - x0, sh = y1 - y0;
   if(sw < 4 || sh < 4) return null;
-  const esc = Math.min(8, Math.max(1, alturaAlvo / sh));
+  // Pode ampliar (número pequeno da tabela) e também encolher: em etiquetas que
+  // trazem só a numeração em corpo grande, cada dígito passa de 200px de altura
+  // e o leitor se perde — encolher até uns 150px devolve a leitura.
+  const esc = Math.min(8, Math.max(0.15, alturaAlvo / sh));
   const o = document.createElement('canvas');
   o.width = Math.round(sw * esc); o.height = Math.round(sh * esc);
   const x = o.getContext('2d', { willReadFrequently: true });
@@ -3771,10 +3807,74 @@ function _bobPalavras(data){
 
 const _bobLimpaOCR = t => String(t || '').toUpperCase().replace(/[^0-9A-Z\-]/g, '');
 
+// O leitor entrega palavra por palavra, e o número às vezes vem partido: a
+// Baosteel imprime "163409012 - 02" com espaços, e sai "163409012", "-", "02".
+// Nenhum dos pedaços é a bobina; o número inteiro só existe se forem colados.
+// Esta função devolve as colagens de palavras vizinhas na mesma linha, como
+// pedaços a mais — não substitui os originais, soma-se a eles.
+function _bobJuntaPalavras(ps){
+  const extra = [];
+
+  // Primeiro agrupa as palavras em LINHAS. Andar na ordem global das palavras
+  // não funciona: entre "163409012" e "02" entram palavras de outras colunas
+  // com altura parecida, e a colagem nunca acontecia.
+  const linhas = [];
+  ps.forEach(p => {
+    const alt = p.bbox.y1 - p.bbox.y0;
+    if(alt <= 2) return;
+    const meio = (p.bbox.y0 + p.bbox.y1) / 2;
+    let L = null;
+    for(const c of linhas){
+      if(Math.abs(c.meio - meio) < Math.max(alt, c.alt) * 0.6){ L = c; break; }
+    }
+    if(!L){ L = { meio: meio, alt: alt, itens: [] }; linhas.push(L); }
+    L.itens.push(p);
+    L.alt = Math.max(L.alt, alt);
+  });
+
+  // Dentro de cada linha, cola vizinhas que estejam quase encostadas.
+  linhas.forEach(L => {
+    const fila = L.itens.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+    for(let i = 0; i < fila.length; i++){
+      let junto = fila[i].text, caixa = fila[i].bbox;
+      for(let j = i + 1; j < fila.length && j <= i + 3; j++){
+        const b = fila[j];
+        const dx = b.bbox.x0 - caixa.x1;
+        if(dx < -L.alt * 0.4 || dx > L.alt * 1.4) break;   // longe: outro campo
+        junto += b.text;
+        // A maior bobina do banco tem 20 caracteres. Colagem maior que isso não
+        // é número de bobina, é frase — e o rodapé das etiquetas, cheio de
+        // telefone e fax, virava um pedaço gigante que expulsava o número certo.
+        if(_bobLimpaOCR(junto).length > 22) break;
+        caixa = { x0: caixa.x0, y0: Math.min(caixa.y0, b.bbox.y0),
+                  x1: b.bbox.x1,  y1: Math.max(caixa.y1, b.bbox.y1) };
+        extra.push({ text: junto, bbox: caixa, confidence: fila[i].confidence });
+      }
+    }
+  });
+  return extra;
+}
+
 // Escolhe os pedaços de texto que podem ser o número da bobina. Ganha peso quem
 // estiver logo à direita de uma palavra "Coil" na mesma linha — mas a palavra
 // "COIL" também aparece no título da etiqueta, então a proximidade horizontal é
 // que decide, não a primeira ocorrência.
+// Quanto um pedaço se parece com número de bobina, sem olhar o banco.
+// Serve para escolher entre pedaços quando a etiqueta não traz o rótulo
+// "Coil No." — aí não há proximidade para desempatar, e ir pelo tamanho
+// escolhia justamente as frases do rodapé.
+function _bobCaraDeBobina(t){
+  const n = t.length;
+  if(n < 8 || n > 22) return -1;
+  const digitos = (t.match(/[0-9]/g) || []).length / n;
+  let nota = 0;
+  if(n >= 9 && n <= 20) nota += 3;          // faixa dos números do banco
+  if(digitos >= 0.6) nota += 2;             // 80% dos caracteres do banco são dígitos
+  if(digitos >= 0.9) nota += 1;
+  if(/[A-Z]{4,}/.test(t)) nota -= 3;        // quatro letras seguidas é palavra, não número
+  return nota;
+}
+
 function _bobTokens(ps){
   // O rótulo muda de fábrica para fábrica: "Coil No.", "COIL NO", "COIL NUMBER".
   // O que não muda é começar com COIL — e o OCR às vezes troca o O por 0.
@@ -3791,7 +3891,12 @@ function _bobTokens(ps){
       });
       return { texto: o.t, bbox: o.p.bbox, perto: perto };
     })
-    .sort((a, b) => a.perto - b.perto);
+    // Primeiro a proximidade do rótulo; depois a cara de número de bobina; e só
+    // então o tamanho — que resolve o caso do número partido, onde o pedaço
+    // colado é o número inteiro.
+    .sort((a, b) => (a.perto - b.perto)
+                 || (_bobCaraDeBobina(b.texto) - _bobCaraDeBobina(a.texto))
+                 || (b.texto.length - a.texto.length));
 }
 
 // Descobre de que lado a etiqueta está, barato: quatro passadas pequenas
@@ -3809,7 +3914,8 @@ async function _bobOrienta(video){
     let n = 0;
     try{
       const r = await _bobOcrGeral.recognize(_bobRealce(_bobQuadro(video, g, 1100)), {}, { text: true, blocks: true });
-      const toks = _bobTokens(_bobPalavras(r.data)).map(t => t.texto);
+      const ps = _bobPalavras(r.data);
+      const toks = _bobTokens(ps.concat(_bobJuntaPalavras(ps))).map(t => t.texto);
       toks.forEach(t => { if(t.length >= 10 && /[0-9]{6}/.test(t)) n += 3; });
       // O que decide não é a quantidade de números e sim se algum deles PARECE
       // uma bobina do estoque. De lado o OCR também produz números compridos —
@@ -3826,11 +3932,12 @@ async function _bobOrienta(video){
 }
 
 // Uma passada completa num quadro: devolve todas as leituras e os pesos vistos.
-async function _bobPassada(video, g){
+async function _bobPassada(video, g, alvo){
   const vazio = { leituras: [], pesos: [] };
-  const limpo = _bobQuadro(video, g, 2000);
+  const limpo = _bobQuadro(video, g, alvo || 2000);
   const r = await _bobOcrGeral.recognize(_bobRealce(limpo), {}, { text: true, blocks: true });
-  const toks = _bobTokens(_bobPalavras(r.data));
+  const ps = _bobPalavras(r.data);
+  const toks = _bobTokens(ps.concat(_bobJuntaPalavras(ps)));
   if(!toks.length) return vazio;
 
   // Com a âncora "Coil No." na etiqueta, os dois pedaços mais próximos dela
@@ -3872,14 +3979,30 @@ function _bobPromissora(res){
 // O aparelho quase sempre entrega a imagem em pé, então a passada boa é feita
 // direto, sem procurar orientação. A busca só entra quando o que saiu não tem
 // cara de número — e aí ela roda pequena, a 900px, nas outras três posições.
+function _bobJunta(a, b){
+  const r = { leituras: (a.leituras || []).slice(), pesos: (a.pesos || []).slice() };
+  (b.leituras || []).forEach(x => { if(r.leituras.indexOf(x) < 0) r.leituras.push(x); });
+  (b.pesos || []).forEach(x => { if(r.pesos.indexOf(x) < 0) r.pesos.push(x); });
+  return r;
+}
+
 async function _bobLeQuadro(video){
-  if(_bobCam && _bobCam.giro !== null && _bobCam.giro !== undefined)
-    return await _bobPassada(video, _bobCam.giro);
-  const res = await _bobPassada(video, 0);
-  if(_bobPromissora(res)){ if(_bobCam) _bobCam.giro = 0; return res; }
+  const sabe = _bobCam && _bobCam.giro !== null && _bobCam.giro !== undefined;
+  const g0 = sabe ? _bobCam.giro : 0;
+
+  let res = await _bobPassada(video, g0, 2000);
+  if(!_bobPromissora(res)){
+    // Etiquetas que trazem só a numeração em corpo grande, sem tabela, somem na
+    // passada ampliada: cada dígito fica alto demais. Uma passada menor devolve
+    // o mesmo número num tamanho que o leitor entende. As duas se somam.
+    res = _bobJunta(res, await _bobPassada(video, g0, 1000));
+  }
+  if(sabe || _bobPromissora(res)){ if(_bobCam) _bobCam.giro = g0; return res; }
+
   const g = await _bobOrienta(video);
   if(_bobCam) _bobCam.giro = g;
-  return g === 0 ? res : await _bobPassada(video, g);
+  if(g === g0) return res;
+  return _bobJunta(res, await _bobPassada(video, g, 2000));
 }
 
 // ── casamento com o banco ─────────────────────────────────────────
@@ -3929,6 +4052,34 @@ function _bobVariantes(txt){
   return v.filter(x => x.length >= 8);
 }
 
+// Cada fábrica embala o número do seu jeito no QR ou no código de barras:
+//
+//   Hoa Sen   T01140326060011101*302009251
+//   Tianjin   TY9508069C3Zm,3,1879549
+//   Nam Kim   {|L1D{|T11004076340{|T41004725191{|U38880.000{|U5950{|V2
+//   Baosteel  16340901401            (código de barras, sem enfeite)
+//
+// Em vez de tratar fábrica por fábrica — e quebrar na próxima que aparecer — o
+// conteúdo é picado em pedaços e TODOS viram candidatos. Quem decide qual é a
+// bobina é o banco. Pedaço que não é bobina simplesmente não casa com nada.
+function _bobCamposDoCodigo(txt){
+  const cru = String(txt || '');
+  const saida = [];
+  const adiciona = v => {
+    const x = _bobLimpaOCR(v);
+    if(x.length >= 8 && saida.indexOf(x) < 0) saida.push(x);
+  };
+  adiciona(cru);
+  cru.split(/[^0-9A-Za-z\-]+/).forEach(p => {
+    adiciona(p);
+    // campos do tipo GS1 vêm com uma etiqueta de duas letras na frente
+    // ("T41004725191" é o campo T4 com o valor 1004725191)
+    const m = /^[A-Za-z][0-9](.+)$/.exec(p);
+    if(m) adiciona(m[1]);
+  });
+  return saida;
+}
+
 function _bobCasa(leituras, pesos, px){
   const pool = _bobPool(px);
   const brutas = [];
@@ -3971,11 +4122,21 @@ function _bobCasa(leituras, pesos, px){
     if(bate && perto <= 3) soma -= 3;
     else if(kgs.length && temPeso) soma += 1;  // peso lido que não bate enfraquece
     return { c: c, soma: soma, perto: perto, bate: bate };
-  }).sort((a, b) => (a.soma - b.soma) || (a.perto - b.perto));
+  // Manda a MELHOR leitura, não a soma.
+  //
+  // Ordenar pela soma parecia mais robusto, mas fazia o contrário: cada leitura
+  // ruim a mais — e as colagens produzem várias — entrava na conta e afundava a
+  // candidata que uma das leituras já tinha acertado em cheio. Com a melhor
+  // leitura mandando, uma leitura exata ganha de qualquer ruído; a soma continua
+  // resolvendo o empate entre duas candidatas igualmente próximas, que foi o
+  // caso da 013001 contra a 013100.
+  }).sort((a, b) => (a.perto - b.perto) || (a.soma - b.soma));
 
   const melhor = notas[0];
   if(!melhor || melhor.perto > 3) return { tipo: 'nada', leitura: brutas[0] };
-  const folga = notas[1] ? notas[1].soma - melhor.soma : 99;
+  const seg = notas[1];
+  const folga = !seg ? 99
+              : (seg.perto > melhor.perto ? 99 : seg.soma - melhor.soma);
   // Perto e destacada das outras: propõe uma só, com o número grande na tela.
   if(melhor.perto <= 2 && folga >= 2)
     return { tipo: 'provavel', db: melhor.c, coil: melhor.c.coil,
