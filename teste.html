@@ -3320,9 +3320,13 @@ let _bobIdxTam = -1;
 function _bobLimpaLeitura(txt){
   let s = String(txt||'').toUpperCase().trim();
   const est = s.indexOf('*');
-  if(est > 0) s = s.slice(0, est);
+  const formatoT = est > 0;              // "T<bobina>*<item>"
+  if(formatoT) s = s.slice(0, est);
   s = s.replace(/[^A-Z0-9\-]/g, '');
-  if(/^T[0-9]/.test(s)) s = s.slice(1);
+  // O T só é enfeite do QR no formato com asterisco. Fora dele o T faz parte do
+  // número: 938 bobinas do banco começam com T e dígito (T112610424001, do
+  // FINCH ARROW). Arrancar sempre fazia essas bobinas nunca serem encontradas.
+  if(formatoT && /^T[0-9]/.test(s)) s = s.slice(1);
   return s;
 }
 
@@ -3358,6 +3362,11 @@ function _bobAcha(lido){
   if(!s) return null;
   const exato = coilsDB.find(c => c.coil === s);
   if(exato) return { coil: exato.coil, db: exato, ajuste: '' };
+  // sobrou dúvida sobre o T? tenta a outra forma antes de desistir
+  if(/^T[0-9]/.test(s)){
+    const semT = coilsDB.find(c => c.coil === s.slice(1));
+    if(semT) return { coil: semT.coil, db: semT, ajuste: '' };
+  }
   const cands = _bobIndice().get(_bobSemZeros(s)) || [];
   if(cands.length === 1) return { coil: cands[0].coil, db: cands[0], ajuste: 'zero à esquerda' };
   if(cands.length > 1)  return { coil: null, db: null, ambiguo: cands.map(c => c.coil) };
@@ -3421,7 +3430,7 @@ function _bobMontaTela(px){
         style="max-height:26vh;overflow-y:auto;padding:.5rem .75rem;font-family:'JetBrains Mono',monospace;font-size:12px;"></div>
       <div style="display:flex;gap:.5rem;padding:.7rem;border-top:1px solid rgba(255,255,255,.1);">
         <button onclick="_bobLerTexto()" class="btn btn-secondary" style="flex:1;">
-          🔤 LER O NÚMERO ESCRITO</button>
+          🔤 LER O COIL No.</button>
         <button onclick="fecharCamBobina()" class="btn" style="flex:1;background:${cor};color:#fff;">
           CONCLUIR</button>
       </div>
@@ -3630,13 +3639,33 @@ function fecharCamBobina(){
   _bobCam = null;
   if(el) el.remove();
   if(px) renderLoteList(px);
+  _bobSoltaOCR();          // os motores de OCR seguram bastante memória
 }
 
-// ── quando o QR não sai: lê o número escrito ──────────────────────
-// Vale para etiqueta rasgada, QR apagado ou coberto de sujeira. É bem mais
-// lento (uns 8 segundos) e erra mais que o QR — por isso nunca entra sozinho:
-// o que sair vai para o campo de digitação para o operador conferir, a não ser
-// que case exatamente com uma bobina do banco.
+// ── quando o QR não sai: lê o "Coil No." escrito ──────────────────
+// A maior parte das bobinas não tem QR na etiqueta, então este é o caminho
+// principal, não a reserva. E ler dígito por dígito não basta: as bobinas de
+// um mesmo navio são numeradas em sequência, e 97% delas têm outra bobina real
+// a UM caractere de distância. Um único caractere errado não dá "não encontrei"
+// — dá a bobina do lado. Medido no banco em 08/09/2026.
+//
+// Por isso a leitura não tenta acertar o número de primeira; ela junta várias
+// leituras da mesma etiqueta e deixa o BANCO decidir qual bobina é:
+//
+//   1. uma passada no quadro inteiro, que devolve o texto e a posição de cada
+//      palavra — é dela que sai o "Coil No." e o número ao lado;
+//   2. uma releitura AMPLIADA só do número, que costuma consertar o último
+//      caractere (o mais errado, por ficar colado na borda da tabela);
+//   3. o peso impresso na etiqueta, que serve de conferência independente:
+//      se o Net Weight lido bate com o do banco, a bobina está confirmada.
+//
+// No fim, cada bobina do estoque recebe a distância até a leitura mais próxima.
+// Se a melhor for única, o sistema propõe; se houver empate, ele NÃO escolhe —
+// mostra as candidatas com BL e peso para o operador tocar na certa.
+
+const _BOB_ALFA = '0123456789ABCDEFGHJKLMNOPQRSTUVWXYZ-';   // 'I' não existe em nenhuma bobina do banco
+let _bobOcrGeral = null, _bobOcrLinha = null, _bobOcrBloco = null;
+
 async function _bobCarregaOCR(){
   if(window.Tesseract) return true;
   return new Promise(res => {
@@ -3648,31 +3677,52 @@ async function _bobCarregaOCR(){
   });
 }
 
-async function _bobLerTexto(){
-  if(!_bobCam) return;
-  const video = _bobCam.video, px = _bobCam.px;
-  if(!video.videoWidth){ showToast('Câmera ainda iniciando.', '#f59e0b', '#000'); return; }
-  _bobCam.parado = true;
-  _bobMsg('Segure firme… lendo o número escrito', '#f59e0b');
-
-  const ok = await _bobCarregaOCR();
-  if(!_bobCam) return;
-  if(!ok){
-    _bobPausa('A leitura do texto precisa de internet para carregar o leitor. Use o QR ou digite o número.');
-    return;
+// Os motores custam alguns segundos para nascer; nascem uma vez por sessão de
+// câmera e são reaproveitados em cada tentativa.
+async function _bobPreparaOCR(){
+  if(!await _bobCarregaOCR()) return false;
+  if(!_bobOcrGeral) _bobOcrGeral = await window.Tesseract.createWorker('eng');
+  if(!_bobOcrLinha){
+    _bobOcrLinha = await window.Tesseract.createWorker('eng');
+    await _bobOcrLinha.setParameters({ tessedit_pageseg_mode: '7', tessedit_char_whitelist: _BOB_ALFA });
   }
+  if(!_bobOcrBloco){
+    _bobOcrBloco = await window.Tesseract.createWorker('eng');
+    await _bobOcrBloco.setParameters({ tessedit_pageseg_mode: '8', tessedit_char_whitelist: _BOB_ALFA });
+  }
+  return true;
+}
 
-  // recorta o miolo (o que está dentro da moldura), amplia e realça o contraste
+async function _bobSoltaOCR(){
+  for(const w of [_bobOcrGeral, _bobOcrLinha, _bobOcrBloco]){
+    try{ if(w) await w.terminate(); }catch(e){}
+  }
+  _bobOcrGeral = _bobOcrLinha = _bobOcrBloco = null;
+}
+
+// Recorta o miolo do vídeo (o que está dentro da moldura), gira e amplia.
+function _bobQuadro(video, graus, alvoLargura){
   const vw = video.videoWidth, vh = video.videoHeight;
-  const sw = Math.round(vw * 0.85), sh = Math.round(vh * 0.85);
-  const sx = Math.round((vw - sw) / 2), sy = Math.round((vh - sh) / 2);
-  const esc = 2000 / sw;
-  const c = document.createElement('canvas');
-  c.width = Math.round(sw * esc); c.height = Math.round(sh * esc);
-  const ctx = c.getContext('2d', { willReadFrequently: true });
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(video, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  const d = ctx.getImageData(0, 0, c.width, c.height), a = d.data;
+  const rw = Math.round(vw * 0.92), rh = Math.round(vh * 0.92);
+  const rx = Math.round((vw - rw) / 2), ry = Math.round((vh - rh) / 2);
+  const vira = (graus === 90 || graus === 270);
+  const lw = vira ? rh : rw, lh = vira ? rw : rh;
+  const esc = Math.min(3, alvoLargura / lw);
+  const w = Math.round(lw * esc), h = Math.round(lh * esc);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high';
+  x.translate(w / 2, h / 2); x.rotate(graus * Math.PI / 180);
+  x.drawImage(video, rx, ry, rw, rh, -rw * esc / 2, -rh * esc / 2, rw * esc, rh * esc);
+  return c;
+}
+
+// Cinza + esticão de contraste, numa cópia — o original fica limpo para os recortes.
+function _bobRealce(c){
+  const o = document.createElement('canvas'); o.width = c.width; o.height = c.height;
+  const x = o.getContext('2d', { willReadFrequently: true });
+  x.drawImage(c, 0, 0);
+  const d = x.getImageData(0, 0, o.width, o.height), a = d.data;
   let mn = 255, mx = 0;
   for(let i = 0; i < a.length; i += 4){
     const g = (a[i] * 0.299 + a[i+1] * 0.587 + a[i+2] * 0.114) | 0;
@@ -3685,46 +3735,331 @@ async function _bobLerTexto(){
     const g = Math.max(0, Math.min(255, (a[i] - mn) * amp)) | 0;
     a[i] = a[i+1] = a[i+2] = g;
   }
-  ctx.putImageData(d, 0, 0);
+  x.putImageData(d, 0, 0);
+  return o;
+}
 
-  let texto = '';
-  try{
-    const w = await window.Tesseract.createWorker('eng');
-    const out = await w.recognize(c);
-    texto = (out && out.data && out.data.text) || '';
-    await w.terminate();
-  }catch(e){
-    if(_bobCam) _bobPausa('Não consegui ler o texto: ' + (e.message || e));
+// Amplia a caixa de uma palavra até dar altura de leitura confortável.
+function _bobZoom(c, b, alturaAlvo){
+  const fw = Math.round((b.x1 - b.x0) * 0.08), fh = Math.round((b.y1 - b.y0) * 0.45);
+  const x0 = Math.max(0, b.x0 - fw), y0 = Math.max(0, b.y0 - fh);
+  const x1 = Math.min(c.width, b.x1 + fw), y1 = Math.min(c.height, b.y1 + fh);
+  const sw = x1 - x0, sh = y1 - y0;
+  if(sw < 4 || sh < 4) return null;
+  const esc = Math.min(8, Math.max(1, alturaAlvo / sh));
+  const o = document.createElement('canvas');
+  o.width = Math.round(sw * esc); o.height = Math.round(sh * esc);
+  const x = o.getContext('2d', { willReadFrequently: true });
+  x.imageSmoothingQuality = 'high';
+  x.drawImage(c, x0, y0, sw, sh, 0, 0, o.width, o.height);
+  return o;
+}
+
+// A árvore que o Tesseract devolve muda de forma entre versões; esta varredura
+// pega as folhas com texto e caixa, que é o que interessa.
+function _bobPalavras(data){
+  const o = [];
+  const anda = n => {
+    if(!n) return;
+    if(Array.isArray(n)) return n.forEach(anda);
+    if(n.text !== undefined && n.bbox && !n.words && !n.lines && !n.paragraphs) o.push(n);
+    ['blocks','paragraphs','lines','words'].forEach(k => { if(n[k]) anda(n[k]); });
+  };
+  anda(data.blocks || []);
+  return o.filter(p => p.text && p.text.trim());
+}
+
+const _bobLimpaOCR = t => String(t || '').toUpperCase().replace(/[^0-9A-Z\-]/g, '');
+
+// Escolhe os pedaços de texto que podem ser o número da bobina. Ganha peso quem
+// estiver logo à direita de uma palavra "Coil" na mesma linha — mas a palavra
+// "COIL" também aparece no título da etiqueta, então a proximidade horizontal é
+// que decide, não a primeira ocorrência.
+function _bobTokens(ps){
+  // O rótulo muda de fábrica para fábrica: "Coil No.", "COIL NO", "COIL NUMBER".
+  // O que não muda é começar com COIL — e o OCR às vezes troca o O por 0.
+  const coil = ps.filter(p => /^C[O0][I1]?L/.test(_bobLimpaOCR(p.text)));
+  return ps.map(p => ({ p: p, t: _bobLimpaOCR(p.text) }))
+    .filter(o => o.t.length >= 8 && /[0-9]/.test(o.t))
+    .map(o => {
+      let perto = 99999;
+      coil.forEach(cp => {
+        const alt = cp.bbox.y1 - cp.bbox.y0;
+        const dy = Math.abs((cp.bbox.y0 + cp.bbox.y1) / 2 - (o.p.bbox.y0 + o.p.bbox.y1) / 2);
+        const dx = o.p.bbox.x0 - cp.bbox.x1;
+        if(dx > -alt && dy < alt * 1.3) perto = Math.min(perto, dx);
+      });
+      return { texto: o.t, bbox: o.p.bbox, perto: perto };
+    })
+    .sort((a, b) => a.perto - b.perto);
+}
+
+// Descobre de que lado a etiqueta está, barato: quatro passadas pequenas
+// (900px) só para contar quantos números compridos aparecem. A passada boa,
+// cara, roda uma vez só, já na posição certa.
+//
+// Antes isto parava na primeira orientação que devolvesse qualquer coisa — e
+// de lado o OCR devolve lixo com cara de número ("TGE100992"), então ele
+// parava errado. Agora as quatro são comparadas e vence a que enxerga mais
+// números compridos.
+async function _bobOrienta(video){
+  let melhor = 0, nota = -1;
+  const px = _bobCam ? _bobCam.px : 'd';
+  for(const g of [270, 90, 180]){
+    let n = 0;
+    try{
+      const r = await _bobOcrGeral.recognize(_bobRealce(_bobQuadro(video, g, 1100)), {}, { text: true, blocks: true });
+      const toks = _bobTokens(_bobPalavras(r.data)).map(t => t.texto);
+      toks.forEach(t => { if(t.length >= 10 && /[0-9]{6}/.test(t)) n += 3; });
+      // O que decide não é a quantidade de números e sim se algum deles PARECE
+      // uma bobina do estoque. De lado o OCR também produz números compridos —
+      // só que nenhum deles bate com o banco.
+      const m = _bobCasa(toks, [], px);
+      if(m.tipo === 'exato') n += 100;
+      else if(m.tipo === 'provavel') n += 50;
+      else if(m.tipo === 'lista') n += 20;
+    }catch(e){}
+    if(n > nota){ nota = n; melhor = g; }
+    if(nota >= 50) break;                    // já bateu com o banco: é esta
+  }
+  return nota >= 20 ? melhor : 0;
+}
+
+// Uma passada completa num quadro: devolve todas as leituras e os pesos vistos.
+async function _bobPassada(video, g){
+  const vazio = { leituras: [], pesos: [] };
+  const limpo = _bobQuadro(video, g, 2000);
+  const r = await _bobOcrGeral.recognize(_bobRealce(limpo), {}, { text: true, blocks: true });
+  const toks = _bobTokens(_bobPalavras(r.data));
+  if(!toks.length) return vazio;
+
+  // Com a âncora "Coil No." na etiqueta, os dois pedaços mais próximos dela
+  // bastam. Sem âncora — etiqueta de outro fabricante, rótulo ilegível — não há
+  // como saber qual número é o da bobina, então vão mais pedaços e quem decide
+  // é o banco, lá no _bobCasa.
+  const temAncora = toks.length && toks[0].perto < 99999;
+  const leituras = [];
+  for(const t of toks.slice(0, temAncora ? 2 : 6)){
+    leituras.push(t.texto);
+    if(leituras.length > 4) continue;        // a releitura ampliada custa caro
+    const z = _bobZoom(limpo, t.bbox, 150);
+    if(!z) continue;
+    const zr = _bobRealce(z);
+    for(const w of [_bobOcrLinha, _bobOcrBloco]){
+      try{
+        const lz = _bobLimpaOCR((await w.recognize(zr)).data.text);
+        if(lz.length >= 8) leituras.push(lz);
+      }catch(e){}
+    }
+  }
+  // Pesos: servem de conferência independente. Entram tanto os do formato
+  // impresso "7.780" quanto os inteiros soltos de 3 a 5 dígitos — em muitas
+  // etiquetas o peso bruto vem escrito à mão, e é justamente ele que confirma.
+  const bruto = (r.data.text || '');
+  const pesos = (bruto.match(/[0-9]{1,2}[.,][0-9]{3}/g) || []);
+  (bruto.match(/(?:^|[^0-9.,])([0-9]{3,5})(?![0-9.,])/g) || []).forEach(m => {
+    const v = m.replace(/[^0-9]/g, '');
+    if(v && pesos.indexOf(v) < 0) pesos.push(v);
+  });
+  return { leituras: leituras, pesos: pesos };
+}
+
+// Tem cara de número de bobina o que saiu?
+function _bobPromissora(res){
+  return (res.leituras || []).some(t => t.length >= 10 && /[0-9]{6}/.test(t));
+}
+
+// O aparelho quase sempre entrega a imagem em pé, então a passada boa é feita
+// direto, sem procurar orientação. A busca só entra quando o que saiu não tem
+// cara de número — e aí ela roda pequena, a 900px, nas outras três posições.
+async function _bobLeQuadro(video){
+  if(_bobCam && _bobCam.giro !== null && _bobCam.giro !== undefined)
+    return await _bobPassada(video, _bobCam.giro);
+  const res = await _bobPassada(video, 0);
+  if(_bobPromissora(res)){ if(_bobCam) _bobCam.giro = 0; return res; }
+  const g = await _bobOrienta(video);
+  if(_bobCam) _bobCam.giro = g;
+  return g === 0 ? res : await _bobPassada(video, g);
+}
+
+// ── casamento com o banco ─────────────────────────────────────────
+function _bobDist(a, b, teto){
+  if(Math.abs(a.length - b.length) > teto) return teto + 1;
+  let ant = [];
+  for(let j = 0; j <= b.length; j++) ant.push(j);
+  for(let i = 1; i <= a.length; i++){
+    const atual = [i];
+    let melhor = i;
+    for(let j = 1; j <= b.length; j++){
+      const v = Math.min(ant[j] + 1, atual[j-1] + 1, ant[j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+      atual.push(v);
+      if(v < melhor) melhor = v;
+    }
+    if(melhor > teto) return teto + 1;
+    ant = atual;
+  }
+  return ant[b.length];
+}
+
+// De onde saem as candidatas: o mesmo estoque que o campo de digitação usa.
+// Se o lote já tem bobinas de um único navio, restringe a ele — um caminhão
+// quase sempre carrega de um navio só, e isso reduz muito o campo de busca.
+function _bobPool(px){
+  const descSet = new Set(records.map(r => r.coil));
+  const expSet  = new Set(expedicoes.map(r => r.coil));
+  let pool = px === 'd' ? coilsDB.filter(c => !descSet.has(c.coil))
+                        : coilsDB.filter(c => descSet.has(c.coil) && !expSet.has(c.coil));
+  if(!pool.length) pool = coilsDB;
+  const navios = new Set((loteItems[px] || []).map(r => r.navio).filter(Boolean));
+  if(navios.size === 1){
+    const so = pool.filter(c => navios.has(c.navio));
+    if(so.length) pool = so;
+  }
+  return pool;
+}
+
+// O QR vem como "T<bobina>*<item>" em parte das etiquetas, mas 938 bobinas do
+// banco começam mesmo com T seguido de dígito (T112610424001, do FINCH ARROW).
+// Não dá para decidir pelo formato — então as duas formas viram candidatas e
+// quem decide é o banco.
+function _bobVariantes(txt){
+  const s = _bobLimpaOCR(txt);
+  const v = [s];
+  if(/^T[0-9]/.test(s)) v.push(s.slice(1));
+  return v.filter(x => x.length >= 8);
+}
+
+function _bobCasa(leituras, pesos, px){
+  const pool = _bobPool(px);
+  const brutas = [];
+  (leituras || []).forEach(l => _bobVariantes(l).forEach(v => {
+    if(brutas.indexOf(v) < 0) brutas.push(v);
+  }));
+  if(!brutas.length) return { tipo: 'nada' };
+  const ls = brutas.map(_bobSemZeros);
+
+  // 1) alguma leitura bate exatamente? aí não há o que discutir
+  for(const l of ls){
+    const ex = pool.filter(c => _bobSemZeros(c.coil) === l);
+    if(ex.length === 1) return { tipo: 'exato', db: ex[0], coil: ex[0].coil, leitura: brutas[0] };
+  }
+
+  // 2) senão, a mais parecida — com o peso da etiqueta como desempate
+  const kgs = (pesos || []).map(p => parseFloat(String(p).replace(/[.,]/g, '')))
+                           .filter(v => v > 200 && v < 60000);
+  // A pontuacão SOMA as distâncias de todas as leituras, em vez de ficar com a
+  // menor. É o que separa a bobina certa das vizinhas: uma leitura cortada no
+  // fim fica a 1 caractere de meia dúzia de bobinas ao mesmo tempo, mas só a
+  // certa fica perto de TODAS as leituras ao mesmo tempo. Foi exatamente o caso
+  // da etiqueta 013001, que empatava com 013100 pela menor distância e se
+  // resolve pela soma (2 contra 4).
+  const TETO = 4;
+  const notas = pool.map(c => {
+    const alvo = _bobSemZeros(c.coil);
+    let soma = 0, perto = 9;
+    for(const l of ls){
+      const x = _bobDist(l, alvo, TETO);
+      soma += x;
+      if(x < perto) perto = x;
+    }
+    const pl = parseFloat(c.pesol || 0), pb = parseFloat(c.pesob || 0);
+    const temPeso = !!(pl || pb);
+    const bate = kgs.some(k => (pl && Math.abs(pl - k) <= 2) || (pb && Math.abs(pb - k) <= 2));
+    // O peso só confirma quem já está perto. Como agora entram também números
+    // soltos da etiqueta, sem esta trava um número qualquer que por acaso
+    // coincida com o peso de outra bobina poderia promovê-la.
+    if(bate && perto <= 3) soma -= 3;
+    else if(kgs.length && temPeso) soma += 1;  // peso lido que não bate enfraquece
+    return { c: c, soma: soma, perto: perto, bate: bate };
+  }).sort((a, b) => (a.soma - b.soma) || (a.perto - b.perto));
+
+  const melhor = notas[0];
+  if(!melhor || melhor.perto > 3) return { tipo: 'nada', leitura: brutas[0] };
+  const folga = notas[1] ? notas[1].soma - melhor.soma : 99;
+  // Perto e destacada das outras: propõe uma só, com o número grande na tela.
+  if(melhor.perto <= 2 && folga >= 2)
+    return { tipo: 'provavel', db: melhor.c, coil: melhor.c.coil,
+             dist: melhor.perto, peso: melhor.bate, leitura: brutas[0] };
+  // Sem destaque claro, o sistema NÃO escolhe: mostra as mais próximas.
+  return { tipo: 'lista', candidatos: notas.slice(0, 5).map(n => n.c), leitura: brutas[0] };
+}
+
+// ── a tela de conferência ─────────────────────────────────────────
+function _bobEscolha(px, titulo, candidatos, leitura){
+  const a = document.getElementById('bob-cam-aviso');
+  const t = document.getElementById('bob-cam-aviso-txt');
+  if(!a || !t) return;
+  _bobCam.parado = true;
+  t.innerHTML = '';
+  const h = document.createElement('div');
+  h.style.cssText = 'margin-bottom:.6rem;';
+  h.textContent = titulo;
+  t.appendChild(h);
+  candidatos.forEach(c => {
+    const b = document.createElement('button');
+    b.className = 'btn btn-secondary';
+    b.style.cssText = 'display:block;width:100%;text-align:left;margin-bottom:.4rem;font-family:'
+      + "'JetBrains Mono',monospace;";
+    b.innerHTML = '<b style="color:var(--accent)">' + _esc(c.coil) + '</b>'
+      + '<span style="opacity:.7;font-size:11px"> &nbsp;' + _esc(c.bl || '') + ' &nbsp;'
+      + _esc(c.navio || '') + (c.pesob ? ' &nbsp;' + fmtKg(c.pesob) + ' kg' : '') + '</span>';
+    b.onclick = () => { _bobRetomar(); _bobCam.ultimo = null; _bobEntrega(px, c.coil, 'escolhida na lista'); };
+    t.appendChild(b);
+  });
+  const d = document.createElement('div');
+  d.style.cssText = 'font-size:11px;opacity:.65;margin-top:.5rem;';
+  d.textContent = 'Lido da etiqueta: ' + (leitura || '—');
+  t.appendChild(d);
+  a.style.display = '';
+}
+
+async function _bobLerTexto(){
+  if(!_bobCam) return;
+  const video = _bobCam.video, px = _bobCam.px;
+  if(!video.videoWidth){ showToast('Câmera ainda iniciando.', '#f59e0b', '#000'); return; }
+  _bobCam.parado = true;
+  _bobMsg('Segure firme… lendo o número escrito', '#f59e0b');
+
+  if(!await _bobPreparaOCR()){
+    if(_bobCam) _bobPausa('A leitura do texto precisa de internet para carregar o leitor na primeira vez. Use o QR ou digite o número.');
     return;
   }
   if(!_bobCam) return;
 
-  const seqs = [];
-  const achados = texto.replace(/[^0-9A-Za-z]/g, ' ').toUpperCase().match(/[0-9A-Z]{10,20}/g) || [];
-  for(const s of achados) if(seqs.indexOf(s) < 0) seqs.push(s);
+  let quadro;
+  try{ quadro = await _bobLeQuadro(video); }
+  catch(e){ if(_bobCam) _bobPausa('Não consegui ler o texto: ' + (e.message || e)); return; }
+  if(!_bobCam) return;
 
-  let casou = null;
-  for(const s of seqs){
-    const r = _bobAcha(s);
-    if(r && r.db){ casou = r; break; }
-  }
-  if(casou){
-    _bobCam.ultimo = null;
-    _bobCam.parado = false;
-    _bobEntrega(px, casou.coil, casou.ajuste || 'lido do texto');
+  // as tentativas se somam: a segunda foto reaproveita o que a primeira leu
+  _bobCam.acum = (_bobCam.acum || { leituras: [], pesos: [] });
+  quadro.leituras.forEach(l => { if(_bobCam.acum.leituras.indexOf(l) < 0) _bobCam.acum.leituras.push(l); });
+  quadro.pesos.forEach(p => { if(_bobCam.acum.pesos.indexOf(p) < 0) _bobCam.acum.pesos.push(p); });
+
+  const r = _bobCasa(_bobCam.acum.leituras, _bobCam.acum.pesos, px);
+
+  if(r.tipo === 'exato'){
+    _bobCam.acum = null; _bobCam.ultimo = null; _bobCam.parado = false;
+    _bobEntrega(px, r.coil, 'lida do texto');
     return;
   }
-  if(seqs.length){
-    // não bateu com o banco: devolve o que leu para o operador conferir, porque
-    // casar "por parecido" é justamente o erro que esta função quer evitar
-    const inp = document.getElementById(px + 'l-coil-add');
-    if(inp) inp.value = seqs[0];
-    _bobRegistra('? ' + seqs[0] + '  (do texto, não confere com o banco)', '#f59e0b');
-    _bobPausa('Li "' + seqs[0] + '", mas esse número não está no banco. '
-              + 'Ele foi para o campo de digitação — confira e ajuste, ou tente pelo QR.');
-  }else{
-    _bobPausa('Não consegui ler o número. Aproxime, limpe a etiqueta e tente de novo — ou digite.');
+  if(r.tipo === 'provavel'){
+    _bobEscolha(px, 'A etiqueta bate com esta bobina'
+      + (r.peso ? ' — e o peso impresso confere com o do banco.' : '. Confira o número antes de aceitar.'),
+      [r.db], r.leitura);
+    return;
   }
+  if(r.tipo === 'lista'){
+    _bobEscolha(px, 'Não deu para decidir sozinho entre estas. Toque na que está na etiqueta:',
+      r.candidatos, r.leitura);
+    return;
+  }
+  const inp = document.getElementById(px + 'l-coil-add');
+  if(r.leitura && inp) inp.value = r.leitura;
+  _bobRegistra('? ' + (r.leitura || '(nada)') + '  (do texto, sem correspondência)', '#f59e0b');
+  _bobPausa(r.leitura
+    ? 'Li "' + r.leitura + '", mas não achei bobina parecida no estoque. Foi para o campo de digitação — confira, ou toque de novo em LER O NÚMERO ESCRITO para somar outra foto.'
+    : 'Não consegui ler o número. Aproxime, encha a moldura com a etiqueta e toque de novo — cada tentativa soma com a anterior.');
 }
 
 function addCoilLote(px){
