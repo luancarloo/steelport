@@ -14,10 +14,15 @@
 <meta name="theme-color" content="#0a0c0f">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="STEELPORT">
-<link rel="apple-touch-icon" href="./icone.svg">
-<link rel="icon" href="./icone.svg" type="image/svg+xml">
+<!-- "black" e nao "black-translucent": o translucent manda a pagina ocupar
+     tambem a faixa do relogio e da bateria, e ai o cabecalho fica POR BAIXO
+     dela — era isso que impedia de tocar no botao INICIO. Com "black" o
+     iPhone reserva a faixa e a pagina comeca abaixo dela. -->
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="4SIDES - STEELPORT">
+<!-- O iPhone nao le SVG aqui: o atalho da tela de inicio usa este PNG. -->
+<link rel="apple-touch-icon" href="./icone-192.png">
+<link rel="icon" href="./icone-192.png" type="image/png">
 <title>4SIDES · STEELPORT — Gestão de Bobinas</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;600;700;900&family=JetBrains+Mono:wght@300;400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -46,7 +51,7 @@ body{overflow-x:hidden;}
 img,canvas,video{max-width:100%;}
 
 /* ── HEADER ── */
-header{background:var(--surface);border-bottom:2px solid var(--accent);padding:0 2rem;height:64px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
+header{background:var(--surface);border-bottom:2px solid var(--accent);padding:env(safe-area-inset-top,0px) 2rem 0;height:calc(64px + env(safe-area-inset-top,0px));display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;}
 .logo{display:flex;align-items:center;gap:12px;}
 .logo-icon{width:36px;height:36px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#000;clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);}
 .logo-text{font-size:22px;font-weight:900;letter-spacing:3px;color:var(--accent);}
@@ -484,7 +489,8 @@ body{
   .container{padding:.85rem;}
 
   /* O cabeçalho fixo come tela demais num aparelho baixo. */
-  header{height:56px;padding:0 .85rem;}
+  header{height:calc(56px + env(safe-area-inset-top,0px));
+    padding:env(safe-area-inset-top,0px) .85rem 0;}
   .logo-text{font-size:15px;}
 
   /* Cartões de número: um embaixo do outro, senão o valor não cabe e
@@ -3555,7 +3561,8 @@ function _bobMontaTela(px){
   el.id = 'bob-cam';
   el.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000;display:flex;flex-direction:column;';
   el.innerHTML = `
-    <div style="display:flex;align-items:center;gap:.75rem;padding:.7rem 1rem;background:rgba(0,0,0,.85);
+    <div style="display:flex;align-items:center;gap:.75rem;background:rgba(0,0,0,.85);
+                padding:calc(.7rem + env(safe-area-inset-top,0px)) 1rem .7rem;
                 border-bottom:1px solid rgba(255,255,255,.12);flex-shrink:0;">
       <span style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:1.5px;color:${cor};">
         📷 LER BOBINA — ${px === 'e' ? 'EXPEDIÇÃO' : 'DESCARGA'}</span>
@@ -3589,7 +3596,8 @@ function _bobMontaTela(px){
     <div style="flex-shrink:0;background:#111;border-top:1px solid rgba(255,255,255,.12);">
       <div id="bob-cam-lidas"
         style="max-height:26vh;overflow-y:auto;padding:.5rem .75rem;font-family:'JetBrains Mono',monospace;font-size:12px;"></div>
-      <div style="display:flex;gap:.5rem;padding:.7rem;border-top:1px solid rgba(255,255,255,.1);">
+      <div style="display:flex;gap:.5rem;border-top:1px solid rgba(255,255,255,.1);
+                  padding:.7rem .7rem calc(.7rem + env(safe-area-inset-bottom,0px));">
         <button onclick="_bobLerTexto()" class="btn btn-secondary" style="flex:1;">
           🔤 LER O COIL No.</button>
         <button onclick="fecharCamBobina()" class="btn" style="flex:1;background:${cor};color:#fff;">

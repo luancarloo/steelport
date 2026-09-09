@@ -20,13 +20,18 @@
    se fosse atual.
 */
 
-const VERSAO = 'steelport-v1';
+// Subir este número apaga o guardado antigo e obriga a buscar tudo de novo.
+// Precisa subir sempre que a lista abaixo mudar — senão quem já instalou
+// continua com os arquivos velhos guardados. (v2: ícones novos, do logo
+// do login, no lugar dos SVG provisórios.)
+const VERSAO = 'steelport-v3';
 const CASCA = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './icone.svg',
-  './icone-mascara.svg'
+  './icone-192.png',
+  './icone-512.png',
+  './icone-mascara.png'
 ];
 
 self.addEventListener('install', evento => {
