@@ -24,7 +24,9 @@
 // Precisa subir sempre que a lista abaixo mudar — senão quem já instalou
 // continua com os arquivos velhos guardados. (v2: ícones novos, do logo
 // do login, no lugar dos SVG provisórios.)
-const VERSAO = 'steelport-v6';
+// Acompanha a versão mostrada no login (index.html). Mudar aqui apaga o cache
+// antigo nos aparelhos, então sobe junto com ela a cada publicação.
+const VERSAO = 'steelport-2.0.3';
 const CASCA = [
   './',
   './index.html',

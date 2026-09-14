@@ -442,6 +442,25 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 .cg-form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem;margin-bottom:1rem;}
 .cg-saldo-box{padding:1rem 1.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:1rem;}
 .cg-saldo-num{font-size:28px;font-weight:900;color:#f97316;font-family:'Barlow Condensed',sans-serif;line-height:1;}
+/* ── Toque duplo não amplia a página ──────────────────────────────
+   No Android, dois toques rápidos num botão (ADICIONAR, LER, CONTINUAR) disparam
+   o zoom de toque duplo. manipulation desliga só isso — o zoom de pinça continua. */
+button,.btn,.tab,.filter-chip,.cg-tab,.sub-tab{touch-action:manipulation;}
+
+/* ── Tela da câmera: nunca mais larga que o aparelho ──────────────── */
+#bob-cam{width:100vw;max-width:100vw;overflow:hidden;touch-action:manipulation;}
+#bob-cam .btn{white-space:normal;overflow-wrap:anywhere;min-width:0;}
+#bob-cam-aviso-txt,#bob-cam-lidas div{overflow-wrap:anywhere;}
+
+/* ── Expedição agrupada por ticket ──────────────────────────────── */
+tr.tk-grupo td{background:rgba(168,85,247,.07);border-top:2px solid rgba(168,85,247,.35);padding-top:.55rem;padding-bottom:.55rem;}
+tr.tk-grupo.tk-sem td{background:var(--surface2);border-top-color:var(--border);}
+.tk-cab{display:flex;flex-wrap:wrap;gap:.3rem .9rem;align-items:center;font-size:13px;}
+.tk-num{font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--exp);}
+.tk-seta{display:inline-block;width:1em;color:var(--muted);}
+.tk-selo{font-size:10px;font-family:'JetBrains Mono',monospace;padding:1px 6px;border-radius:4px;border:1px solid;font-weight:700;}
+tr.tk-filho td:nth-child(2){padding-left:1.6rem;}
+
 /* ══════════════════════════════════════════════════════════════════
    CELULAR E TABLET
    ══════════════════════════════════════════════════════════════════
@@ -596,7 +615,9 @@ body{
       <button class="btn-login" id="btn-login" onclick="doLogin()">ENTRAR</button>
       <button type="button" onclick="openForgotPass()" style="background:transparent;border:none;color:var(--muted);font-size:13px;font-family:'JetBrains Mono',monospace;cursor:pointer;margin-top:.5rem;text-decoration:underline;letter-spacing:.5px;">Esqueci minha senha</button>
     </div>
-    <div class="login-footer">4SIDES · STEELPORT v2.0 · Acesso restrito</div>
+    <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
+         É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
+    <div class="login-footer">4SIDES · STEELPORT v2.0.3 · Acesso restrito</div>
   </div>
 </div>
 
@@ -1031,6 +1052,7 @@ body{
     <div class="tabs">
       <div class="tab exp-tab active" onclick="showModuleTab('expedicao','lote')">📤 REGISTRAR</div>
       <div class="tab exp-tab" onclick="showModuleTab('expedicao','consultar')">🔍 CONSULTAR</div>
+      <div class="tab exp-tab" onclick="showModuleTab('expedicao','ticketsporto')">🎫 TICKETS PORTO</div>
     </div>
 
     <!-- PANEL: LOTE EXPEDIÇÃO -->
@@ -1050,9 +1072,13 @@ body{
         </div>
         <div class="form-group">
           <label>Veículo / Placa *</label>
-          <input type="text" id="el-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
-            oninput="formatPlacaInput(this)"
-            style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
+          <div style="display:flex;gap:.4rem;align-items:center;">
+            <input type="text" id="el-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+              oninput="formatPlacaInput(this)"
+              style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
+            <button type="button" id="el-veiculo-estr" class="filter-chip" onclick="alternarPlacaEstrangeira('el-veiculo')"
+              title="Veículo estrangeiro: aceita qualquer placa, sem validação" style="white-space:nowrap;">🌎 ESTRANGEIRO</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Motorista</label>
@@ -1102,6 +1128,42 @@ body{
       </div>
     </div>
 
+    <!-- PANEL: TICKETS PORTO (pesagens da balança do Porto x expedições de bobina) -->
+    <div id="epanel-ticketsporto" class="panel">
+      <div class="rpt-section">
+        <div class="rpt-section-title">🎫 PESAGENS DA BALANÇA DO PORTO</div>
+        <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:1rem;">
+          Cada linha é um carregamento de bobinas. A pesagem do Porto vem da integração com a API e é
+          ligada pela placa, pela data e pelo horário — a mesma placa pode pesar várias vezes no dia.
+          Carga que sai da Pratico não passa na balança do Porto.
+          <div id="tpb-info" style="margin-top:.4rem;"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:.7rem;">
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">DE</label><input type="date" id="tpb-dt-ini" onchange="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">ATÉ</label><input type="date" id="tpb-dt-fim" onchange="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">NAVIO</label><select id="tpb-navio" onchange="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"><option value="">Todos</option></select></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">SITUAÇÃO</label>
+            <select id="tpb-situacao" onchange="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;">
+              <option value="com">Com pesagem</option>
+              <option value="">Todos os carregamentos</option>
+              <option value="sem">Saiu do PORTO sem pesagem</option>
+              <option value="confira">Para conferir</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">PLACA</label><input type="text" id="tpb-placa" placeholder="ex.: ENI-6F98" oninput="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">MOTORISTA</label><input type="text" id="tpb-motorista" placeholder="Filtrar…" oninput="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div><label style="display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;">TICKET</label><input type="text" id="tpb-ticket" placeholder="Porto ou EXP" oninput="tpbFiltrar()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;"></div>
+          <div style="display:flex;align-items:flex-end;gap:.4rem;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="tpbLimparFiltros()">✕ LIMPAR</button>
+            <button class="btn btn-info btn-sm" id="btn-tpb-atualizar" style="flex:2;" onclick="tpbAtualizarPesagens()">↻ PESAGENS</button>
+          </div>
+        </div>
+        <div id="tpb-list"></div>
+      </div>
+    </div>
+
     <!-- PANEL: CONSULTAR EXPEDIÇÃO -->
     <div id="epanel-consultar" class="panel">
       <div class="search-row">
@@ -1121,6 +1183,7 @@ body{
         <div class="filter-chip" onclick="setChip('e',this,'19x01')">19x01</div>
         <div class="filter-chip" onclick="setChip('e',this,'01x07')">01x07</div>
         <div class="filter-chip" id="e-fc-saldo" onclick="toggleSaldoExp(this)" style="border-color:var(--accent);color:var(--accent);" title="Mostrar itens descarregados ainda pendentes de expedição (respeita os demais filtros)">⚖ SALDO (pendentes)</div>
+        <div class="filter-chip active" id="e-fc-agrupar" onclick="alternarAgruparTicketE(this)" title="Agrupar as bobinas pelo ticket em que saíram">🎫 AGRUPAR POR TICKET</div>
         <button class="btn btn-secondary btn-sm" onclick="clearFilters('e')">LIMPAR</button>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('e')">↓ CSV</button>
         <button class="btn btn-purple btn-sm" onclick="openImportMov('expedicao')">↑ IMPORTAR EXCEL</button>
@@ -1550,8 +1613,12 @@ body{
         </div>
         <div class="form-group">
           <label>Veículo / Placa *</label>
-          <input type="text" id="edit-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
-            oninput="formatPlacaInput(this)" style="font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
+          <div style="display:flex;gap:.4rem;align-items:center;">
+            <input type="text" id="edit-veiculo" placeholder="ABC-1234 ou ABC1D23" maxlength="8"
+              oninput="formatPlacaInput(this)" style="flex:1;min-width:0;font-family:'JetBrains Mono',monospace;letter-spacing:2px;text-transform:uppercase;">
+            <button type="button" id="edit-veiculo-estr" class="filter-chip" onclick="alternarPlacaEstrangeira('edit-veiculo')"
+              title="Veículo estrangeiro: aceita qualquer placa, sem validação" style="white-space:nowrap;display:none;">🌎 ESTRANGEIRO</button>
+          </div>
         </div>
         <div class="form-group">
           <label>Motorista</label>
@@ -2822,19 +2889,20 @@ function showModuleTab(mod, tab){
   const panelTab = tab==='registrar' ? 'lote' : tab;
   const panels = mod==='descarga'
     ? ['dpanel-lote','dpanel-banco','dpanel-consultar']
-    : ['epanel-lote','epanel-consultar'];
+    : ['epanel-lote','epanel-consultar','epanel-ticketsporto'];
   panels.forEach(p=>{ const el=document.getElementById(p); if(el) el.classList.remove('active'); });
   document.getElementById(prefix+'panel-'+panelTab).classList.add('active');
   const tabEls = document.getElementById('screen-'+mod).querySelectorAll('.tab');
   const tabMap  = mod==='descarga'
     ? {registrar:0, lote:0, banco:1, consultar:2}
-    : {registrar:0, lote:0, consultar:1};
+    : {registrar:0, lote:0, consultar:1, ticketsporto:2};
   tabEls.forEach((t,i)=>t.classList.toggle('active', i===(tabMap[tab]??0)));
-  if(tab==='consultar') { buildFilterSelects(prefix); applyFilters(prefix); }
+  if(tab==='consultar') { buildFilterSelects(prefix); applyFilters(prefix); if(prefix==='e') _tkExpCarregar(true); }
   if(tab==='lote'||tab==='registrar'){
     preencherDataPeriodoLote(prefix);
   }
   if(tab==='banco') { buildDBDescargaSelects(); renderDBDescarga(); }
+  if(tab==='ticketsporto' && prefix==='e') abrirTicketsPortoBob();
 }
 
 function refreshHome(){
@@ -3012,6 +3080,8 @@ function clearAutofill(px){
 // PLACA BRASILEIRA — máscara e validação
 // ══════════════════════════════════════════
 function formatPlacaInput(el){
+  // Veículo estrangeiro: nenhuma máscara, só caixa alta.
+  if(el.dataset && el.dataset.estrangeira==='1'){ el.value = el.value.toUpperCase(); return; }
   let v = el.value.toUpperCase().replace(/[^A-Z0-9]/g,'');
   // Padrão antigo: 3 letras + 4 números  → ABC-1234
   // Mercosul:      3 letras + 1 num + 1 letra + 2 nums → ABC1D23
@@ -3090,6 +3160,11 @@ function editMovimento(id, px){
   document.getElementById('edit-data').value     = r.data;
   document.getElementById('edit-periodo').value  = r.periodo;
   document.getElementById('edit-veiculo').value  = r.veiculo  || '';
+  // Só expedição tem veículo estrangeiro. Placa gravada fora do padrão brasileiro
+  // é de caminhão estrangeiro: o campo já abre liberado, senão não daria para salvar.
+  const bEstr = document.getElementById('edit-veiculo-estr');
+  if(bEstr) bEstr.style.display = px==='e' ? '' : 'none';
+  alternarPlacaEstrangeira('edit-veiculo', px==='e' && !!r.veiculo && !validaPlaca(r.veiculo));
   document.getElementById('edit-motorista').value= r.motorista|| '';
   document.getElementById('edit-cliente').value  = r.cliente  || '';
   document.getElementById('edit-bl').value       = r.bl       || '';
@@ -3122,7 +3197,7 @@ async function saveMovimento(){
     warnEl.textContent='Preencha Data e Período.';
     warnEl.style.display='block'; return;
   }
-  if(veiculo && !validaPlaca(veiculo)){
+  if(veiculo && !placaEhEstrangeira('edit-veiculo') && !validaPlaca(veiculo)){
     warnEl.textContent='Placa inválida. Use ABC-1234 (padrão) ou ABC1D23 (Mercosul).';
     warnEl.style.display='block'; return;
   }
@@ -3657,8 +3732,7 @@ function _bobEntrega(px, coil, ajuste){
   if(!inp) return;
   const antes = loteItems[px].length;
   inp.value = coil;
-  addCoilLote(px);
-  inp.blur();                       // não abre o teclado por cima da câmera
+  addCoilLote(px, true);            // sem foco: não abre teclado nem mexe no zoom da página
   const lista = loteItems[px];
   if(lista.length === antes){
     _bobBip(false);
@@ -3830,6 +3904,7 @@ async function abrirCamBobina(px){
   }
   if(document.getElementById('bob-cam')) return;
   _bobMontaTela(px);
+  _bobTravaZoom(true);
   _bobCarregaBarras();                 // em segundo plano; não bloqueia nada
   const video = document.getElementById('bob-cam-video');
   _bobCam = { px: px, video: video, canvas: document.createElement('canvas'), parado: false,
@@ -3881,7 +3956,32 @@ async function abrirCamBobina(px){
   _bobVarre();
 }
 
+// Enquanto a câmera está aberta a página fica em 100% e sem rolagem.
+// No Android, tocar LER / CONTINUAR em sequência dispara o zoom de toque duplo;
+// a página ampliada ficava assim, e ao afastar os ícones da câmera encolhiam.
+// Ao fechar, o viewport original volta — o zoom de pinça continua valendo no
+// resto do sistema.
+let _bobViewportOrig = null;
+function _bobTravaZoom(liga){
+  const m = document.querySelector('meta[name="viewport"]');
+  if(liga){
+    if(m && _bobViewportOrig === null){
+      _bobViewportOrig = m.getAttribute('content') || '';
+      const base = _bobViewportOrig.replace(/,\s*(maximum-scale|minimum-scale|user-scalable)=[^,]*/gi, '');
+      m.setAttribute('content', base + ', maximum-scale=1, user-scalable=no');
+    }
+    document.documentElement.style.overflow = 'hidden';
+    document.body.style.overflow = 'hidden';
+  }else{
+    if(m && _bobViewportOrig !== null) m.setAttribute('content', _bobViewportOrig);
+    _bobViewportOrig = null;
+    document.documentElement.style.overflow = '';
+    document.body.style.overflow = '';
+  }
+}
+
 function fecharCamBobina(){
+  _bobTravaZoom(false);
   const el = document.getElementById('bob-cam');
   const px = _bobCam ? _bobCam.px : null;
   if(_bobCam){
@@ -4620,7 +4720,9 @@ async function _bobLerTextoAgora(video, px){
     : 'Não consegui ler o número. Aproxime, encha a moldura com a etiqueta e toque de novo em LER O COIL No.');
 }
 
-function addCoilLote(px){
+// semFoco: quando a bobina vem da câmera. Dar foco ao campo, que fica por baixo
+// da tela da câmera, faz o Android abrir o teclado e reposicionar/ampliar a página.
+function addCoilLote(px, semFoco){
   const inputEl = document.getElementById(px+'l-coil-add');
   // Normalise: strip special chars
   const coil = normalizeCoilInput(inputEl.value);
@@ -4630,7 +4732,7 @@ function addCoilLote(px){
 
   if(loteItems[px].find(r=>r.coil===coil)){
     showToast('Esta bobina já foi adicionada ao lote.','#f59e0b','#000');
-    inputEl.value=''; inputEl.focus(); return;
+    inputEl.value=''; if(!semFoco) inputEl.focus(); return;
   }
 
   const db      = coilsDB.find(c=>c.coil===coil);
@@ -4663,7 +4765,7 @@ function addCoilLote(px){
     status, msg
   });
 
-  inputEl.value=''; inputEl.focus();
+  inputEl.value=''; if(!semFoco) inputEl.focus();
   renderLoteList(px);
 }
 
@@ -4746,6 +4848,7 @@ function clearLote(px){
     if(el) el.value='';
   });
   ['dl-posicao','el-destino'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  if(px==='e') alternarPlacaEstrangeira('el-veiculo', false);   // próximo caminhão volta ao padrão
   // Reaplica data e período atuais após limpar
   preencherDataPeriodoLote(px);
 }
@@ -4764,7 +4867,11 @@ async function confirmarLote(px){
   if(data > hojeLocal()){ showToast('⚠ A data não pode ser futura.','#e05c1a','#fff'); return; }
   if(!periodo) { showToast('Informe o período.','#e05c1a','#fff'); return; }
   if(!veiculo) { showToast('Informe o veículo/placa.','#e05c1a','#fff'); return; }
-  if(!validaPlaca(veiculo)){ showToast('Placa inválida. Use ABC-1234 ou ABC1D23.','#e05c1a','#fff'); return; }
+  if(!(px==='e' && placaEhEstrangeira('el-veiculo')) && !validaPlaca(veiculo)){
+    showToast(px==='e' ? 'Placa inválida. Use ABC-1234 ou ABC1D23 — ou marque 🌎 ESTRANGEIRO.'
+                       : 'Placa inválida. Use ABC-1234 ou ABC1D23.','#e05c1a','#fff');
+    return;
+  }
 
   const toSave = loteItems[px].filter(r=>r.status!=='err');
   if(!toSave.length){ showToast('Nenhuma bobina válida para registrar.','#e05c1a','#fff'); return; }
@@ -4956,13 +5063,23 @@ async function getNextTicketNum(prefix){
   let next = 1;
   if(SUPA_URL&&SUPA_KEY){
     try{
-      const rows = await supa(
-        `tickets?select=ticket_num&ticket_num=gte.${prefix}-000000&ticket_num=lte.${prefix}-999999&order=ticket_num.desc&limit=1`
+      // O maior número é calculado como NÚMERO, não como texto.
+      //
+      // Antes a busca era uma faixa de texto (PREFIXO-000000 a PREFIXO-999999)
+      // ordenada como texto. Funciona até 999999 e quebra no seguinte: como texto,
+      // "EXP-1000000" vem ANTES de "EXP-999999", então a busca continuaria achando
+      // 999999 como o maior e cada aparelho sem o contador local emitiria o mesmo
+      // EXP-1000000. Em 14/09/2026 o último era EXP-998937, a uns 15 por dia.
+      //
+      // Agora vêm todos os números do prefixo — só a coluna, poucos KB — e o maior
+      // sai da conta. Hoje dá exatamente o mesmo próximo número que a regra antiga.
+      const rows = await supaAll(
+        `tickets?select=ticket_num&ticket_num=like.${prefix}-*&order=id.asc`
       );
-      if(rows&&rows.length){
-        const m = rows[0].ticket_num.match(/-(\d+)$/);
-        if(m) next = parseInt(m[1],10)+1;
-      }
+      (rows||[]).forEach(r=>{
+        const m = String(r.ticket_num||'').match(/-(\d+)$/);
+        if(m){ const n = parseInt(m[1],10)+1; if(n > next) next = n; }
+      });
     }catch(e){ /* fallback to local */ }
   }
   const local = parseInt(localStorage.getItem(KEY)||'0',10);
@@ -5315,7 +5432,7 @@ function _renderTicketWindow(t){
 
   const w = window.open('','_blank','width=400,height=750');
   w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-  <title>${ticketNum}</title>
+  <title>${t.pesagem ? _cgTicketNomeArquivo(t) : ticketNum}</title>
   <style>
     *{box-sizing:border-box;margin:0;padding:0;}
     @page{size:80mm auto;margin:4mm 3mm;}
@@ -5353,9 +5470,10 @@ function _renderTicketWindow(t){
     <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
     <div class="header-name">4SIDES - STEELPORT</div>
   </div>
-  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'}</div>
+  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'}${t.pesagem?' + PESAGEM':''}</div>
   <div class="sep">${DLINE}</div>
   <div class="tnum">${ticketNum}</div>
+  ${t.tipo==='EXPC'?'<div style="text-align:center;font-size:22px;font-weight:900;border:3px solid #000;margin:4px 0;padding:3px 0;letter-spacing:4px;">CANCELADO</div>':''}
   <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
   <div class="sep">${LINE}</div>
 
@@ -5385,6 +5503,26 @@ function _renderTicketWindow(t){
   <div class="total-row"><span>QTDE BOBINAS:</span><span>${entries.length}</span></div>
   <div class="total-row"><span>P.BRUTO TOTAL:</span><span>${fmtKg(totalPB)} KG</span></div>
   <div class="total-row"><span>P.LIQ. TOTAL:</span><span>${fmtKg(totalPL)} KG</span></div>
+  ${(()=>{ const pz=t.pesagem; if(!pz) return '';
+     // Mesmo bloco do ticket da Carga Geral. O líquido da balança é a carga do
+     // caminhão, então compara com o PESO BRUTO das bobinas.
+     const br=d=>d?String(d).split('-').reverse().join('/'):'-';
+     const kg=v=>Number(v||0).toLocaleString('pt-BR')+' KG';
+     const e=v=>escapeHtml(String(v==null?'':v));
+     const dif=Number(pz.peso_liquido||0)-Number(totalPB||0);
+     return '<div class="sep">'+LINE+'</div>'
+       +'<div class="stitle">PESAGEM - PORTO SAO FRANCISCO</div>'
+       +row('TICKET:', e(pz.ticket))
+       +row('ENTRADA:', br(pz.dt_entrada)+' '+e(pz.hr_entrada||''))
+       +row('PESO ENTRADA:', kg(pz.peso_entrada))
+       +row('SAIDA:', br(pz.dt_saida)+' '+e(pz.hr_saida||''))
+       +row('PESO SAIDA:', kg(pz.peso_saida))
+       +'<div class="total-row"><span>PESO LIQUIDO:</span><span>'+kg(pz.peso_liquido)+'</span></div>'
+       +'<div class="sep">'+LINE+'</div>'
+       +row('P.BRUTO SISTEMA:', kg(totalPB))
+       +row('DIFERENCA:', (dif>0?'+':'')+Number(dif).toLocaleString('pt-BR')+' KG')
+       +(pz.transportadora? row('TRANSPORTADORA:', e(pz.transportadora)):'');
+   })()}
   ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${escapeHtml(obs.toString().toUpperCase())}</div>`:''}
   <div class="sep">${DLINE}</div>
 
@@ -5488,6 +5626,7 @@ function _renderReprintList(term, tipo){
           <span style="font-size:12px;color:var(--text);font-weight:600;">${_esc(t.veiculo)||'—'}</span>
           <span style="font-size:11px;color:var(--muted);">${_esc(t.motorista)||'—'}</span>
           ${tipoBadge}
+          ${t.tipo==='EXPC'?'<span style="font-size:10px;font-family:\'JetBrains Mono\',monospace;background:rgba(224,92,26,.15);color:var(--danger);border:1px solid rgba(224,92,26,.4);border-radius:4px;padding:1px 6px;">⊘ CANCELADO</span>':''}
           ${usuarioBadge}
         </div>
         <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
@@ -5713,6 +5852,648 @@ function clearFilters(px){
 function sortTableMov(px, col){ setSort(px, col, ()=>renderTable(px)); }
 function pageTableMov(px, page){ setPage(px, page, ()=>renderTable(px)); }
 
+// ══════════════════════════════════════════════════════════════════
+// EXPEDIÇÃO AGRUPADA POR TICKET
+// ══════════════════════════════════════════════════════════════════
+// O vínculo entre registro e ticket só existe num sentido: o ticket guarda a
+// lista das expedições que imprimiu (entries, com o id de cada uma), mas a
+// expedição não guarda o número do ticket. Então o agrupamento lê os tickets e
+// monta o índice ao contrário, id da expedição → ticket.
+//
+// Medido em 14/09/2026: 67% das expedições têm ticket; as outras 3.487 são quase
+// todas de fevereiro a maio, importadas ou anteriores aos tickets. Nenhuma
+// expedição aparece em dois tickets ativos — é isso que permite um índice simples.
+//
+// CANCELAMENTO: a tabela de tickets não tem coluna de situação, e criar uma
+// exigiria rodar SQL no Supabase antes de publicar. O tipo já é o que separa os
+// tickets (EXP, DSC, CGX, CGD), então o cancelado vira EXPC:
+//   • o número continua ocupado — a numeração lê ticket_num, não o tipo — e
+//     nunca é reaproveitado;
+//   • sai sozinho de toda consulta que filtra tipo=EXP;
+//   • quem cancelou e quando ficam no audit_log.
+// Cancelado, as bobinas voltam para "sem ticket" e um novo pode ser emitido com
+// os dados atuais, levando "SUBSTITUI EXP-…" na observação.
+
+let agruparTicketE = (function(){ try{ return localStorage.getItem('sp_exp_agrupar')!=='0'; }catch(e){ return true; } })();
+let _tkExpRemotos = null;          // tickets EXP/EXPC vindos do servidor
+let _tkExpCarregando = null;       // promessa da carga em andamento
+const _tkExpAbertos = new Set();   // grupos expandidos (chave do grupo)
+let _tkGruposPag = [];             // grupos da página atual, para os botões
+const _TK_GRUPOS_POR_PAG = 40;
+
+function _tkEntradas(t){
+  const e = t && (t.entries || t.regs);
+  if(!e) return [];
+  if(typeof e === 'string'){ try{ return JSON.parse(e||'[]'); }catch(err){ return []; } }
+  return e;
+}
+
+function _tkDoServidor(x){
+  return { id:x.id, ticketNum:x.ticket_num, tipo:x.tipo||'EXP', emitidoEm:x.ts,
+    usuario:x.usuario, userId:x.user_id, veiculo:x.veiculo, motorista:x.motorista,
+    destino:x.destino, data:x.data, periodo:x.periodo, obs:x.obs,
+    entries:_tkEntradas({entries:x.entries}) };
+}
+
+// Carrega do servidor os tickets de expedição (ativos e cancelados). A tela não
+// espera: agrupa com o que já tem neste aparelho e se redesenha quando chegar.
+function _tkExpCarregar(forcar){
+  if(_tkExpCarregando) return _tkExpCarregando;
+  if(_tkExpRemotos && !forcar) return Promise.resolve(_tkExpRemotos);
+  if(!SUPA_URL || !SUPA_KEY) return Promise.resolve(null);
+  _tkExpCarregando = supaAll('tickets?select=*&tipo=in.(EXP,EXPC)&order=ts.desc')
+    .then(rows => {
+      _tkExpRemotos = (rows||[]).map(_tkDoServidor);
+      if(document.getElementById('epanel-consultar')?.classList.contains('active')) renderTable('e');
+      return _tkExpRemotos;
+    })
+    .catch(e => { console.warn('[tickets] carga da expedição falhou:', e.message); return null; })
+    .finally(() => { _tkExpCarregando = null; });
+  return _tkExpCarregando;
+}
+
+// Junta servidor, histórico deste aparelho e fila de envio. Se QUALQUER cópia
+// diz cancelado, vale cancelado — logo depois de cancelar, o servidor ainda pode
+// estar com a versão antiga guardada aqui.
+function _tkExpTodos(){
+  const porId = new Map();
+  const poe = t => {
+    if(!t || !t.id) return;
+    const tipo = String(t.tipo||'EXP');
+    if(tipo!=='EXP' && tipo!=='EXPC') return;
+    const k = String(t.id), atual = porId.get(k);
+    if(!atual){ porId.set(k, t); return; }
+    if(tipo==='EXPC' && atual.tipo!=='EXPC') porId.set(k, {...atual, ...t, tipo:'EXPC'});
+  };
+  (_tkExpRemotos||[]).forEach(poe);
+  (ticketHistory||[]).forEach(poe);
+  (_tkPending||[]).forEach(r => poe(_tkDoServidor(r)));
+  return [...porId.values()];
+}
+
+function _tkExpIndice(){
+  const ativo = new Map();      // id da expedição → ticket ativo
+  const cancelados = new Map(); // id da expedição → [tickets cancelados]
+  _tkExpTodos().forEach(t => {
+    _tkEntradas(t).forEach(e => {
+      if(e == null || e.id == null) return;
+      const k = String(e.id);
+      if(t.tipo==='EXPC'){
+        if(!cancelados.has(k)) cancelados.set(k, []);
+        cancelados.get(k).push(t);
+      } else if(!ativo.has(k)){
+        ativo.set(k, t);
+      }
+    });
+  });
+  return { ativo, cancelados };
+}
+
+// O ticket ainda descreve o que está registrado? Compara cada bobina impressa
+// com a expedição de mesmo id como ela está agora.
+function _tkDiferencas(t){
+  const atuais = new Map(expedicoes.map(r => [String(r.id), r]));
+  let removidas = 0, alteradas = 0;
+  const muda = (a, b) => String(a==null?'':a).trim().toUpperCase() !== String(b==null?'':b).trim().toUpperCase();
+  _tkEntradas(t).forEach(e => {
+    const r = atuais.get(String(e.id));
+    if(!r){ removidas++; return; }
+    if(muda(r.coil,e.coil) || muda(r.pesob,e.pesob) || muda(r.pesol,e.pesol) || muda(r.bl,e.bl)
+       || muda(r.veiculo,e.veiculo) || muda(r.data,e.data) || muda(r.periodo,e.periodo)) alteradas++;
+  });
+  return { removidas, alteradas, total: removidas + alteradas };
+}
+
+// Mesma regra de ordenação de sortAndPage, mas sem cortar em página: aqui a
+// página é de GRUPOS, não de registros.
+function _ordenaMov(data, st){
+  const out = [...data];
+  if(!st.col) return out;
+  const amostra = data.map(r => r[st.col]).find(v => v!=null && v!=='');
+  const ehData = typeof amostra==='string' && /^\d{4}-\d{2}-\d{2}/.test(amostra);
+  const ehNum = !ehData && !isNaN(parseFloat(amostra)) && !/^\d{4}-\d{2}/.test(String(amostra||''));
+  out.sort((a, b) => {
+    const va = a[st.col] ?? '', vb = b[st.col] ?? '';
+    if(ehData){ const sa=String(va), sb=String(vb); return (sa>sb?1:sa<sb?-1:0)*st.dir; }
+    if(ehNum) return (parseFloat(va)-parseFloat(vb))*st.dir;
+    return String(va).localeCompare(String(vb),'pt-BR')*st.dir;
+  });
+  return out;
+}
+
+function _tkMontaGrupos(ordenados){
+  const { ativo, cancelados } = _tkExpIndice();
+  const grupos = new Map();
+  ordenados.forEach(r => {
+    const t = ativo.get(String(r.id));
+    const chave = t ? 'tk|'+t.id
+      : 'sem|'+[(r.veiculo||'').trim().toUpperCase(), r.data||'', r.periodo||''].join('|');
+    if(!grupos.has(chave)) grupos.set(chave, { chave, ticket:t||null, registros:[], cancelados:new Map() });
+    const g = grupos.get(chave);
+    g.registros.push(r);
+    (cancelados.get(String(r.id))||[]).forEach(c => g.cancelados.set(String(c.id), c));
+  });
+  return [...grupos.values()];
+}
+
+function alternarAgruparTicketE(el){
+  agruparTicketE = !agruparTicketE;
+  try{ localStorage.setItem('sp_exp_agrupar', agruparTicketE ? '1' : '0'); }catch(e){}
+  if(el) el.classList.toggle('active', agruparTicketE);
+  applyFilters('e');
+}
+
+function _renderCorpoAgrupado(tbody, raw, st){
+  const chip = document.getElementById('e-fc-agrupar');
+  if(chip) chip.classList.add('active');
+  if(!_tkExpRemotos) _tkExpCarregar();
+
+  const grupos = _tkMontaGrupos(_ordenaMov(raw, st));
+  const pages = Math.max(1, Math.ceil(grupos.length / _TK_GRUPOS_POR_PAG));
+  if(st.page >= pages) st.page = pages - 1;
+  if(st.page < 0) st.page = 0;
+  const pag = grupos.slice(st.page*_TK_GRUPOS_POR_PAG, (st.page+1)*_TK_GRUPOS_POR_PAG);
+  _tkGruposPag = pag;
+
+  // Com texto na busca, os grupos abrem sozinhos: quem procurou uma bobina
+  // quer ver a bobina, não o cabeçalho do caminhão.
+  const buscando = !!(document.getElementById('e-search')?.value||'').trim();
+  const idsAtuais = new Set(expedicoes.map(r => String(r.id)));
+  const selo = (txt, cor) => `<span class="tk-selo" style="color:${cor};border-color:${cor};">${txt}</span>`;
+
+  tbody.innerHTML = pag.map((g, gi) => {
+    const aberto = buscando || _tkExpAbertos.has(g.chave);
+    const r0 = g.registros[0];
+    const pesoB = g.registros.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
+    const t = g.ticket;
+    let cab, acoes, classe;
+    if(t){
+      const dif = _tkDiferencas(t);
+      const noTicket = _tkEntradas(t).filter(e => idsAtuais.has(String(e.id))).length;
+      classe = 'tk-grupo';
+      cab = `<span class="tk-num">🎫 ${_esc(t.ticketNum)}</span>`
+        + (dif.total ? selo('⚠ DESATUALIZADO', 'var(--warning)') : '')
+        + `<span>${formatDate(t.data||r0.data)} · ${_esc(t.periodo||r0.periodo)||'—'}</span>`
+        + `<span style="color:var(--info);font-weight:700;">${_esc(t.veiculo||r0.veiculo)||'—'}</span>`
+        + `<span>${_esc(t.motorista||r0.motorista)||'—'}</span>`
+        + (t.destino ? `<span style="color:var(--muted);">→ ${_esc(t.destino)}</span>` : '')
+        + `<span><b>${g.registros.length}</b>${noTicket>g.registros.length?' de '+noTicket:''} bobina${g.registros.length>1?'s':''} · <b>${fmtKg(pesoB)}</b> kg</span>`
+        + `<span style="color:var(--muted);font-size:11px;">emitido por ${_esc(t.usuario)||'—'}</span>`;
+      acoes = `<button class="btn btn-secondary btn-sm" onclick="_tkImprimirGrupo(${gi})" title="Imprimir o ticket ${_esc(t.ticketNum)}">🖨</button>`
+        + `<button class="btn btn-danger btn-sm" onclick="_tkCancelarGrupo(${gi})" title="Cancelar este ticket para emitir outro atualizado">⊘</button>`;
+    } else {
+      const canc = [...g.cancelados.values()].map(c => c.ticketNum);
+      classe = 'tk-grupo tk-sem';
+      cab = `<span class="tk-num" style="color:var(--muted);">SEM TICKET</span>`
+        + (canc.length ? selo('CANCELADO: '+_esc(canc.join(', ')), 'var(--danger)') : '')
+        + `<span>${formatDate(r0.data)} · ${_esc(r0.periodo)||'—'}</span>`
+        + `<span style="color:var(--info);font-weight:700;">${_esc(r0.veiculo)||'—'}</span>`
+        + `<span>${_esc(r0.motorista)||'—'}</span>`
+        + `<span><b>${g.registros.length}</b> bobina${g.registros.length>1?'s':''} · <b>${fmtKg(pesoB)}</b> kg</span>`;
+      acoes = `<button class="btn btn-exp btn-sm" onclick="_tkImprimirGrupo(${gi})" title="Emitir ticket com os dados atuais">🎫 EMITIR</button>`;
+    }
+    const filhos = g.registros.map(r => _linhaMovHtml(r, 'e', false)
+      .replace('<tr ', `<tr class="tk-filho" data-grupo="${gi}"${aberto?'':' style="display:none"'} `)).join('');
+    return `<tr class="${classe}" data-grupo="${gi}">
+        <td style="padding:.5rem 1rem;"><input type="checkbox" class="cb-row" title="Selecionar as bobinas deste grupo" onchange="_tkMarcaGrupo(${gi},this.checked)"></td>
+        <td colspan="11" onclick="_tkAlternaGrupo(${gi})" style="cursor:pointer;">
+          <div class="tk-cab"><span class="tk-seta">${aberto?'▾':'▸'}</span>${cab}</div>
+        </td>
+        <td><div class="actions">${acoes}</div></td>
+      </tr>` + filhos;
+  }).join('')
+    + _totalRowHtml(13, {
+        9: fmtKg(raw.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg',
+        10:fmtKg(raw.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0))+' kg'
+      }, `TOTAL (${raw.length} reg. · ${grupos.length} grupo${grupos.length>1?'s':''})`);
+
+  const tableWrap = tbody.closest('div[style*="overflow-x"]') || tbody.closest('.panel');
+  let pagerEl = document.getElementById('e-pager');
+  if(!pagerEl){ pagerEl = document.createElement('div'); pagerEl.id = 'e-pager'; tableWrap?.after(pagerEl); }
+  const de = st.page*_TK_GRUPOS_POR_PAG + 1, ate = Math.min((st.page+1)*_TK_GRUPOS_POR_PAG, grupos.length);
+  pagerEl.innerHTML = renderPager(st, grupos.length, pages, `(p)=>pageTableMov('e',p)`, 'e-pager')
+    .replace(/<span>\d+–\d+ de \d+<\/span>/, `<span>${de}–${ate} de ${grupos.length} grupos</span>`);
+}
+
+function _tkAlternaGrupo(gi){
+  const g = _tkGruposPag[gi]; if(!g) return;
+  const abrir = !_tkExpAbertos.has(g.chave);
+  if(abrir) _tkExpAbertos.add(g.chave); else _tkExpAbertos.delete(g.chave);
+  document.querySelectorAll(`#e-table-body tr.tk-filho[data-grupo="${gi}"]`)
+    .forEach(tr => { tr.style.display = abrir ? '' : 'none'; });
+  const seta = document.querySelector(`#e-table-body tr.tk-grupo[data-grupo="${gi}"] .tk-seta`);
+  if(seta) seta.textContent = abrir ? '▾' : '▸';
+}
+
+function _tkMarcaGrupo(gi, marcado){
+  const g = _tkGruposPag[gi]; if(!g) return;
+  if(marcado && !_tkExpAbertos.has(g.chave)) _tkAlternaGrupo(gi);   // mostra o que foi marcado
+  document.querySelectorAll(`#e-table-body tr.tk-filho[data-grupo="${gi}"] .mov-cb`)
+    .forEach(cb => { cb.checked = marcado; });
+  onMovCbChange('e');
+}
+
+async function _tkImprimirGrupo(gi){
+  const g = _tkGruposPag[gi]; if(!g) return;
+  const t = g.ticket;
+  if(!t){ await _tkEmitirGrupo(g); return; }
+  const dif = _tkDiferencas(t);
+  if(dif.total && !confirm('O ticket ' + t.ticketNum + ' está DESATUALIZADO: '
+      + (dif.removidas ? dif.removidas + ' bobina(s) excluída(s) ' : '')
+      + (dif.alteradas ? dif.alteradas + ' registro(s) alterado(s) ' : '')
+      + 'depois da emissão.\n\nImprimir a versão emitida mesmo assim?\n\n'
+      + 'Para sair com os dados atuais, cancele este ticket (⊘) e emita um novo.')) return;
+  _renderTicketWindow({ ...t, doc:'EXPEDICAO', entries:_tkEntradas(t) });
+}
+
+async function _tkEmitirGrupo(g){
+  const regs = g.registros;
+  if(!regs.length) return;
+  const r0 = regs[0];
+  const canc = [...g.cancelados.values()]
+    .sort((a,b) => new Date(b.emitidoEm||0) - new Date(a.emitidoEm||0));
+  const base = canc[0] || {};
+  const substitui = canc.map(c => c.ticketNum);
+  const destino = base.destino || '';
+  const motorista = base.motorista || r0.motorista || '';
+  const obsAntiga = String(base.obs||'').replace(/^SUBSTITUI [^·]*(· )?/i, '').trim();
+  const obs = substitui.length
+    ? ('SUBSTITUI ' + substitui.join(', ') + (obsAntiga ? ' · ' + obsAntiga : ''))
+    : '';
+  const antigo = r0.data && r0.data < dataOperacional() ? '\n\nAtenção: são registros de ' + formatDate(r0.data) + '.' : '';
+  if(!confirm('Emitir ticket de expedição?\n\n'
+      + (r0.veiculo||'—') + ' · ' + formatDate(r0.data) + ' · ' + (r0.periodo||'—') + '\n'
+      + regs.length + ' bobina(s)'
+      + (substitui.length ? '\nSubstitui: ' + substitui.join(', ') : '')
+      + antigo)) return;
+  const entries = regs.map(r => ({ ...r }));
+  await printTicketExpedicao(entries, r0.veiculo||'', motorista, destino, r0.data||'', r0.periodo||'', obs);
+  registrarAudit('ticket',
+    'Ticket de expedição emitido pela consulta: ' + regs.length + ' bobina(s) · Veículo ' + (r0.veiculo||'—')
+      + (substitui.length ? ' · substitui ' + substitui.join(', ') : ''),
+    { ids: regs.map(r => r.id), substitui });
+  renderTable('e');
+  _tkExpCarregar(true);
+}
+
+async function _tkCancelarGrupo(gi){
+  const g = _tkGruposPag[gi]; if(!g || !g.ticket) return;
+  const t = g.ticket;
+  if(!confirm('Cancelar o ticket ' + t.ticketNum + '?\n\n'
+      + 'O número fica marcado como CANCELADO e não é reaproveitado.\n'
+      + 'As ' + g.registros.length + ' bobina(s) continuam registradas — depois é só tocar em '
+      + '🎫 EMITIR para sair um ticket novo, com os dados atuais.')) return;
+
+  // Ticket que ainda não subiu para o servidor: o cancelamento vai junto na fila,
+  // senão o reenvio o ressuscitaria como ativo.
+  const emFila = (_tkPending||[]).find(r => String(r.id) === String(t.id));
+  if(emFila){ emFila.tipo = 'EXPC'; _tkSavePending(); }
+
+  showLoading('Cancelando ' + t.ticketNum + '...');
+  try{
+    const r = await supa('tickets?id=eq.' + encodeURIComponent(t.id), {
+      method:'PATCH',
+      headers:{ 'Prefer':'return=representation', 'Content-Type':'application/json' },
+      body: JSON.stringify({ tipo:'EXPC' })
+    });
+    if(!emFila && (!Array.isArray(r) || !r.length))
+      throw new Error('o ticket não foi encontrado no servidor');
+  }catch(e){
+    if(!emFila){
+      hideLoading();
+      showToast('⚠ Não foi possível cancelar ' + t.ticketNum + ': ' + e.message, '#e05c1a', '#fff');
+      return;
+    }
+    // Estava só na fila: o cancelamento sobe quando a fila for enviada.
+  }
+
+  const agora = new Date().toISOString(), quem = session?.nome || '—';
+  const marca = x => { if(x && String(x.id) === String(t.id)){ x.tipo = 'EXPC'; x.canceladoEm = agora; x.canceladoPor = quem; } };
+  (ticketHistory||[]).forEach(marca);
+  (_tkExpRemotos||[]).forEach(marca);
+  try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
+
+  registrarAudit('cancelamento_ticket',
+    'Ticket ' + t.ticketNum + ' cancelado · ' + g.registros.length + ' bobina(s) · Veículo ' + (t.veiculo||'—'),
+    { ticket_id: String(t.id), ticket_num: t.ticketNum, ids: g.registros.map(r => r.id), cancelado_por: quem, cancelado_em: agora });
+  hideLoading();
+  if(emFila) _tkFlushPending();
+  showToast('✓ ' + t.ticketNum + ' cancelado. Toque em 🎫 EMITIR no grupo para sair o novo.', '#a855f7', '#fff');
+  renderTable('e');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// VEÍCULO ESTRANGEIRO — placa sem máscara e sem validação
+// ══════════════════════════════════════════════════════════════════
+// A máscara e a validação só conhecem os dois padrões brasileiros (ABC-1234 e
+// ABC1D23). Caminhão de fora do país não cabe em nenhum. Marcado, o campo
+// aceita a placa como vier; o padrão volta a valer ao limpar o lote.
+// Nada novo é gravado no registro: ao editar depois, a placa que não segue o
+// padrão brasileiro é reconhecida e o campo já abre liberado.
+function alternarPlacaEstrangeira(id, forcar){
+  const el = document.getElementById(id); if(!el) return;
+  const liga = (forcar !== undefined) ? !!forcar : el.dataset.estrangeira !== '1';
+  el.dataset.estrangeira = liga ? '1' : '';
+  el.maxLength = liga ? 20 : 8;
+  el.placeholder = liga ? 'Qualquer placa, sem validação' : 'ABC-1234 ou ABC1D23';
+  el.style.letterSpacing = liga ? '1px' : '2px';
+  const b = document.getElementById(id + '-estr');
+  if(b){ b.classList.toggle('active', liga); b.textContent = liga ? '🌎 ESTRANGEIRO ✓' : '🌎 ESTRANGEIRO'; }
+  // Desligado pelo toque: reaplica a máscara brasileira no que já foi digitado.
+  if(!liga && forcar === undefined) formatPlacaInput(el);
+}
+
+function placaEhEstrangeira(id){
+  return document.getElementById(id)?.dataset.estrangeira === '1';
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// TICKETS PORTO — EXPEDIÇÃO DE BOBINAS
+// ══════════════════════════════════════════════════════════════════
+// As mesmas pesagens da balança do Porto que a Carga Geral usa (tabela
+// pesagens_porto, alimentada pela integração com a API), ligadas aqui às
+// expedições de bobina.
+//
+// Cada linha é um carregamento — o mesmo agrupamento da consulta: o ticket EXP
+// ativo, ou veículo + data + período quando não há ticket.
+//
+// O CASAMENTO não pode ser só placa + data, como na Carga Geral. Medido em
+// 14/09/2026: há 494 casos de a mesma placa pesar mais de uma vez no mesmo dia
+// (até 11 viagens). Dos 248 carregamentos de bobina que passaram na balança,
+// 103 têm uma única pesagem possível, 122 se resolvem pelo horário do registro
+// cair na janela entrada → saída da balança, e 23 continuam duvidosos. Por isso:
+//   • a pesagem escolhida é a de horário mais próximo;
+//   • cada pesagem vai para UM carregamento só;
+//   • quando nem o horário decide, a linha avisa para conferir.
+// Carregamento que saiu da Pratico não passa na balança do Porto — é normal não
+// ter pesagem. O filtro "sem pesagem" olha só o que saiu do PORTO.
+
+const TPB_PAGE = 50;
+let _tpbState = { page: 0 };
+
+function _tpbHora(d, h){
+  if(!d) return null;
+  const x = new Date(d + 'T' + String(h||'00:00').slice(0,5) + ':00');
+  return isNaN(x) ? null : x.getTime();
+}
+
+function _tpbCarregamentos(){
+  const grupos = _tkMontaGrupos(_ordenaMov(expedicoes, { col:'data', dir:-1 }));
+  return grupos.map(g => {
+    const regs = g.registros, r0 = regs[0], t = g.ticket;
+    const tempos = regs.map(r => new Date(r.registradoEm||0).getTime()).filter(x => x > 0);
+    const uniq = campo => [...new Set(regs.map(r => String(r[campo]||'').trim()).filter(Boolean))];
+    return {
+      chave: g.chave, ticket: t, regs,
+      data: r0.data, periodo: r0.periodo,
+      veiculo: (t && t.veiculo) || r0.veiculo || '',
+      motorista: (t && t.motorista) || r0.motorista || '',
+      navio: uniq('navio').join(', '), bls: uniq('bl').join(', '), armazem: uniq('armazem').join(', '),
+      peso: regs.reduce((a,r) => a + (parseFloat(r.pesob)||0), 0),
+      t: tempos.length ? Math.min(...tempos) : null,
+      pesagem: null, casamento: '', nCand: 0
+    };
+  });
+}
+
+function _tpbCasar(carrs){
+  const porChave = new Map();
+  (pesagensPorto||[]).forEach(p => {
+    const placa = p.placa_norm || _portoPlaca(p.pl_veiculo);
+    [...new Set([p.dt_saida, p.dt_entrada].filter(Boolean))].forEach(d => {
+      const k = placa + '|' + d;
+      if(!porChave.has(k)) porChave.set(k, []);
+      porChave.get(k).push(p);
+    });
+  });
+  const pares = [];
+  carrs.forEach(c => {
+    const cands = porChave.get(_portoPlaca(c.veiculo) + '|' + c.data) || [];
+    c.nCand = cands.length;
+    cands.forEach(p => {
+      const e = _tpbHora(p.dt_entrada, p.hr_entrada), s = _tpbHora(p.dt_saida, p.hr_saida);
+      let dist = 1e9, dentro = false;
+      if(c.t && e && s){
+        // o registro acontece com o caminhão dentro do porto: entre a pesagem
+        // vazia (entrada) e a carregada (saída), com folga para o operador
+        // lançar um pouco antes ou depois
+        if(c.t >= e - 30*60e3 && c.t <= s + 60*60e3){ dentro = true; dist = Math.abs(c.t - (e + s) / 2) / 60e3; }
+        else dist = 1e5 + Math.min(Math.abs(c.t - e), Math.abs(c.t - s)) / 60e3;
+      }
+      pares.push({ c, p, dist, dentro });
+    });
+  });
+  pares.sort((a, b) => a.dist - b.dist);
+  const usadas = new Set();
+  pares.forEach(x => {
+    if(x.c.pesagem || usadas.has(String(x.p.ticket))) return;
+    if(x.dist >= 1e9 && x.c.nCand > 1) return;      // sem horário para desempatar: não chuta
+    x.c.pesagem = x.p;
+    x.c.casamento = x.c.nCand === 1 ? 'unico' : (x.dentro ? 'horario' : 'confira');
+    usadas.add(String(x.p.ticket));
+  });
+  return carrs;
+}
+
+function _tpbV(id){ return (document.getElementById(id)?.value||'').trim(); }
+
+function _tpbFiltrados(todos){
+  const ini = _tpbV('tpb-dt-ini'), fim = _tpbV('tpb-dt-fim');
+  const fNav = _tpbV('tpb-navio'), fSit = _tpbV('tpb-situacao');
+  const fPlaca = _tpbV('tpb-placa').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const fMot = _tpbV('tpb-motorista').toLowerCase(), fTk = _tpbV('tpb-ticket');
+  return todos.filter(c => {
+    if(ini && (c.data||'') < ini) return false;
+    if(fim && (c.data||'') > fim) return false;
+    if(fNav && !c.navio.split(', ').includes(fNav)) return false;
+    if(fPlaca && !_portoPlaca(c.veiculo).includes(fPlaca)) return false;
+    if(fMot && !String(c.motorista||'').toLowerCase().includes(fMot)) return false;
+    if(fTk && !(c.pesagem && String(c.pesagem.ticket).includes(fTk))
+           && !(c.ticket && String(c.ticket.ticketNum).includes(fTk))) return false;
+    if(fSit === 'com' && !c.pesagem) return false;
+    if(fSit === 'sem' && (c.pesagem || !/PORTO/i.test(c.armazem))) return false;
+    if(fSit === 'confira' && c.casamento !== 'confira') return false;
+    return true;
+  });
+}
+
+function tpbFiltrar(){ _tpbState.page = 0; renderTicketsPortoBob(); }
+function tpbSetPage(p){ _tpbState.page = Math.max(0, p); renderTicketsPortoBob(); }
+function tpbLimparFiltros(){
+  ['tpb-navio','tpb-placa','tpb-motorista','tpb-ticket'].forEach(id => { const e = document.getElementById(id); if(e) e.value = ''; });
+  const s = document.getElementById('tpb-situacao'); if(s) s.value = 'com';
+  tpbFiltrar();
+}
+
+function renderTicketsPortoBob(){
+  const el = document.getElementById('tpb-list'); if(!el) return;
+  const todos = _tpbCasar(_tpbCarregamentos());
+
+  const selNav = document.getElementById('tpb-navio');
+  if(selNav){
+    const navs = [...new Set(todos.flatMap(c => c.navio.split(', ')).filter(Boolean))].sort();
+    const sig = navs.join('|');
+    if(selNav.dataset.sig !== sig){
+      const cur = selNav.value;
+      selNav.innerHTML = '<option value="">Todos</option>' + navs.map(n => `<option value="${_esc(n)}">${_esc(n)}</option>`).join('');
+      if(navs.includes(cur)) selNav.value = cur;
+      selNav.dataset.sig = sig;
+    }
+  }
+
+  const lista = _tpbFiltrados(todos);
+  const pages = Math.max(1, Math.ceil(lista.length / TPB_PAGE));
+  if(_tpbState.page > pages - 1) _tpbState.page = pages - 1;
+  const de = _tpbState.page * TPB_PAGE;
+  const pag = lista.slice(de, de + TPB_PAGE);
+
+  const ultima = (pesagensPorto||[]).reduce((m, p) => (p.importado_em||'') > m ? p.importado_em : m, '');
+  const info = document.getElementById('tpb-info');
+  if(info) info.innerHTML = lista.length + ' carregamento(s) no filtro · <b style="color:var(--accent);">'
+    + lista.filter(c => c.pesagem).length + '</b> com pesagem'
+    + (lista.some(c => c.casamento === 'confira') ? ' · <b style="color:var(--warning);">' + lista.filter(c => c.casamento === 'confira').length + ' para conferir</b>' : '')
+    + ' · ' + (pesagensPorto||[]).length + ' pesagem(ns) na base'
+    + (ultima ? ' · última importação ' + new Date(ultima).toLocaleString('pt-BR').slice(0,17) : '');
+
+  if(!lista.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">⚖</span>Nenhum carregamento com esses filtros.</div>';
+    return;
+  }
+  const kg = v => Number(v||0).toLocaleString('pt-BR');
+  el.innerHTML = '<div style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:1230px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>DATA</th><th>PER.</th><th>VEÍCULO</th><th>MOTORISTA</th><th>NAVIO</th><th>BL</th><th>BOB.</th>'
+    + '<th>NOSSO P.BRUTO</th><th>TICKET</th><th>TICKET PORTO</th><th>ENTRADA → SAÍDA</th><th>LÍQUIDO PORTO</th><th>DIF.</th><th></th></tr></thead><tbody>'
+    + pag.map((c, i) => {
+        const pz = c.pesagem;
+        const dif = pz ? Number(pz.peso_liquido||0) - c.peso : null;
+        const cor = dif === null ? 'var(--muted)' : (Math.abs(dif) <= 50 ? 'var(--success)' : (Math.abs(dif) <= 500 ? '#f59e0b' : 'var(--danger)'));
+        const aviso = c.casamento === 'confira'
+          ? '<br><span class="tk-selo" style="color:var(--warning);border-color:var(--warning);" title="A placa pesou ' + c.nCand + ' vezes neste dia e o horário do registro não bate com nenhuma. Confira se é a viagem certa.">⚠ CONFIRA</span>' : '';
+        const semPz = /PORTO/i.test(c.armazem) ? '<span style="color:var(--danger);">sem pesagem</span>' : '<span style="color:var(--muted);">não passa na balança</span>';
+        const tk = c.ticket
+          ? `<a href="#" onclick="event.preventDefault();_tpbImprimir(${de + i})" style="font-family:'JetBrains Mono',monospace;color:var(--exp);font-weight:700;" title="Imprimir o ticket de expedição">${_esc(c.ticket.ticketNum)}</a>`
+          : '<span style="color:var(--muted);">—</span>';
+        return '<tr style="' + (i % 2 === 0 ? 'background:var(--surface2)' : '') + '">'
+          + '<td style="white-space:nowrap;">' + (c.data ? c.data.split('-').reverse().join('/') : '—') + '</td>'
+          + '<td style="white-space:nowrap;">' + _esc(c.periodo||'—') + '</td>'
+          + '<td style="font-weight:700;white-space:nowrap;color:var(--info);">' + _esc(c.veiculo||'—') + '</td>'
+          + '<td style="font-size:11px;">' + _esc(c.motorista||'—') + '</td>'
+          + '<td style="font-size:11px;">' + _esc(c.navio||'—') + '</td>'
+          + '<td style="font-family:\'JetBrains Mono\',monospace;font-size:11px;">' + _esc(c.bls||'—') + '</td>'
+          + '<td>' + c.regs.length + '</td>'
+          + '<td style="white-space:nowrap;font-family:\'JetBrains Mono\',monospace;">' + kg(c.peso) + ' kg</td>'
+          + '<td style="white-space:nowrap;">' + tk + '</td>'
+          + '<td style="font-family:\'JetBrains Mono\',monospace;white-space:nowrap;">' + (pz ? _esc(pz.ticket) + aviso : semPz) + '</td>'
+          + '<td style="white-space:nowrap;font-size:11px;">' + (pz
+              ? _esc(pz.hr_entrada||'') + ' → ' + _esc(pz.hr_saida||'') + '<br>' + kg(pz.peso_entrada) + ' / ' + kg(pz.peso_saida) + ' kg'
+              : '—') + '</td>'
+          + '<td style="white-space:nowrap;font-weight:700;">' + (pz ? kg(pz.peso_liquido) + ' kg' : '—') + '</td>'
+          + '<td style="white-space:nowrap;font-weight:700;color:' + cor + ';">' + (dif === null ? '—' : (dif > 0 ? '+' : '') + kg(dif) + ' kg') + '</td>'
+          + '<td style="white-space:nowrap;"><button class="btn btn-sm ' + (pz ? 'btn-primary' : 'btn-secondary') + '" onclick="_tpbEmitirComPesagem(' + (de + i) + ')"'
+          + ' title="' + (pz ? 'Emitir o ticket de expedição com a pesagem do Porto' : 'Sem pesagem do Porto — emite só o ticket') + '">🎫</button></td>'
+          + '</tr>';
+      }).join('') + '</tbody></table></div>' + _tpbPager(lista.length, pages, de, pag.length);
+  _tpbUltimaLista = lista;
+}
+let _tpbUltimaLista = [];
+
+function _tpbImprimir(i){
+  const c = _tpbUltimaLista[i];
+  if(!c || !c.ticket) return;
+  _renderTicketWindow({ ...c.ticket, doc:'EXPEDICAO', entries:_tkEntradas(c.ticket) });
+}
+
+// Ticket de expedição com a pesagem do Porto — como na Carga Geral.
+// Usa o MESMO número do ticket já emitido para o carregamento (um documento só)
+// e não grava nada: a pesagem é juntada na hora da impressão.
+function _tpbEmitirComPesagem(i){
+  const c = _tpbUltimaLista[i];
+  if(!c) return;
+  const t = c.ticket;
+  if(!t){
+    showToast('Este carregamento ainda não tem ticket. Emita pela aba CONSULTAR (🎫) e depois volte aqui.', '#e05c1a', '#fff');
+    return;
+  }
+  const pz = c.pesagem;
+  if(!pz && !confirm('Este carregamento ainda não tem pesagem do Porto.\n\nEmitir o ticket ' + t.ticketNum + ' assim mesmo?')) return;
+  if(pz && c.casamento === 'confira' && !confirm('ATENÇÃO: a placa ' + (c.veiculo||'') + ' pesou ' + c.nCand + ' vezes neste dia e o horário '
+      + 'do registro não bate com nenhuma pesagem.\n\nTicket do Porto escolhido: ' + pz.ticket
+      + ' (' + (pz.hr_entrada||'') + ' → ' + (pz.hr_saida||'') + ')\n\nEmitir com esta pesagem?')) return;
+  const dif = _tkDiferencas(t);
+  if(dif.total && !confirm('O ticket ' + t.ticketNum + ' está DESATUALIZADO: '
+      + (dif.removidas ? dif.removidas + ' bobina(s) excluída(s) ' : '')
+      + (dif.alteradas ? dif.alteradas + ' registro(s) alterado(s) ' : '')
+      + 'depois da emissão.\n\nImprimir a versão emitida mesmo assim?\n\n'
+      + 'Para sair com os dados atuais, cancele o ticket na aba CONSULTAR (⊘) e emita um novo.')) return;
+  _renderTicketWindow({ ...t, doc:'EXPEDICAO', entries:_tkEntradas(t), pesagem: pz || null });
+}
+
+function _tpbPager(total, pages, de, naPagina){
+  if(pages <= 1) return '<div style="padding:.5rem 0;font-size:12px;color:var(--muted);">' + total + ' carregamento(s)</div>';
+  const p = _tpbState.page;
+  const b = (rot, alvo, dis, ativo) => '<button class="btn ' + (ativo ? 'btn-primary' : 'btn-secondary')
+    + ' btn-sm" ' + (dis ? 'disabled' : '') + ' onclick="tpbSetPage(' + alvo + ')" style="font-size:11px;padding:2px 7px;min-width:28px;">' + rot + '</button>';
+  const btns = [b('«', 0, p === 0), b('‹', p - 1, p === 0)];
+  const lo = Math.max(0, p - 2), hi = Math.min(pages - 1, lo + 4);
+  for(let i = lo; i <= hi; i++) btns.push(b(i + 1, i, false, i === p));
+  btns.push(b('›', p + 1, p === pages - 1), b('»', pages - 1, p === pages - 1));
+  return '<div style="display:flex;align-items:center;gap:.35rem;flex-wrap:wrap;padding:.6rem 0;font-size:12px;color:var(--muted);">'
+    + btns.join('') + '<span style="margin-left:.5rem;">' + (de + 1) + '–' + (de + naPagina) + ' de ' + total + '</span></div>';
+}
+
+// Ao abrir a aba: desenha na hora com o que já está na memória e redesenha
+// conforme chegam as pesagens, os tickets e a importação automática — que roda
+// no máximo a cada 30 min por aparelho, a mesma regra da Carga Geral.
+function abrirTicketsPortoBob(){
+  const hoje = new Date(), ini = new Date(hoje); ini.setDate(ini.getDate() - 7);
+  const a = document.getElementById('tpb-dt-ini'), b = document.getElementById('tpb-dt-fim');
+  if(a && !a.value) a.value = _dataLocalStr(ini);
+  if(b && !b.value) b.value = _dataLocalStr(hoje);
+  renderTicketsPortoBob();
+  _portoCarregar().then(renderTicketsPortoBob);
+  _tkExpCarregar().then(renderTicketsPortoBob);
+  _portoAutoImport(3).then(n => { if(n) renderTicketsPortoBob(); });
+}
+
+async function tpbAtualizarPesagens(){
+  const btn = document.getElementById('btn-tpb-atualizar');
+  if(btn){ btn.disabled = true; btn.textContent = 'ATUALIZANDO…'; }
+  try{ localStorage.removeItem('sp_porto_auto_ts'); }catch(e){}
+  const n = await _portoAutoImport(7);
+  if(btn){ btn.disabled = false; btn.textContent = '↻ PESAGENS'; }
+  renderTicketsPortoBob();
+  showToast(n ? ('✓ ' + n + ' pesagem(ns) sincronizada(s).') : 'Nenhuma pesagem nova.', n ? '#22c55e' : '#6b7280', n ? '#000' : '#fff');
+}
+
+// Uma linha da consulta de descarga/expedição. Fica numa função própria porque
+// a expedição agrupada por ticket desenha as mesmas linhas embaixo de cada grupo.
+function _linhaMovHtml(r, px, readonly){
+  const isExp = px==='e';
+  return `<tr data-id="${r.id}" data-px="${px}">
+    <td style="padding:.5rem 1rem;">${readonly?'':`<input type="checkbox" class="cb-row mov-cb" data-id="${r.id}" data-px="${px}" onchange="onMovCbChange('${px}')">`}</td>
+    <td><span class="coil-badge${isExp&&!readonly?' exp':''}">${_esc(r.coil)}</span></td>
+    <td>${formatDate(r.data)}</td>
+    <td>${_esc(r.periodo)}</td>
+    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(r.bl)||'—'}</td>
+    <td style="font-weight:600">${_esc(r.navio)||'—'}</td>
+    <td style="color:var(--info);font-weight:600">${_esc(r.veiculo)||'—'}</td>
+    <td>${_esc(r.motorista)||'—'}</td>
+    <td style="color:#60a5fa;font-size:13px">${_esc(r.cliente)||'—'}</td>
+    <td class="weight-cell">${r.pesob?fmtKg(r.pesob):'—'}</td>
+    <td class="weight-cell">${r.pesol?fmtKg(r.pesol):'—'}</td>
+    <td style="font-size:12px;color:var(--success);font-weight:600">${_esc(r.registradoPor)||'—'}</td>
+    <td>${readonly
+      ? `<div class="actions"><button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'d')">VER</button><span class="coil-badge" style="background:rgba(240,165,0,.12);color:var(--accent);border-color:rgba(240,165,0,.3);">📦 EM ESTOQUE</span></div>`
+      : `<div class="actions">
+      <button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'${px}')">VER</button>
+      ${px==='d'?`<button class="btn btn-secondary btn-sm" onclick="printTicketDescargaBobinas(${r.id})" title="Imprimir ticket desta descarga">🖨</button>`:''}
+      <button class="btn btn-info btn-sm" onclick="editMovimento(${r.id},'${px}')" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+      <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
+    </div>`}</td></tr>`;
+}
+
 function renderTable(px){
   const isExp = px==='e';
   const readonly = px==='e' && saldoModeE; // itens pendentes de expedição (só leitura)
@@ -5750,27 +6531,13 @@ function renderTable(px){
       <th>AÇÕES</th>`;
   }
 
-  tbody.innerHTML=slice.map(r=>`<tr data-id="${r.id}" data-px="${px}">
-    <td style="padding:.5rem 1rem;">${readonly?'':`<input type="checkbox" class="cb-row mov-cb" data-id="${r.id}" data-px="${px}" onchange="onMovCbChange('${px}')">`}</td>
-    <td><span class="coil-badge${isExp&&!readonly?' exp':''}">${_esc(r.coil)}</span></td>
-    <td>${formatDate(r.data)}</td>
-    <td>${_esc(r.periodo)}</td>
-    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)">${_esc(r.bl)||'—'}</td>
-    <td style="font-weight:600">${_esc(r.navio)||'—'}</td>
-    <td style="color:var(--info);font-weight:600">${_esc(r.veiculo)||'—'}</td>
-    <td>${_esc(r.motorista)||'—'}</td>
-    <td style="color:#60a5fa;font-size:13px">${_esc(r.cliente)||'—'}</td>
-    <td class="weight-cell">${r.pesob?fmtKg(r.pesob):'—'}</td>
-    <td class="weight-cell">${r.pesol?fmtKg(r.pesol):'—'}</td>
-    <td style="font-size:12px;color:var(--success);font-weight:600">${_esc(r.registradoPor)||'—'}</td>
-    <td>${readonly
-      ? `<div class="actions"><button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'d')">VER</button><span class="coil-badge" style="background:rgba(240,165,0,.12);color:var(--accent);border-color:rgba(240,165,0,.3);">📦 EM ESTOQUE</span></div>`
-      : `<div class="actions">
-      <button class="btn btn-secondary btn-sm" onclick="viewDetail(${r.id},'${px}')">VER</button>
-      ${px==='d'?`<button class="btn btn-secondary btn-sm" onclick="printTicketDescargaBobinas(${r.id})" title="Imprimir ticket desta descarga">🖨</button>`:''}
-      <button class="btn btn-info btn-sm" onclick="editMovimento(${r.id},'${px}')" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-      <button class="btn btn-danger btn-sm" onclick="deleteMovimento(${r.id},'${px}','${r.coil}')">✕</button>
-    </div>`}</td></tr>`).join('')
+  // Agrupado por ticket (padrão da expedição). O modo SALDO lista pendentes, que
+  // ainda não têm ticket nenhum — esse continua em lista simples.
+  if(isExp && agruparTicketE && !readonly){ _renderCorpoAgrupado(tbody, raw, st); updateSelBar(px); return; }
+  const chipAgr = isExp ? document.getElementById('e-fc-agrupar') : null;
+  if(chipAgr) chipAgr.classList.toggle('active', agruparTicketE && !readonly);
+
+  tbody.innerHTML=slice.map(r=>_linhaMovHtml(r, px, readonly)).join('')
     + _totalRowHtml(13,{
         9: fmtKg(raw.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0))+' kg',
         10:fmtKg(raw.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0))+' kg'
