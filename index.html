@@ -617,7 +617,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.0.3 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.0.8 · Acesso restrito</div>
   </div>
 </div>
 
@@ -1000,6 +1000,7 @@ body{
         <div class="filter-chip" onclick="setChip('d',this,'13x19')">13x19</div>
         <div class="filter-chip" onclick="setChip('d',this,'19x01')">19x01</div>
         <div class="filter-chip" onclick="setChip('d',this,'01x07')">01x07</div>
+        <div class="filter-chip active" id="d-fc-agrupar" onclick="alternarAgruparTicket('d',this)" title="Agrupar as bobinas pelo ticket de descarga">🎫 AGRUPAR POR TICKET</div>
         <button class="btn btn-secondary btn-sm" onclick="clearFilters('d')">LIMPAR</button>
         <button class="btn btn-secondary btn-sm" onclick="exportCSV('d')">↓ CSV</button>
         <button class="btn btn-info btn-sm" onclick="openImportMov('descarga')">↑ IMPORTAR EXCEL</button>
@@ -2897,7 +2898,7 @@ function showModuleTab(mod, tab){
     ? {registrar:0, lote:0, banco:1, consultar:2}
     : {registrar:0, lote:0, consultar:1, ticketsporto:2};
   tabEls.forEach((t,i)=>t.classList.toggle('active', i===(tabMap[tab]??0)));
-  if(tab==='consultar') { buildFilterSelects(prefix); applyFilters(prefix); if(prefix==='e') _tkExpCarregar(true); }
+  if(tab==='consultar') { buildFilterSelects(prefix); applyFilters(prefix); if(prefix==='e' || prefix==='d') _tkCarregar(prefix, true); }
   if(tab==='lote'||tab==='registrar'){
     preencherDataPeriodoLote(prefix);
   }
@@ -5119,7 +5120,7 @@ function reprintTicket(idx){
   // CGX/CGD = layout Carga Geral; EXP/DSC = layout bobinas.
   // (antes comparava com 'CG', que nunca existiu como tipo — ticket de Carga
   //  Geral acabava impresso no layout de bobinas, sem os itens.)
-  const doc  = (t.tipo==='CGD'||t.tipo==='DSC') ? 'DESCARGA' : 'EXPEDICAO';
+  const doc  = (t.tipo==='CGD'||t.tipo==='DSC'||t.tipo==='DSCC') ? 'DESCARGA' : 'EXPEDICAO';
   const itens = t.regs || t.entries || [];
   if(t.tipo==='CGX' || t.tipo==='CGD') _renderCgTicketWindow({...t, doc, regs:itens});
   else                                 _renderTicketWindow({...t, doc, entries:itens});
@@ -5415,7 +5416,7 @@ function _renderCgTicketWindow(t){ _cgTicketDoc(Array.isArray(t)?t:[t]); }
 
 function _renderTicketWindow(t){
   const {ticketNum, entries, veiculo, motorista, destino, data, periodo, obs} = t;
-  const isDesc = (t.doc==='DESCARGA' || t.tipo==='DSC');   // mesmo layout, cabecalho/campos trocados
+  const isDesc = (t.doc==='DESCARGA' || t.tipo==='DSC' || t.tipo==='DSCC');   // mesmo layout, cabecalho/campos trocados
   const destLbl = isDesc ? 'ARMAZEM:' : 'DESTINO:';
   const totalPB = entries.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   const totalPL = entries.reduce((a,r)=>a+(parseFloat(r.pesol)||0),0);
@@ -5473,7 +5474,7 @@ function _renderTicketWindow(t){
   <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'}${t.pesagem?' + PESAGEM':''}</div>
   <div class="sep">${DLINE}</div>
   <div class="tnum">${ticketNum}</div>
-  ${t.tipo==='EXPC'?'<div style="text-align:center;font-size:22px;font-weight:900;border:3px solid #000;margin:4px 0;padding:3px 0;letter-spacing:4px;">CANCELADO</div>':''}
+  ${(t.tipo==='EXPC'||t.tipo==='DSCC')?'<div style="text-align:center;font-size:22px;font-weight:900;border:3px solid #000;margin:4px 0;padding:3px 0;letter-spacing:4px;">CANCELADO</div>':''}
   <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
   <div class="sep">${LINE}</div>
 
@@ -5626,7 +5627,7 @@ function _renderReprintList(term, tipo){
           <span style="font-size:12px;color:var(--text);font-weight:600;">${_esc(t.veiculo)||'—'}</span>
           <span style="font-size:11px;color:var(--muted);">${_esc(t.motorista)||'—'}</span>
           ${tipoBadge}
-          ${t.tipo==='EXPC'?'<span style="font-size:10px;font-family:\'JetBrains Mono\',monospace;background:rgba(224,92,26,.15);color:var(--danger);border:1px solid rgba(224,92,26,.4);border-radius:4px;padding:1px 6px;">⊘ CANCELADO</span>':''}
+          ${(t.tipo==='EXPC'||t.tipo==='DSCC')?'<span style="font-size:10px;font-family:\'JetBrains Mono\',monospace;background:rgba(224,92,26,.15);color:var(--danger);border:1px solid rgba(224,92,26,.4);border-radius:4px;padding:1px 6px;">⊘ CANCELADO</span>':''}
           ${usuarioBadge}
         </div>
         <div style="margin-top:.3rem;font-size:11px;color:var(--muted);display:flex;gap:1rem;flex-wrap:wrap;">
@@ -5874,12 +5875,24 @@ function pageTableMov(px, page){ setPage(px, page, ()=>renderTable(px)); }
 // Cancelado, as bobinas voltam para "sem ticket" e um novo pode ser emitido com
 // os dados atuais, levando "SUBSTITUI EXP-…" na observação.
 
-let agruparTicketE = (function(){ try{ return localStorage.getItem('sp_exp_agrupar')!=='0'; }catch(e){ return true; } })();
-let _tkExpRemotos = null;          // tickets EXP/EXPC vindos do servidor
-let _tkExpCarregando = null;       // promessa da carga em andamento
-const _tkExpAbertos = new Set();   // grupos expandidos (chave do grupo)
-let _tkGruposPag = [];             // grupos da página atual, para os botões
+// Descarga e expedição usam o mesmo agrupamento; o que muda está aqui.
+// A descarga cancela com DSCC, pela mesma regra do EXPC.
+const _TK_CFG = {
+  e: { tipo:'EXP', canc:'EXPC', doc:'EXPEDICAO', nome:'expedição', lista:()=>expedicoes, ls:'sp_exp_agrupar', btn:'btn-exp' },
+  d: { tipo:'DSC', canc:'DSCC', doc:'DESCARGA',  nome:'descarga',  lista:()=>records,    ls:'sp_desc_agrupar', btn:'btn-primary' }
+};
+function _tkLeFlag(k){ try{ return localStorage.getItem(k)!=='0'; }catch(e){ return true; } }
+const _tkAgrupar    = { e:_tkLeFlag('sp_exp_agrupar'), d:_tkLeFlag('sp_desc_agrupar') };
+const _tkRemotos    = { e:null, d:null };          // tickets (ativos e cancelados) vindos do servidor
+const _tkCarregando = { e:null, d:null };          // promessa da carga em andamento
+const _tkAbertos    = { e:new Set(), d:new Set() };// grupos expandidos (chave do grupo)
+const _tkGruposPag  = { e:[], d:[] };              // grupos da página atual, para os botões
 const _TK_GRUPOS_POR_PAG = 40;
+
+function _tkPxDoTipo(tipo){
+  for(const px in _TK_CFG){ const c=_TK_CFG[px]; if(tipo===c.tipo || tipo===c.canc) return px; }
+  return null;
+}
 
 function _tkEntradas(t){
   const e = t && (t.entries || t.regs);
@@ -5895,50 +5908,54 @@ function _tkDoServidor(x){
     entries:_tkEntradas({entries:x.entries}) };
 }
 
-// Carrega do servidor os tickets de expedição (ativos e cancelados). A tela não
+// Carrega do servidor os tickets do módulo (ativos e cancelados). A tela não
 // espera: agrupa com o que já tem neste aparelho e se redesenha quando chegar.
-function _tkExpCarregar(forcar){
-  if(_tkExpCarregando) return _tkExpCarregando;
-  if(_tkExpRemotos && !forcar) return Promise.resolve(_tkExpRemotos);
+function _tkCarregar(px, forcar){
+  const c = _TK_CFG[px];
+  if(_tkCarregando[px]) return _tkCarregando[px];
+  if(_tkRemotos[px] && !forcar) return Promise.resolve(_tkRemotos[px]);
   if(!SUPA_URL || !SUPA_KEY) return Promise.resolve(null);
-  _tkExpCarregando = supaAll('tickets?select=*&tipo=in.(EXP,EXPC)&order=ts.desc')
+  _tkCarregando[px] = supaAll('tickets?select=*&tipo=in.('+c.tipo+','+c.canc+')&order=ts.desc')
     .then(rows => {
-      _tkExpRemotos = (rows||[]).map(_tkDoServidor);
-      if(document.getElementById('epanel-consultar')?.classList.contains('active')) renderTable('e');
-      return _tkExpRemotos;
+      _tkRemotos[px] = (rows||[]).map(_tkDoServidor);
+      if(document.getElementById(px+'panel-consultar')?.classList.contains('active')) renderTable(px);
+      return _tkRemotos[px];
     })
-    .catch(e => { console.warn('[tickets] carga da expedição falhou:', e.message); return null; })
-    .finally(() => { _tkExpCarregando = null; });
-  return _tkExpCarregando;
+    .catch(e => { console.warn('[tickets] carga da '+c.nome+' falhou:', e.message); return null; })
+    .finally(() => { _tkCarregando[px] = null; });
+  return _tkCarregando[px];
 }
+function _tkExpCarregar(forcar){ return _tkCarregar('e', forcar); }
 
 // Junta servidor, histórico deste aparelho e fila de envio. Se QUALQUER cópia
 // diz cancelado, vale cancelado — logo depois de cancelar, o servidor ainda pode
 // estar com a versão antiga guardada aqui.
-function _tkExpTodos(){
+function _tkTodos(px){
+  const c = _TK_CFG[px];
   const porId = new Map();
   const poe = t => {
     if(!t || !t.id) return;
     const tipo = String(t.tipo||'EXP');
-    if(tipo!=='EXP' && tipo!=='EXPC') return;
+    if(tipo!==c.tipo && tipo!==c.canc) return;
     const k = String(t.id), atual = porId.get(k);
     if(!atual){ porId.set(k, t); return; }
-    if(tipo==='EXPC' && atual.tipo!=='EXPC') porId.set(k, {...atual, ...t, tipo:'EXPC'});
+    if(tipo===c.canc && atual.tipo!==c.canc) porId.set(k, {...atual, ...t, tipo:c.canc});
   };
-  (_tkExpRemotos||[]).forEach(poe);
+  (_tkRemotos[px]||[]).forEach(poe);
   (ticketHistory||[]).forEach(poe);
   (_tkPending||[]).forEach(r => poe(_tkDoServidor(r)));
   return [...porId.values()];
 }
 
-function _tkExpIndice(){
-  const ativo = new Map();      // id da expedição → ticket ativo
-  const cancelados = new Map(); // id da expedição → [tickets cancelados]
-  _tkExpTodos().forEach(t => {
+function _tkIndice(px){
+  const c = _TK_CFG[px];
+  const ativo = new Map();      // id do registro → ticket ativo
+  const cancelados = new Map(); // id do registro → [tickets cancelados]
+  _tkTodos(px).forEach(t => {
     _tkEntradas(t).forEach(e => {
       if(e == null || e.id == null) return;
       const k = String(e.id);
-      if(t.tipo==='EXPC'){
+      if(t.tipo===c.canc){
         if(!cancelados.has(k)) cancelados.set(k, []);
         cancelados.get(k).push(t);
       } else if(!ativo.has(k)){
@@ -5950,9 +5967,10 @@ function _tkExpIndice(){
 }
 
 // O ticket ainda descreve o que está registrado? Compara cada bobina impressa
-// com a expedição de mesmo id como ela está agora.
+// com o registro de mesmo id como ele está agora.
 function _tkDiferencas(t){
-  const atuais = new Map(expedicoes.map(r => [String(r.id), r]));
+  const px = _tkPxDoTipo(t.tipo) || 'e';
+  const atuais = new Map(_TK_CFG[px].lista().map(r => [String(r.id), r]));
   let removidas = 0, alteradas = 0;
   const muda = (a, b) => String(a==null?'':a).trim().toUpperCase() !== String(b==null?'':b).trim().toUpperCase();
   _tkEntradas(t).forEach(e => {
@@ -5981,8 +5999,8 @@ function _ordenaMov(data, st){
   return out;
 }
 
-function _tkMontaGrupos(ordenados){
-  const { ativo, cancelados } = _tkExpIndice();
+function _tkMontaGruposPx(px, ordenados){
+  const { ativo, cancelados } = _tkIndice(px);
   const grupos = new Map();
   ordenados.forEach(r => {
     const t = ativo.get(String(r.id));
@@ -5995,34 +6013,38 @@ function _tkMontaGrupos(ordenados){
   });
   return [...grupos.values()];
 }
+function _tkMontaGrupos(ordenados){ return _tkMontaGruposPx('e', ordenados); }   // Tickets Porto
 
-function alternarAgruparTicketE(el){
-  agruparTicketE = !agruparTicketE;
-  try{ localStorage.setItem('sp_exp_agrupar', agruparTicketE ? '1' : '0'); }catch(e){}
-  if(el) el.classList.toggle('active', agruparTicketE);
-  applyFilters('e');
+function alternarAgruparTicket(px, el){
+  _tkAgrupar[px] = !_tkAgrupar[px];
+  try{ localStorage.setItem(_TK_CFG[px].ls, _tkAgrupar[px] ? '1' : '0'); }catch(e){}
+  if(el) el.classList.toggle('active', _tkAgrupar[px]);
+  applyFilters(px);
 }
+function alternarAgruparTicketE(el){ alternarAgruparTicket('e', el); }
 
-function _renderCorpoAgrupado(tbody, raw, st){
-  const chip = document.getElementById('e-fc-agrupar');
+function _renderCorpoAgrupado(px, tbody, raw, st){
+  const cfg = _TK_CFG[px];
+  const chip = document.getElementById(px+'-fc-agrupar');
   if(chip) chip.classList.add('active');
-  if(!_tkExpRemotos) _tkExpCarregar();
+  if(!_tkRemotos[px]) _tkCarregar(px);
 
-  const grupos = _tkMontaGrupos(_ordenaMov(raw, st));
+  const grupos = _tkMontaGruposPx(px, _ordenaMov(raw, st));
   const pages = Math.max(1, Math.ceil(grupos.length / _TK_GRUPOS_POR_PAG));
   if(st.page >= pages) st.page = pages - 1;
   if(st.page < 0) st.page = 0;
   const pag = grupos.slice(st.page*_TK_GRUPOS_POR_PAG, (st.page+1)*_TK_GRUPOS_POR_PAG);
-  _tkGruposPag = pag;
+  _tkGruposPag[px] = pag;
 
   // Com texto na busca, os grupos abrem sozinhos: quem procurou uma bobina
   // quer ver a bobina, não o cabeçalho do caminhão.
-  const buscando = !!(document.getElementById('e-search')?.value||'').trim();
-  const idsAtuais = new Set(expedicoes.map(r => String(r.id)));
+  const buscando = !!(document.getElementById(px+'-search')?.value||'').trim();
+  const idsAtuais = new Set(cfg.lista().map(r => String(r.id)));
   const selo = (txt, cor) => `<span class="tk-selo" style="color:${cor};border-color:${cor};">${txt}</span>`;
+  const destinoTxt = d => d ? `<span style="color:var(--muted);">${px==='d'?'📍 ':'→ '}${_esc(d)}</span>` : '';
 
   tbody.innerHTML = pag.map((g, gi) => {
-    const aberto = buscando || _tkExpAbertos.has(g.chave);
+    const aberto = buscando || _tkAbertos[px].has(g.chave);
     const r0 = g.registros[0];
     const pesoB = g.registros.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
     const t = g.ticket;
@@ -6036,11 +6058,11 @@ function _renderCorpoAgrupado(tbody, raw, st){
         + `<span>${formatDate(t.data||r0.data)} · ${_esc(t.periodo||r0.periodo)||'—'}</span>`
         + `<span style="color:var(--info);font-weight:700;">${_esc(t.veiculo||r0.veiculo)||'—'}</span>`
         + `<span>${_esc(t.motorista||r0.motorista)||'—'}</span>`
-        + (t.destino ? `<span style="color:var(--muted);">→ ${_esc(t.destino)}</span>` : '')
+        + destinoTxt(t.destino)
         + `<span><b>${g.registros.length}</b>${noTicket>g.registros.length?' de '+noTicket:''} bobina${g.registros.length>1?'s':''} · <b>${fmtKg(pesoB)}</b> kg</span>`
         + `<span style="color:var(--muted);font-size:11px;">emitido por ${_esc(t.usuario)||'—'}</span>`;
-      acoes = `<button class="btn btn-secondary btn-sm" onclick="_tkImprimirGrupo(${gi})" title="Imprimir o ticket ${_esc(t.ticketNum)}">🖨</button>`
-        + `<button class="btn btn-danger btn-sm" onclick="_tkCancelarGrupo(${gi})" title="Cancelar este ticket para emitir outro atualizado">⊘</button>`;
+      acoes = `<button class="btn btn-secondary btn-sm" onclick="_tkImprimirGrupo('${px}',${gi})" title="Imprimir o ticket ${_esc(t.ticketNum)}">🖨</button>`
+        + `<button class="btn btn-danger btn-sm" onclick="_tkCancelarGrupo('${px}',${gi})" title="Cancelar este ticket para emitir outro atualizado">⊘</button>`;
     } else {
       const canc = [...g.cancelados.values()].map(c => c.ticketNum);
       classe = 'tk-grupo tk-sem';
@@ -6049,14 +6071,15 @@ function _renderCorpoAgrupado(tbody, raw, st){
         + `<span>${formatDate(r0.data)} · ${_esc(r0.periodo)||'—'}</span>`
         + `<span style="color:var(--info);font-weight:700;">${_esc(r0.veiculo)||'—'}</span>`
         + `<span>${_esc(r0.motorista)||'—'}</span>`
+        + (px==='d' ? destinoTxt(r0.armazem) : '')
         + `<span><b>${g.registros.length}</b> bobina${g.registros.length>1?'s':''} · <b>${fmtKg(pesoB)}</b> kg</span>`;
-      acoes = `<button class="btn btn-exp btn-sm" onclick="_tkImprimirGrupo(${gi})" title="Emitir ticket com os dados atuais">🎫 EMITIR</button>`;
+      acoes = `<button class="btn ${cfg.btn} btn-sm" onclick="_tkImprimirGrupo('${px}',${gi})" title="Emitir ticket com os dados atuais">🎫 EMITIR</button>`;
     }
-    const filhos = g.registros.map(r => _linhaMovHtml(r, 'e', false)
+    const filhos = g.registros.map(r => _linhaMovHtml(r, px, false)
       .replace('<tr ', `<tr class="tk-filho" data-grupo="${gi}"${aberto?'':' style="display:none"'} `)).join('');
     return `<tr class="${classe}" data-grupo="${gi}">
-        <td style="padding:.5rem 1rem;"><input type="checkbox" class="cb-row" title="Selecionar as bobinas deste grupo" onchange="_tkMarcaGrupo(${gi},this.checked)"></td>
-        <td colspan="11" onclick="_tkAlternaGrupo(${gi})" style="cursor:pointer;">
+        <td style="padding:.5rem 1rem;"><input type="checkbox" class="cb-row" title="Selecionar as bobinas deste grupo" onchange="_tkMarcaGrupo('${px}',${gi},this.checked)"></td>
+        <td colspan="11" onclick="_tkAlternaGrupo('${px}',${gi})" style="cursor:pointer;">
           <div class="tk-cab"><span class="tk-seta">${aberto?'▾':'▸'}</span>${cab}</div>
         </td>
         <td><div class="actions">${acoes}</div></td>
@@ -6068,45 +6091,46 @@ function _renderCorpoAgrupado(tbody, raw, st){
       }, `TOTAL (${raw.length} reg. · ${grupos.length} grupo${grupos.length>1?'s':''})`);
 
   const tableWrap = tbody.closest('div[style*="overflow-x"]') || tbody.closest('.panel');
-  let pagerEl = document.getElementById('e-pager');
-  if(!pagerEl){ pagerEl = document.createElement('div'); pagerEl.id = 'e-pager'; tableWrap?.after(pagerEl); }
+  let pagerEl = document.getElementById(px+'-pager');
+  if(!pagerEl){ pagerEl = document.createElement('div'); pagerEl.id = px+'-pager'; tableWrap?.after(pagerEl); }
   const de = st.page*_TK_GRUPOS_POR_PAG + 1, ate = Math.min((st.page+1)*_TK_GRUPOS_POR_PAG, grupos.length);
-  pagerEl.innerHTML = renderPager(st, grupos.length, pages, `(p)=>pageTableMov('e',p)`, 'e-pager')
+  pagerEl.innerHTML = renderPager(st, grupos.length, pages, `(p)=>pageTableMov('${px}',p)`, px+'-pager')
     .replace(/<span>\d+–\d+ de \d+<\/span>/, `<span>${de}–${ate} de ${grupos.length} grupos</span>`);
 }
 
-function _tkAlternaGrupo(gi){
-  const g = _tkGruposPag[gi]; if(!g) return;
-  const abrir = !_tkExpAbertos.has(g.chave);
-  if(abrir) _tkExpAbertos.add(g.chave); else _tkExpAbertos.delete(g.chave);
-  document.querySelectorAll(`#e-table-body tr.tk-filho[data-grupo="${gi}"]`)
+function _tkAlternaGrupo(px, gi){
+  const g = _tkGruposPag[px][gi]; if(!g) return;
+  const abrir = !_tkAbertos[px].has(g.chave);
+  if(abrir) _tkAbertos[px].add(g.chave); else _tkAbertos[px].delete(g.chave);
+  document.querySelectorAll(`#${px}-table-body tr.tk-filho[data-grupo="${gi}"]`)
     .forEach(tr => { tr.style.display = abrir ? '' : 'none'; });
-  const seta = document.querySelector(`#e-table-body tr.tk-grupo[data-grupo="${gi}"] .tk-seta`);
+  const seta = document.querySelector(`#${px}-table-body tr.tk-grupo[data-grupo="${gi}"] .tk-seta`);
   if(seta) seta.textContent = abrir ? '▾' : '▸';
 }
 
-function _tkMarcaGrupo(gi, marcado){
-  const g = _tkGruposPag[gi]; if(!g) return;
-  if(marcado && !_tkExpAbertos.has(g.chave)) _tkAlternaGrupo(gi);   // mostra o que foi marcado
-  document.querySelectorAll(`#e-table-body tr.tk-filho[data-grupo="${gi}"] .mov-cb`)
+function _tkMarcaGrupo(px, gi, marcado){
+  const g = _tkGruposPag[px][gi]; if(!g) return;
+  if(marcado && !_tkAbertos[px].has(g.chave)) _tkAlternaGrupo(px, gi);   // mostra o que foi marcado
+  document.querySelectorAll(`#${px}-table-body tr.tk-filho[data-grupo="${gi}"] .mov-cb`)
     .forEach(cb => { cb.checked = marcado; });
-  onMovCbChange('e');
+  onMovCbChange(px);
 }
 
-async function _tkImprimirGrupo(gi){
-  const g = _tkGruposPag[gi]; if(!g) return;
+async function _tkImprimirGrupo(px, gi){
+  const g = _tkGruposPag[px][gi]; if(!g) return;
   const t = g.ticket;
-  if(!t){ await _tkEmitirGrupo(g); return; }
+  if(!t){ await _tkEmitirGrupo(px, g); return; }
   const dif = _tkDiferencas(t);
   if(dif.total && !confirm('O ticket ' + t.ticketNum + ' está DESATUALIZADO: '
       + (dif.removidas ? dif.removidas + ' bobina(s) excluída(s) ' : '')
       + (dif.alteradas ? dif.alteradas + ' registro(s) alterado(s) ' : '')
       + 'depois da emissão.\n\nImprimir a versão emitida mesmo assim?\n\n'
       + 'Para sair com os dados atuais, cancele este ticket (⊘) e emita um novo.')) return;
-  _renderTicketWindow({ ...t, doc:'EXPEDICAO', entries:_tkEntradas(t) });
+  _renderTicketWindow({ ...t, doc:_TK_CFG[px].doc, entries:_tkEntradas(t) });
 }
 
-async function _tkEmitirGrupo(g){
+async function _tkEmitirGrupo(px, g){
+  const cfg = _TK_CFG[px];
   const regs = g.registros;
   if(!regs.length) return;
   const r0 = regs[0];
@@ -6114,30 +6138,45 @@ async function _tkEmitirGrupo(g){
     .sort((a,b) => new Date(b.emitidoEm||0) - new Date(a.emitidoEm||0));
   const base = canc[0] || {};
   const substitui = canc.map(c => c.ticketNum);
-  const destino = base.destino || '';
+  const destino = base.destino || (px==='d' ? (r0.armazem||'') : '');
   const motorista = base.motorista || r0.motorista || '';
-  const obsAntiga = String(base.obs||'').replace(/^SUBSTITUI [^·]*(· )?/i, '').trim();
+  const obsAntiga = String(base.obs || (px==='d' ? r0.obs : '') || '').replace(/^SUBSTITUI [^·]*(· )?/i, '').trim();
   const obs = substitui.length
     ? ('SUBSTITUI ' + substitui.join(', ') + (obsAntiga ? ' · ' + obsAntiga : ''))
-    : '';
+    : obsAntiga;
   const antigo = r0.data && r0.data < dataOperacional() ? '\n\nAtenção: são registros de ' + formatDate(r0.data) + '.' : '';
-  if(!confirm('Emitir ticket de expedição?\n\n'
+  if(!confirm('Emitir ticket de ' + cfg.nome + '?\n\n'
       + (r0.veiculo||'—') + ' · ' + formatDate(r0.data) + ' · ' + (r0.periodo||'—') + '\n'
       + regs.length + ' bobina(s)'
       + (substitui.length ? '\nSubstitui: ' + substitui.join(', ') : '')
       + antigo)) return;
   const entries = regs.map(r => ({ ...r }));
-  await printTicketExpedicao(entries, r0.veiculo||'', motorista, destino, r0.data||'', r0.periodo||'', obs);
+  if(px==='e'){
+    await printTicketExpedicao(entries, r0.veiculo||'', motorista, destino, r0.data||'', r0.periodo||'', obs);
+  } else {
+    // Mesmo caminho do 🖨 da linha (printTicketDescargaBobinas), mas com as
+    // bobinas do grupo — sem procurar outro ticket para reaproveitar.
+    const ticketData = {
+      id: Date.now(), ticketNum: await getNextTicketNum('DSC'), tipo:'DSC', doc:'DESCARGA',
+      entries, veiculo: r0.veiculo||'', motorista, destino,
+      data: r0.data||'', periodo: r0.periodo||'', obs,
+      emitidoEm: new Date().toISOString(),
+      usuario: session?.nome||'—', userId: session?.user||''
+    };
+    _tkRegistrar(ticketData, entries);
+    _renderTicketWindow(ticketData);
+  }
   registrarAudit('ticket',
-    'Ticket de expedição emitido pela consulta: ' + regs.length + ' bobina(s) · Veículo ' + (r0.veiculo||'—')
+    'Ticket de ' + cfg.nome + ' emitido pela consulta: ' + regs.length + ' bobina(s) · Veículo ' + (r0.veiculo||'—')
       + (substitui.length ? ' · substitui ' + substitui.join(', ') : ''),
     { ids: regs.map(r => r.id), substitui });
-  renderTable('e');
-  _tkExpCarregar(true);
+  renderTable(px);
+  _tkCarregar(px, true);
 }
 
-async function _tkCancelarGrupo(gi){
-  const g = _tkGruposPag[gi]; if(!g || !g.ticket) return;
+async function _tkCancelarGrupo(px, gi){
+  const cfg = _TK_CFG[px];
+  const g = _tkGruposPag[px][gi]; if(!g || !g.ticket) return;
   const t = g.ticket;
   if(!confirm('Cancelar o ticket ' + t.ticketNum + '?\n\n'
       + 'O número fica marcado como CANCELADO e não é reaproveitado.\n'
@@ -6147,14 +6186,14 @@ async function _tkCancelarGrupo(gi){
   // Ticket que ainda não subiu para o servidor: o cancelamento vai junto na fila,
   // senão o reenvio o ressuscitaria como ativo.
   const emFila = (_tkPending||[]).find(r => String(r.id) === String(t.id));
-  if(emFila){ emFila.tipo = 'EXPC'; _tkSavePending(); }
+  if(emFila){ emFila.tipo = cfg.canc; _tkSavePending(); }
 
   showLoading('Cancelando ' + t.ticketNum + '...');
   try{
     const r = await supa('tickets?id=eq.' + encodeURIComponent(t.id), {
       method:'PATCH',
       headers:{ 'Prefer':'return=representation', 'Content-Type':'application/json' },
-      body: JSON.stringify({ tipo:'EXPC' })
+      body: JSON.stringify({ tipo:cfg.canc })
     });
     if(!emFila && (!Array.isArray(r) || !r.length))
       throw new Error('o ticket não foi encontrado no servidor');
@@ -6168,9 +6207,9 @@ async function _tkCancelarGrupo(gi){
   }
 
   const agora = new Date().toISOString(), quem = session?.nome || '—';
-  const marca = x => { if(x && String(x.id) === String(t.id)){ x.tipo = 'EXPC'; x.canceladoEm = agora; x.canceladoPor = quem; } };
+  const marca = x => { if(x && String(x.id) === String(t.id)){ x.tipo = cfg.canc; x.canceladoEm = agora; x.canceladoPor = quem; } };
   (ticketHistory||[]).forEach(marca);
-  (_tkExpRemotos||[]).forEach(marca);
+  (_tkRemotos[px]||[]).forEach(marca);
   try{ localStorage.setItem('sp_tickets', JSON.stringify(ticketHistory.slice(0,50))); }catch(e){}
 
   registrarAudit('cancelamento_ticket',
@@ -6179,7 +6218,7 @@ async function _tkCancelarGrupo(gi){
   hideLoading();
   if(emFila) _tkFlushPending();
   showToast('✓ ' + t.ticketNum + ' cancelado. Toque em 🎫 EMITIR no grupo para sair o novo.', '#a855f7', '#fff');
-  renderTable('e');
+  renderTable(px);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -6531,11 +6570,11 @@ function renderTable(px){
       <th>AÇÕES</th>`;
   }
 
-  // Agrupado por ticket (padrão da expedição). O modo SALDO lista pendentes, que
-  // ainda não têm ticket nenhum — esse continua em lista simples.
-  if(isExp && agruparTicketE && !readonly){ _renderCorpoAgrupado(tbody, raw, st); updateSelBar(px); return; }
-  const chipAgr = isExp ? document.getElementById('e-fc-agrupar') : null;
-  if(chipAgr) chipAgr.classList.toggle('active', agruparTicketE && !readonly);
+  // Agrupado por ticket (padrão na descarga e na expedição). O modo SALDO lista
+  // pendentes, que ainda não têm ticket nenhum — esse continua em lista simples.
+  if(_tkAgrupar[px] && !readonly){ _renderCorpoAgrupado(px, tbody, raw, st); updateSelBar(px); return; }
+  const chipAgr = document.getElementById(px+'-fc-agrupar');
+  if(chipAgr) chipAgr.classList.toggle('active', _tkAgrupar[px] && !readonly);
 
   tbody.innerHTML=slice.map(r=>_linhaMovHtml(r, px, readonly)).join('')
     + _totalRowHtml(13,{
@@ -9395,72 +9434,89 @@ function onMapNavioChange(){
   renderMapa();
 }
 
-function renderMapa(){
-  const fa = document.getElementById('map-filter-armazem')?.value||'';
-  const fb = document.getElementById('map-filter-bl')?.value||'';
-  const fn = document.getElementById('map-filter-navio')?.value||'';
+// ── Dados do mapa ────────────────────────────────────────────────
+// A tela e os arquivos (PDF/Excel) usam esta mesma função: o arquivo sai
+// exatamente com o que está na tela. Sem nenhum filtro não monta nada — o
+// estoque inteiro deixava a abertura do módulo lenta.
+// Pilha da bobina dentro do armazém. Vazio = pilha 1 (o normal).
+// Coluna `pilha` da tabela coilsdb (SQL: alter table coilsdb add column if not
+// exists pilha text). Sem a coluna, tudo continua na pilha 1.
+const _TK_SEP = '\u00a7';
+function _mapaPilha(c){
+  const p = String(c && c.pilha != null ? c.pilha : '').trim().toUpperCase();
+  return p || '1';
+}
+function _mapaChave(bl, pilha){ return (bl||'(sem BL)') + _TK_SEP + (pilha||'1'); }
 
-  // Filter coilsDB with normalized armazem comparison
-  const normArm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+function _mapaNormArm(s){
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
     .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
+}
+function _mapaDados(){
+  const v = id => document.getElementById(id)?.value || '';
+  const d = { fa:v('map-filter-armazem'), fb:v('map-filter-bl'), fn:v('map-filter-navio'),
+              fq:v('map-search-coil').trim().toUpperCase() };
+  d.temFiltro = !!(d.fa || d.fb || d.fn || d.fq);
+  d.descSet = new Set(records.map(r=>r.coil));
+  d.expSet  = new Set(expedicoes.map(r=>r.coil));
+  d.byArm = {};
+  if(!d.temFiltro) return d;
 
-  // Filter coilsDB
+  const fa = _mapaNormArm(d.fa);
   const base = coilsDB.filter(c=>
-    (!fa||normArm(c.armazem)===normArm(fa)) && (!fb||c.bl===fb) && (!fn||c.navio===fn)
+    (!d.fa || _mapaNormArm(c.armazem)===fa) && (!d.fb || c.bl===d.fb) && (!d.fn || c.navio===d.fn)
   );
-
-  // Sets for status lookup
-  const descSet = new Set(records.map(r=>r.coil));
-  const expSet  = new Set(expedicoes.map(r=>r.coil));
-
-  // Group by armazem → bl → ordered by descarga sequence (LIFO: última descarregada = topo da pilha)
-  const byArm = {};
+  // armazém → (BL + pilha). Um mesmo BL pode ocupar mais de uma pilha no mesmo
+  // armazém: quando a pilha enche e ainda há saldo, parte vai para a pilha 2, 3…
   base.forEach(c=>{
-    // normArm: same armazem name regardless of case, accents, dashes or extra spaces
-    const normArm = s => (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
-      .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
-    const armNorm = normArm(c.armazem);
-    const armKey  = armNorm || '(sem armazém)';
-    // Use first seen display name for each normalized key
-    if(!byArm[armKey]) byArm[armKey]={};
-    const bl  = c.bl||'(sem BL)';
-    if(!byArm[armKey][bl]) byArm[armKey][bl]=[];
-    byArm[armKey][bl].push(c);
+    const arm = _mapaNormArm(c.armazem) || '(sem armazém)';
+    const chave = (c.bl || '(sem BL)') + _TK_SEP + _mapaPilha(c);
+    if(!d.byArm[arm]) d.byArm[arm] = {};
+    if(!d.byArm[arm][chave]) d.byArm[arm][chave] = [];
+    d.byArm[arm][chave].push(c);
   });
-
-  // Sort each pilha by descarga order: records ordered by id desc = primeiro registrado = mais ao fundo
-  Object.values(byArm).forEach(bls=>{
-    Object.keys(bls).forEach(bl=>{
-      const pile = bls[bl];
-      // Match with records to get seq order
-      pile.forEach(c=>{
-        const rec = records.find(r=>r.coil===c.coil);
-        c._descSeq = rec ? rec.id : Infinity; // not yet discharged = pending
+  // Busca de bobina: só as pilhas que têm a bobina (ela fica destacada).
+  if(d.fq){
+    Object.keys(d.byArm).forEach(arm=>{
+      Object.keys(d.byArm[arm]).forEach(ch=>{
+        if(!d.byArm[arm][ch].some(c=>String(c.coil||'').toUpperCase().includes(d.fq))) delete d.byArm[arm][ch];
       });
-      // Sort: position 1 = topo (first to exit), higher number = fundo (bottom)
-      // After .reverse() in render: pile[last] → reversed[0] = shown at TOP
+      if(!Object.keys(d.byArm[arm]).length) delete d.byArm[arm];
+    });
+  }
+  // Ordem da pilha: posição manual (1 = topo) e, sem ela, a ordem de descarga
+  // (a última descarregada fica no topo). Índice coil → primeira descarga: o
+  // records.find por bobina que havia aqui levava ~10 s no estoque inteiro.
+  const primeiraDesc = new Map();
+  records.forEach(r=>{ if(!primeiraDesc.has(r.coil)) primeiraDesc.set(r.coil, r); });
+  Object.values(d.byArm).forEach(bls=>{
+    Object.values(bls).forEach(pile=>{
+      pile.forEach(c=>{ const rec = primeiraDesc.get(c.coil); c._descSeq = rec ? rec.id : Infinity; });
       pile.sort((a,b)=>{
         const ap = (a._mapPos != null && a._mapPos > 0) ? a._mapPos : null;
         const bp = (b._mapPos != null && b._mapPos > 0) ? b._mapPos : null;
-        if(ap !== null && bp !== null) return bp - ap;   // descending: pos1 → pile[last] → TOP after reverse
-        if(ap !== null) return 1;                         // a has manual pos → higher index → closer to TOP
-        if(bp !== null) return -1;                        // b has manual pos → higher index → closer to TOP
-        return a._descSeq - b._descSeq;                   // fallback: most recent → pile[last] → TOP
+        if(ap !== null && bp !== null) return bp - ap;
+        if(ap !== null) return 1;
+        if(bp !== null) return -1;
+        return a._descSeq - b._descSeq;
       });
     });
   });
+  return d;
+}
 
+function renderMapa(){
+  const d = _mapaDados();
+  const { fq, byArm, descSet, expSet } = d;
   const container = document.getElementById('map-container');
+  if(!d.temFiltro){
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">🗺</span>Selecione um <b>armazém</b>, <b>navio</b> ou <b>BL</b>, ou busque uma bobina, para ver o mapa.</div>`;
+    return;
+  }
   if(!Object.keys(byArm).length){
     container.innerHTML=`<div class="empty-state"><span class="empty-icon">🗺</span>Nenhuma bobina encontrada para os filtros selecionados.</div>`;
     return;
   }
-
-  // Update home badges
-  const totalPilhas = Object.values(byArm).reduce((a,bls)=>a+Object.keys(bls).length,0);
-  const totalBLs    = new Set(base.map(c=>c.bl).filter(Boolean)).size;
-  const hpEl=document.getElementById('home-map-pilhas'); if(hpEl) hpEl.textContent=totalPilhas;
-  const hbEl=document.getElementById('home-map-bls');    if(hbEl) hbEl.textContent=totalBLs;
 
   container.innerHTML = Object.entries(byArm).map(([arm, blGroups])=>`
     <div style="margin-bottom:2rem;">
@@ -9468,7 +9524,9 @@ function renderMapa(){
         🏭 ARMAZÉM: ${_esc(arm)}
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:1.2rem;align-items:flex-end;">
-        ${Object.entries(blGroups).map(([bl, pile])=>{
+        ${Object.entries(blGroups).map(([chavePilha, pile])=>{
+          const [bl, nPilha] = chavePilha.split(_TK_SEP);
+          const pilhasDoBL = Object.keys(blGroups).filter(k=>k.split(_TK_SEP)[0]===bl).length;
           const total   = pile.length;
           const expCount= pile.filter(c=>expSet.has(c.coil)).length;
           const descCount= pile.filter(c=>descSet.has(c.coil)).length;
@@ -9490,19 +9548,11 @@ function renderMapa(){
             if(isEditing){
               const ovKey=c.coil+'|'+(c.navio||'')+'|'+(c.bl||'');
               const ov=mapOverrides[ovKey]||mapOverrides[c.coil]||{};
-              const curArm=ov.armazem??c.armazem??'';
               const curPos=ov.posicao??c._mapPos??'';
               const curObs=ov.obs??c._mapObs??'';
               return `<div style="background:var(--surface);border:2px solid var(--accent);border-radius:6px;padding:8px;margin-bottom:2px;min-width:190px;">
                 <div style="font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px;">✏ ${_esc(c.coil)}</div>
                 <div style="display:flex;flex-direction:column;gap:4px;">
-                  <div>
-                    <div style="font-size:9px;color:var(--muted);margin-bottom:2px;font-family:'JetBrains Mono',monospace;">ARMAZÉM</div>
-                    <input id="map-ie-arm-${sid}" type="text" value="${_esc(curArm)}"
-                      placeholder="ex: ARM-01"
-                      oninput="this.value=this.value.toUpperCase()"
-                      style="width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;font-family:'JetBrains Mono',monospace;outline:none;text-transform:uppercase;">
-                  </div>
                   <div>
                     <div style="font-size:9px;color:var(--muted);margin-bottom:2px;font-family:'JetBrains Mono',monospace;">POSIÇÃO NA PILHA</div>
                     <input id="map-ie-pos-${sid}" type="number" value="${curPos}" min="1"
@@ -9557,8 +9607,8 @@ function renderMapa(){
             <!-- Stack header -->
             <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px 8px 0 0;padding:.6rem .8rem;border-bottom:none;">
               <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
-                <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;">BL: ${_esc(bl)}</div>
-                <button onclick="abrirDividirPilha('${bl}')" class="btn btn-secondary btn-sm" style="font-size:10px;padding:1px 6px;" title="Mover bobinas selecionadas para outro armazém">✂ DIVIDIR</button>
+                <div style="font-size:11px;font-weight:700;color:#22d3ee;font-family:'JetBrains Mono',monospace;">BL: ${_esc(bl)}${pilhasDoBL>1||nPilha!=='1'?`<span style="margin-left:.4rem;background:rgba(240,165,0,.15);color:var(--accent);border-radius:3px;padding:0 5px;">PILHA ${_esc(nPilha)}</span>`:''}</div>
+                <button onclick="abrirDividirPilha('${bl}','${arm}','${nPilha}')" class="btn btn-secondary btn-sm" style="font-size:10px;padding:1px 6px;" title="Pilha cheia? Separe parte das bobinas deste BL em outra pilha">✂ DIVIDIR</button>
               </div>
               <div style="font-size:10px;color:var(--muted);">${_esc(navio)} ${cliente?'· '+_esc(cliente):''}</div>
               <div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;">
@@ -9598,271 +9648,149 @@ function applyMapOverrides(){
   coilsDB.forEach(c=>{
     if(mapOverrides[c.coil]){
       const ov = mapOverrides[c.coil];
-      if(ov.armazem !== undefined) c.armazem   = ov.armazem;
+      // armazém NÃO vem daqui: ele é do Banco de Dados. Overrides antigos
+      // (da época do DIVIDIR/MOVER) ainda têm armazém guardado no aparelho.
       if(ov.posicao !== undefined) c._mapPos    = ov.posicao;
       if(ov.obs     !== undefined) c._mapObs    = ov.obs;
     }
   });
 }
 
-function abrirMapEdit(coil, navio, bl){
-  // Suporte a mesmo coil em navios/BLs diferentes
-  const c = coilsDB.find(x=>x.coil===coil &&
-    (navio===undefined || (x.navio||'')===(navio||'')) &&
-    (bl===undefined    || (x.bl||'')===(bl||'')));
-  if(!c) return;
-  const ovKey = coil+'|'+(c.navio||'')+'|'+(c.bl||'');
-  const ov = mapOverrides[ovKey] || mapOverrides[coil] || {};
-
-  document.getElementById('map-edit-coil').value       = coil;
-  document.getElementById('map-edit-coil-navio').value = c.navio||'';
-  document.getElementById('map-edit-coil-bl').value    = c.bl||'';
-  document.getElementById('map-edit-coil-label').textContent = coil;
-  document.getElementById('map-edit-coil-info').textContent  =
-    [c.navio, c.cliente, c.bl, c.produto].filter(Boolean).join(' · ');
-  document.getElementById('map-edit-armazem').value    = ov.armazem ?? c.armazem ?? '';
-  document.getElementById('map-edit-posicao').value    = ov.posicao ?? c._mapPos ?? '';
-  document.getElementById('map-edit-obs-pos').value    = ov.obs ?? c._mapObs ?? '';
-  document.getElementById('map-edit-bl-label').textContent = c.bl||'—';
-  document.getElementById('map-edit-arm-pilha').value  = ov.armazem ?? c.armazem ?? '';
-
-  // Populate existing armazens selector
-  const arms = [...new Set(coilsDB.map(x=>armazemLabel(x.armazem)).filter(Boolean))].sort();
-  const sel  = document.getElementById('map-edit-armazem-sel');
-  sel.innerHTML = '<option value="">Existentes...</option>' + arms.map(a=>`<option>${a}</option>`).join('');
-
-  document.getElementById('modal-map-edit').classList.add('open');
-}
-
-async function salvarMapEdit(){
-  const coil    = document.getElementById('map-edit-coil').value;
-  const cnavio  = document.getElementById('map-edit-coil-navio').value;
-  const cbl     = document.getElementById('map-edit-coil-bl').value;
-  const armazem = document.getElementById('map-edit-armazem').value.trim().toUpperCase();
-  const posicao = parseInt(document.getElementById('map-edit-posicao').value)||null;
-  const obs     = document.getElementById('map-edit-obs-pos').value.trim();
-  if(!coil) return;
-
-  // Save override by composite key coil+navio+bl
-  const ovKey = coil+'|'+cnavio+'|'+cbl;
-  mapOverrides[ovKey] = { armazem, posicao, obs };
-  // Legacy single-key for compat
-  mapOverrides[coil]  = { armazem, posicao, obs };
-  saveMapOverrides();
-
-  // Update coilsDB in memory
-  const c = coilsDB.find(x=>x.coil===coil&&(x.navio||'')===cnavio&&(x.bl||'')===cbl);
-  if(c){
-    c.armazem = armazem;
-    c._mapPos = posicao;
-    c._mapObs = obs;
-    try{
-      await supaUpsert('coilsdb', {coil:c.coil, navio:c.navio||'', bl:c.bl||'', armazem}, 'coil,navio,bl');
-    } catch(e){
-      showToast('⚠ Posição salva localmente, sync falhou.','#f59e0b','#000');
-    }
-  }
-
-  closeModal('modal-map-edit');
-  renderMapa();
-  showToast(`✓ Posição de ${coil} atualizada!`,'#22c55e','#000');
-}
-
 async function saveInlineMapEdit(coil, navio, bl){
+  // Só posição na pilha e observação. O armazém é do Banco de Dados e não se
+  // troca pelo mapa (gerava conflito com descarga/expedição).
   const sid = coil.replace(/[^a-z0-9]/gi,'_');
-  const armazem = (document.getElementById('map-ie-arm-'+sid)?.value||'').trim().toUpperCase();
   const posicao = parseInt(document.getElementById('map-ie-pos-'+sid)?.value)||null;
   const obs     = (document.getElementById('map-ie-obs-'+sid)?.value||'').trim();
 
   const ovKey = coil+'|'+navio+'|'+bl;
-  mapOverrides[ovKey] = { armazem, posicao, obs };
-  mapOverrides[coil]  = { armazem, posicao, obs };
+  mapOverrides[ovKey] = { posicao, obs };
+  mapOverrides[coil]  = { posicao, obs };
   saveMapOverrides();
 
   const c = coilsDB.find(x=>x.coil===coil&&(x.navio||'')===navio&&(x.bl||'')===bl);
-  if(c){
-    if(armazem) c.armazem = armazem;
-    c._mapPos = posicao;
-    c._mapObs = obs;
-    try{
-      await supaUpsert('coilsdb', {coil:c.coil, navio:c.navio||'', bl:c.bl||'', armazem:c.armazem||''}, 'coil,navio,bl');
-    } catch(e){
-      showToast('⚠ Posição salva localmente, sync falhou.','#f59e0b','#000');
-    }
-  }
+  if(c){ c._mapPos = posicao; c._mapObs = obs; }
 
   mapInlineEditCoil = null;
   renderMapa();
   showToast(`✓ Posição de ${coil} atualizada!`,'#22c55e','#000');
 }
 
-async function moverPilhaInteira(){
-  const coil      = document.getElementById('map-edit-coil').value;
-  const novoArm   = document.getElementById('map-edit-arm-pilha').value.trim().toUpperCase();
-  if(!novoArm){ showToast('Informe o novo armazém.','#e05c1a','#fff'); return; }
-  const c         = coilsDB.find(x=>x.coil===coil);
-  if(!c) return;
-  const bl        = c.bl;
-  const pilha     = coilsDB.filter(x=>x.bl===bl);
-
-  showLoading(`Movendo ${pilha.length} bobinas do BL ${bl} para ${novoArm}...`);
-
-  // Update all locally
-  pilha.forEach(x=>{
-    x.armazem = novoArm;
-    mapOverrides[x.coil] = { ...(mapOverrides[x.coil]||{}), armazem: novoArm };
+// ── Exportar o mapa (PDF / Excel) no padrão dos relatórios ──────────
+// Mesmos dados da tela (_mapaDados). Posição 1 = topo da pilha (1ª a sair).
+function _mapaLinhas(d){
+  const out = [];
+  Object.entries(d.byArm).forEach(([arm, bls])=>{
+    Object.entries(bls).forEach(([chave, pile])=>{
+      const [bl, nPilha] = chave.split(_TK_SEP);
+      [...pile].reverse().forEach((c, i)=>out.push({ arm, bl, pilha:nPilha, pos:i+1, c,
+        status: d.expSet.has(c.coil) ? 'EXPEDIDA' : d.descSet.has(c.coil) ? 'EM ESTOQUE' : 'PENDENTE DESC.' }));
+    });
   });
-  saveMapOverrides();
+  return out;
+}
+function _mapaFiltroTxt(d){
+  return [d.fa && 'Armazém: '+d.fa, d.fn && 'Navio: '+d.fn, d.fb && 'BL: '+d.fb, d.fq && 'Bobina: '+d.fq]
+    .filter(Boolean).join(' · ');
+}
+function _mapaParaExportar(){
+  const d = _mapaDados();
+  if(!d.temFiltro){ showToast('Filtre um armazém, navio, BL ou bobina antes de exportar.','#f59e0b','#000'); return null; }
+  const linhas = _mapaLinhas(d);
+  if(!linhas.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return null; }
+  return { d, linhas };
+}
 
-  // Sync to Supabase in batch
-  try{
-    await supaUpsertBulk('coilsdb',
-      pilha.map(x=>({coil:x.coil, navio:x.navio||'', bl:x.bl||'', armazem:novoArm})),
-      'coil,navio,bl', 50
-    );
-    showToast(`✓ ${pilha.length} bobinas do BL ${bl} movidas para ${novoArm}!`,'#22c55e','#000');
-  } catch(e){
-    showToast('⚠ Movido localmente, sync falhou.','#f59e0b','#000');
-  }
-
-  hideLoading();
-  closeModal('modal-map-edit');
-  buildMapFilters();
-  renderMapa();
+async function exportMapaExcel(){
+  const x = _mapaParaExportar(); if(!x) return;
+  const { d, linhas } = x;
+  const filtro = _mapaFiltroTxt(d);
+  const mapa = [['ARMAZÉM','PILHA','BL','NAVIO','CLIENTE','POSIÇÃO','COIL NUMBER','STATUS','P.BRUTO (kg)','PRODUTO','OBSERVAÇÃO']];
+  linhas.forEach(l=>mapa.push([l.arm, l.pilha, l.bl, l.c.navio||'', l.c.cliente||'', l.pos, String(l.c.coil||''), l.status,
+    parseFloat(l.c.pesob)||null, l.c.produto||'', l.c._mapObs||'']));
+  // Aba para reordenar a pilha e reimportar (↑ IMPORTAR MAPA). Só posição e
+  // observação — armazém não se troca pelo mapa.
+  const upd = [['COIL NUMBER','BL','NAVIO','ARMAZÉM','PILHA','POSIÇÃO ATUAL','POSIÇÃO NOVA','OBSERVAÇÃO']];
+  linhas.forEach(l=>upd.push([String(l.c.coil||''), l.bl, l.c.navio||'', l.arm, l.pilha, l.pos, '', '']));
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Mapa_'+hojeLocal()+'.xlsx',
+    sheets:[
+      { name:'Mapa Armazém', title:'🗺 MAPEAMENTO DE ARMAZÉM\n'+filtro, aoa:mapa, numFmts:{8:'#,##0'}, totals:false },
+      { name:'Atualização de Pilha', title:'ATUALIZAÇÃO DE PILHA — preencha POSIÇÃO NOVA (1 = topo) e/ou OBSERVAÇÃO', aoa:upd, totals:false }
+    ]
+  });
+  if(ok) showToast('✓ Mapa exportado em Excel ('+linhas.length+' bobinas).','#22c55e','#000');
 }
 
 function exportMapaPDF(){
-  const {jsPDF} = window.jspdf;
+  if(!window.jspdf){ showToast('⚠ Biblioteca de PDF indisponível.','#e05c1a','#fff'); return; }
+  const x = _mapaParaExportar(); if(!x) return;
+  const { d, linhas } = x;
+  const { jsPDF } = window.jspdf;
   const doc = new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
-  const fa=document.getElementById('map-filter-armazem')?.value||'';
-  const fb=document.getElementById('map-filter-bl')?.value||'';
-  const fn=document.getElementById('map-filter-navio')?.value||'';
-  const descSet=new Set(records.map(r=>r.coil));
-  const expSet=new Set(expedicoes.map(r=>r.coil));
-  const base=coilsDB.filter(c=>
-    (!fa||c.armazem===fa)&&(!fb||c.bl===fb)&&(!fn||c.navio===fn)
-  );
-  const byBL={};
-  base.forEach(c=>{
-    const bl=c.bl||'(sem BL)';
-    if(!byBL[bl]) byBL[bl]=[];
-    const rec=records.find(r=>r.coil===c.coil);
-    byBL[bl].push({...c,_descSeq:rec?rec.id:Infinity});
-  });
-  Object.values(byBL).forEach(p=>p.sort((a,b)=>{
-    const ap=(a._mapPos!=null&&a._mapPos>0)?a._mapPos:null;
-    const bp=(b._mapPos!=null&&b._mapPos>0)?b._mapPos:null;
-    if(ap!==null&&bp!==null) return bp-ap;
-    if(ap!==null) return 1;
-    if(bp!==null) return -1;
-    return a._descSeq-b._descSeq;
-  }));
-  const filtroLabel=[fa&&`Armazém: ${fa}`,fb&&`BL: ${fb}`,fn&&`Navio: ${fn}`].filter(Boolean).join(' | ')||'Todos';
-  doc.setFontSize(16); doc.setFont(undefined,'bold');
-  doc.text('STEELPORT · 4SIDES — MAPA DE ARMAZÉM',14,14);
-  doc.setFontSize(9); doc.setFont(undefined,'normal');
-  doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')} | Filtro: ${filtroLabel}`,14,20);
-  let y=28;
-  Object.entries(byBL).forEach(([bl,pile])=>{
-    // Render from TOP (pos 1 = first to exit) to BOTTOM: reverse so first row = top of pile
-    const pileTop=[...pile].reverse();
-    const rows=pileTop.map((c,i)=>[
-      String(i+1),
-      c.coil,
-      expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE',
-      c.cliente||'—', c.armazem||'—', c._mapObs||'—', c.pesob?fmtKg(c.pesob)+' kg':'—', c.produto||'—'
-    ]);
-    doc.setFontSize(10); doc.setFont(undefined,'bold');
-    if(y>170){doc.addPage();y=14;}
-    doc.text(`BL: ${bl} (${pile[0]?.navio||'—'} · ${pile[0]?.cliente||'—'})`,14,y);
-    y+=4;
-    doc.autoTable({startY:y,head:[['Pos.','Coil Number','Status','Cliente','Armazém','Obs','P.Bruto','Produto']],body:rows,
-      styles:{fontSize:8},headStyles:{fillColor:[30,58,95]},
-      columnStyles:{0:{cellWidth:10},1:{cellWidth:38},2:{cellWidth:26},5:{cellWidth:30}},
-      didParseCell:(d)=>{
-        if(d.section==='body'){
-          const s=d.row.raw[2];
-          if(s==='EM ESTOQUE')d.cell.styles.textColor=[34,197,94];
-          else if(s==='EXPEDIDA')d.cell.styles.textColor=[168,85,247];
-          else d.cell.styles.textColor=[240,165,0];
-        }
-      }
+  const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+  const now = new Date().toLocaleString('pt-BR');
+  const filtro = _mapaFiltroTxt(d);
+  const comCab = new Set();   // páginas que já têm o cabeçalho (didDrawPage roda a cada tabela)
+  const cab = ()=>{
+    const pg = doc.getCurrentPageInfo().pageNumber;
+    if(comCab.has(pg)) return;
+    comCab.add(pg);
+    doc.setFillColor(10,12,15); doc.rect(0,0,pageW,18,'F');
+    doc.setFillColor(240,165,0); doc.rect(0,16,pageW,2,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(240,165,0);
+    doc.text('4SIDES · STEELPORT',14,11);
+    doc.setFontSize(10); doc.setTextColor(180,180,180);
+    doc.text('MAPEAMENTO DE ARMAZÉM',14,15);
+    doc.text('Gerado: '+now,pageW-14,8,{align:'right'});
+    doc.text(filtro.length>90 ? filtro.slice(0,87)+'...' : filtro,pageW-14,14,{align:'right'});
+    doc.setTextColor(0,0,0);
+  };
+  cab();
+
+  const est = linhas.filter(l=>l.status==='EM ESTOQUE');
+  const pesoEst = est.reduce((a,l)=>a+(parseFloat(l.c.pesob)||0),0);
+  const nExp = linhas.filter(l=>l.status==='EXPEDIDA').length;
+  const nPend = linhas.length - est.length - nExp;
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(10,12,15);
+  doc.text(`${linhas.length} bobina(s) · ${est.length} em estoque (${fmtKg(pesoEst)} kg) · ${nExp} expedida(s) · ${nPend} pendente(s) de descarga`,14,25);
+  let y = 30;
+
+  const corStatus = { 'EM ESTOQUE':[21,128,61], 'EXPEDIDA':[126,34,206], 'PENDENTE DESC.':[180,100,0] };
+  Object.entries(d.byArm).forEach(([arm, bls])=>{
+    Object.entries(bls).forEach(([chave, pile])=>{
+      const [bl, nPilha] = chave.split(_TK_SEP);
+      const doGrupo = linhas.filter(l=>l.arm===arm && l.bl===bl && l.pilha===nPilha);
+      if(y > pageH-40){ doc.addPage(); cab(); y = 26; }
+      const c0 = pile[0] || {};
+      const emEst = doGrupo.filter(l=>l.status==='EM ESTOQUE');
+      doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(10,12,15);
+      doc.text(`ARMAZÉM ${arm}  ·  PILHA ${nPilha}  ·  BL ${bl}  ·  ${c0.navio||'—'}  ·  ${c0.cliente||'—'}`,14,y);
+      doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(90,90,90);
+      doc.text(`${emEst.length} em estoque · ${fmtKg(emEst.reduce((a,l)=>a+(parseFloat(l.c.pesob)||0),0))} kg`,pageW-14,y,{align:'right'});
+      doc.autoTable({
+        startY:y+2,
+        head:[['POS.','COIL NUMBER','STATUS','P.BRUTO (kg)','PRODUTO','OBSERVAÇÃO']],
+        body:doGrupo.map(l=>[String(l.pos), String(l.c.coil||''), l.status, l.c.pesob?fmtKg(l.c.pesob):'—', l.c.produto||'—', l.c._mapObs||'']),
+        styles:{fontSize:8,cellPadding:1.5},
+        headStyles:{fillColor:[240,165,0],textColor:[0,0,0],fontStyle:'bold'},
+        columnStyles:{0:{cellWidth:14,halign:'center'},1:{cellWidth:48,fontStyle:'bold'},2:{cellWidth:32},3:{cellWidth:28,halign:'right'}},
+        margin:{left:10,right:10,top:24},
+        didDrawPage:()=>cab(),
+        didParseCell:c=>{ if(c.section==='body' && c.column.index===2){ c.cell.styles.textColor = corStatus[c.cell.raw] || [0,0,0]; c.cell.styles.fontStyle='bold'; } }
+      });
+      y = doc.lastAutoTable.finalY + 8;
     });
-    y=doc.lastAutoTable.finalY+6;
   });
-  doc.save(`mapa_armazem_${new Date().toISOString().slice(0,10)}.pdf`);
-}
 
-function exportMapaExcel(){
-  const fa=document.getElementById('map-filter-armazem')?.value||'';
-  const fb=document.getElementById('map-filter-bl')?.value||'';
-  const fn=document.getElementById('map-filter-navio')?.value||'';
-  const descSet=new Set(records.map(r=>r.coil));
-  const expSet=new Set(expedicoes.map(r=>r.coil));
-  const base=coilsDB.filter(c=>
-    (!fa||c.armazem===fa)&&(!fb||c.bl===fb)&&(!fn||c.navio===fn)
-  );
-  const byBL={};
-  base.forEach(c=>{
-    const bl=c.bl||'(sem BL)';
-    if(!byBL[bl]) byBL[bl]=[];
-    const rec=records.find(r=>r.coil===c.coil);
-    byBL[bl].push({...c,_descSeq:rec?rec.id:Infinity});
-  });
-  Object.values(byBL).forEach(p=>p.sort((a,b)=>{
-    const ap=(a._mapPos!=null&&a._mapPos>0)?a._mapPos:null;
-    const bp=(b._mapPos!=null&&b._mapPos>0)?b._mapPos:null;
-    if(ap!==null&&bp!==null) return bp-ap;
-    if(ap!==null) return 1;
-    if(bp!==null) return -1;
-    return a._descSeq-b._descSeq;
-  }));
-  const wb=XLSX.utils.book_new();
-
-  // Sheet 1: Mapa atual — posição 1 = topo (primeira a sair), maior = fundo
-  // Colunas: Posição | Coil Number | Status | Cliente | Armazém | Obs | P.Bruto | Produto
-  const rows=[['Posição na Pilha','Coil Number','Status','Cliente','Armazém','Obs','P.Bruto (kg)','Produto']];
-  Object.entries(byBL).forEach(([bl,pile])=>{
-    // Cabeçalho de BL
-    rows.push([`BL: ${bl} — Navio: ${pile[0]?.navio||'—'}`,'','','','','','','']);
-    // reverse: pile is sorted fundo→topo; reverse so i=0 = topo = pos 1
-    const pileTop=[...pile].reverse();
-    pileTop.forEach((c,i)=>{
-      const pos=i+1;
-      const status=expSet.has(c.coil)?'EXPEDIDA':descSet.has(c.coil)?'EM ESTOQUE':'PENDENTE DESC.';
-      rows.push([pos,c.coil,status,c.cliente||'',c.armazem||'',c._mapObs||'',c.pesob||'',c.produto||'']);
-    });
-    rows.push([]);
-  });
-  const ws=XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols']=[{wch:10},{wch:22},{wch:16},{wch:18},{wch:12},{wch:24},{wch:12},{wch:16}];
-  XLSX.utils.book_append_sheet(wb,ws,'Mapa Armazém');
-
-  // Sheet 2: Atualização de Pilha (editável para reimportar)
-  // Colunas: Coil Number | Armazém Novo | Posição Nova | Observação
-  // Preencha Armazém Novo e/ou Posição Nova para mover/reordenar
-  const updRows=[
-    ['INSTRUÇÕES: Preencha "Armazém Novo" para mover a bobina. Preencha "Posição Nova" para reordenar (1=TOPO/primeira a sair, maior=FUNDO). Deixe em branco para não alterar.'],
-    [],
-    ['Coil Number','BL','Navio','Armazém Atual','Posição Atual','Armazém Novo','Posição Nova','Observação']
-  ];
-  Object.entries(byBL).forEach(([bl,pile])=>{
-    // pile sorted fundo→topo; reverse so i=0 = topo = pos 1
-    const pileTop=[...pile].reverse();
-    pileTop.forEach((c,i)=>{
-      const posAtual=i+1; // 1=topo
-      updRows.push([c.coil,bl,c.navio||'',c.armazem||'',posAtual,'','','']);
-    });
-    updRows.push([]);
-  });
-  const wsUpd=XLSX.utils.aoa_to_sheet(updRows);
-  wsUpd['!cols']=[{wch:22},{wch:20},{wch:18},{wch:14},{wch:14},{wch:14},{wch:14},{wch:22}];
-  // Merge instruction cell
-  wsUpd['!merges']=[{s:{r:0,c:0},e:{r:0,c:7}}];
-  XLSX.utils.book_append_sheet(wb,wsUpd,'Atualização de Pilha');
-
-  XLSX.writeFile(wb,`mapa_armazem_${new Date().toISOString().slice(0,10)}.xlsx`);
-  showToast('✓ Mapa Excel exportado com aba de atualização!','#22c55e','#000');
+  const n = doc.getNumberOfPages();
+  for(let i=1;i<=n;i++){
+    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(120,120,120);
+    doc.text(`Página ${i} de ${n}`, pageW-14, pageH-6, {align:'right'});
+    doc.text('4SIDES · STEELPORT WAREHOUSE SYSTEMS', 14, pageH-6);
+  }
+  doc.save('4SIDES_STEELPORT_Mapa_'+hojeLocal()+'.pdf');
+  showToast('✓ Mapa exportado em PDF ('+linhas.length+' bobinas).','#22c55e','#000');
 }
 
 // ── Importar mapa Excel — lê aba "Atualização de Pilha" ──────────
@@ -9889,7 +9817,6 @@ async function importarMapaExcel(file){
       const col=k=>hdr.findIndex(h=>h.includes(k));
 
       const iCoil   = col('coil');
-      const iArmNov = hdr.findIndex(h=>h.includes('armazém') && h.includes('novo') || h.includes('novo') && h.includes('arm'));
       const iPosNov = hdr.findIndex(h=>h.includes('posição') && h.includes('nova') || h.includes('nova') && h.includes('pos'));
       const iObs    = col('observ');
       const iNavio  = col('navio');
@@ -9904,14 +9831,13 @@ async function importarMapaExcel(file){
 
       for(const row of dataRows){
         const coil    = sanitizeCoil(String(row[iCoil]||''));
-        const armNov  = iArmNov>=0 ? String(row[iArmNov]||'').trim().toUpperCase() : '';
         const posNov  = iPosNov>=0 ? parseInt(row[iPosNov])||null : null;
         const obsVal  = iObs>=0    ? String(row[iObs]||'').trim() : '';
         const navioV  = iNavio>=0  ? String(row[iNavio]||'').trim() : '';
         const blV     = iBL>=0     ? String(row[iBL]||'').trim() : '';
 
         if(!coil){ skipped++; continue; }
-        if(!armNov && !posNov && !obsVal){ skipped++; continue; } // nada a alterar
+        if(!posNov && !obsVal){ skipped++; continue; } // nada a alterar
 
         // Encontrar a bobina no banco (por coil, e navio/bl se disponíveis)
         const c=coilsDB.find(x=>x.coil===coil&&
@@ -9921,19 +9847,13 @@ async function importarMapaExcel(file){
 
         // Aplicar alterações
         const ovKey=coil+'|'+(c.navio||'')+'|'+(c.bl||'');
-        mapOverrides[ovKey]={ armazem:armNov||c.armazem, posicao:posNov, obs:obsVal||c._mapObs||'' };
-        mapOverrides[coil] ={ armazem:armNov||c.armazem, posicao:posNov, obs:obsVal||c._mapObs||'' };
-        if(armNov) c.armazem=armNov;
+        // Linha só com observação não apaga a posição que já existia.
+        const novo={ posicao:posNov||c._mapPos||null, obs:obsVal||c._mapObs||'' };
+        mapOverrides[ovKey]=novo;
+        mapOverrides[coil] ={...novo};
         if(posNov) c._mapPos=posNov;
         if(obsVal) c._mapObs=obsVal;
 
-        // Sync ao Supabase se armazém mudou
-        if(armNov){
-          try{
-            await supa(`coilsdb?coil=eq.${encodeURIComponent(c.coil)}&navio=eq.${encodeURIComponent(c.navio||'')}&bl=eq.${encodeURIComponent(c.bl||'')}`,
-              {method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({armazem:armNov})});
-          }catch(err){ console.warn('sync failed',c.coil,err.message); }
-        }
         updated++;
       }
 
@@ -9954,63 +9874,135 @@ async function importarMapaExcel(file){
   reader.readAsArrayBuffer(file);
 }
 
-// ── Dividir pilha — mover bobinas selecionadas para outra pilha ──
-function abrirDividirPilha(bl){
-  const pile=coilsDB.filter(c=>(c.bl||'')===(bl||''));
-  if(!pile.length) return;
-  const descSet=new Set(records.map(r=>r.coil));
-  const expSet=new Set(expedicoes.map(r=>r.coil));
+// ── Dividir pilha ────────────────────────────────────────────────
+// Pilha cheia e o BL ainda com saldo: parte das bobinas vira uma segunda pilha
+// NO MESMO ARMAZÉM. Só muda o número da pilha (coluna `pilha` do coilsdb) —
+// o armazém não é tocado pelo mapa. Grava no Banco de Dados, para todos.
+let _splitPilha = { bl:'', arm:'', pilha:'1' };
 
-  document.getElementById('split-bl-label').textContent=bl;
-  document.getElementById('split-destino').value='';
+function _mapaPilhasDoBL(bl, arm){
+  const alvo = _mapaNormArm(arm);
+  return [...new Set(coilsDB.filter(c=>(c.bl||'')===(bl||'') && _mapaNormArm(c.armazem)===alvo).map(_mapaPilha))].sort();
+}
 
-  const lista=document.getElementById('split-coil-list');
-  lista.innerHTML=pile.map(c=>{
-    const status=expSet.has(c.coil)?'EXP':descSet.has(c.coil)?'OK':'?';
-    const color=expSet.has(c.coil)?'var(--exp)':descSet.has(c.coil)?'var(--success)':'var(--accent)';
+function _mapaProximaPilha(bl, arm){
+  const usadas = _mapaPilhasDoBL(bl, arm).map(p=>parseInt(p,10)).filter(n=>!isNaN(n));
+  return String((usadas.length ? Math.max(...usadas) : 1) + 1);
+}
+
+function abrirDividirPilha(bl, arm, pilha){
+  const alvo = _mapaNormArm(arm);
+  pilha = pilha || '1';
+  // Só as bobinas desta pilha (mesmo armazém, mesmo BL, mesma pilha). As já
+  // expedidas não entram: elas não estão mais no armazém.
+  const expSet = new Set(expedicoes.map(r=>r.coil));
+  const descSet = new Set(records.map(r=>r.coil));
+  const lista = coilsDB.filter(c => (c.bl||'')===(bl||'') && _mapaNormArm(c.armazem)===alvo
+    && _mapaPilha(c)===pilha && !expSet.has(c.coil));
+  if(!lista.length){ showToast('Esta pilha não tem bobinas em armazém para dividir.','#f59e0b','#000'); return; }
+  _splitPilha = { bl, arm:alvo, pilha };
+
+  document.getElementById('split-bl-label').textContent = bl;
+  document.getElementById('split-arm-label').textContent = alvo;
+  document.getElementById('split-pilha-label').textContent = pilha;
+  document.getElementById('split-destino').value = _mapaProximaPilha(bl, arm);
+  const dl = document.getElementById('split-pilhas');
+  if(dl){
+    const opcoes = [...new Set([..._mapaPilhasDoBL(bl, arm), _mapaProximaPilha(bl, arm)])].filter(p=>p!==pilha);
+    dl.innerHTML = opcoes.map(p=>`<option value="${_esc(p)}">`).join('');
+  }
+
+  document.getElementById('split-coil-list').innerHTML = lista.map(c=>{
+    const naDesc = descSet.has(c.coil);
+    const cor = naDesc ? 'var(--success)' : 'var(--accent)';
     return `<label style="display:flex;align-items:center;gap:.6rem;padding:.3rem 0;cursor:pointer;">
-      <input type="checkbox" value="${c.coil}" data-navio="${c.navio||''}" data-bl="${c.bl||''}"
-        style="accent-color:var(--accent);width:15px;height:15px;">
-      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${color};">${c.coil}</span>
-      <span style="font-size:11px;color:var(--muted);">${c.armazem||'?'} · ${(c.pesob||0)} kg · <span style="color:${color}">${status}</span></span>
+      <input type="checkbox" value="${_esc(c.coil)}" data-navio="${_esc(c.navio||'')}" data-bl="${_esc(c.bl||'')}"
+        onchange="_splitConta()" style="accent-color:var(--accent);width:15px;height:15px;">
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:${cor};">${_esc(c.coil)}</span>
+      <span style="font-size:11px;color:var(--muted);">${c.pesob?fmtKg(c.pesob)+' kg':'—'} · <span style="color:${cor}">${naDesc?'EM ESTOQUE':'PENDENTE DESC.'}</span></span>
     </label>`;
   }).join('');
-
+  _splitConta();
   document.getElementById('modal-split-pile').classList.add('open');
 }
 
-async function confirmarDividirPilha(){
-  const destino=document.getElementById('split-destino').value.trim().toUpperCase();
-  if(!destino){ showToast('Informe o armazém de destino.','#e05c1a','#fff'); return; }
-  const checked=[...document.querySelectorAll('#split-coil-list input:checked')];
-  if(!checked.length){ showToast('Selecione ao menos uma bobina.','#e05c1a','#fff'); return; }
-
-  showLoading(`Movendo ${checked.length} bobina(s) para ${destino}...`);
-  let moved=0;
-  for(const cb of checked){
-    const coil=cb.value, navio=cb.dataset.navio, bl=cb.dataset.bl;
-    const c=coilsDB.find(x=>x.coil===coil&&(x.navio||'')===navio&&(x.bl||'')===bl);
-    if(!c) continue;
-    c.armazem=destino;
-    const ovKey=coil+'|'+navio+'|'+bl;
-    mapOverrides[ovKey]={...(mapOverrides[ovKey]||{}), armazem:destino};
-    mapOverrides[coil] ={...(mapOverrides[coil]||{}),  armazem:destino};
-    try{
-      await supa(`coilsdb?coil=eq.${encodeURIComponent(coil)}&navio=eq.${encodeURIComponent(navio)}&bl=eq.${encodeURIComponent(bl)}`,
-        {method:'PATCH',headers:{'Prefer':'return=minimal'},body:JSON.stringify({armazem:destino})});
-    }catch(err){ console.warn('sync failed',coil); }
-    moved++;
-  }
-  saveMapOverrides();
-  hideLoading();
-  closeModal('modal-split-pile');
-  buildMapFilters();
-  renderMapa();
-  registrarAudit('edicao',`Divisão de pilha: ${moved} bobina(s) movidas para ${destino}`,{moved,destino});
-  showToast(`✓ ${moved} bobina(s) movidas para ${destino}!`,'#22c55e','#000');
+function _splitMarcarTodas(marcar){
+  document.querySelectorAll('#split-coil-list input[type=checkbox]').forEach(cb=>{ cb.checked = marcar; });
+  _splitConta();
 }
 
+function _splitConta(){
+  const todas = [...document.querySelectorAll('#split-coil-list input[type=checkbox]')];
+  const sel = todas.filter(cb=>cb.checked);
+  const peso = sel.reduce((a,cb)=>{
+    const c = coilsDB.find(x=>x.coil===cb.value && (x.bl||'')===cb.dataset.bl);
+    return a + (parseFloat(c?.pesob)||0);
+  },0);
+  const el = document.getElementById('split-conta');
+  if(el) el.textContent = `${sel.length} de ${todas.length} selecionada(s)` + (peso?` · ${fmtKg(peso)} kg`:'');
+}
 
+// A coluna `pilha` é nova no banco. Sem ela o PostgREST recusa a gravação e o
+// aviso abaixo mostra o SQL que resolve, em vez de um erro solto.
+function _avisoColunaPilha(){
+  const sql = 'alter table coilsdb add column if not exists pilha text;';
+  const el = document.createElement('div');
+  el.className = 'modal-overlay open';
+  el.innerHTML = `<div class="modal" style="max-width:520px;">
+    <div class="modal-title">⚠ FALTA A COLUNA "PILHA" NO BANCO</div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--text);line-height:1.6;margin-bottom:1rem;">
+        Para dividir pilhas, a tabela <b>coilsdb</b> precisa da coluna <b>pilha</b>.
+        Abra o <b>SQL Editor</b> do Supabase (supabase.com → projeto → SQL Editor), rode a linha
+        abaixo e tente de novo. Nada foi alterado agora.
+      </p>
+      <pre style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--accent);white-space:pre-wrap;">${sql}</pre>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="navigator.clipboard?.writeText('${sql}');showToast('SQL copiado.','#22c55e','#000')">COPIAR SQL</button>
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">FECHAR</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+}
+
+async function confirmarDividirPilha(){
+  const nova = document.getElementById('split-destino').value.trim().toUpperCase();
+  const checked = [...document.querySelectorAll('#split-coil-list input:checked')];
+  if(!nova){ showToast('Informe o número da nova pilha.','#e05c1a','#fff'); return; }
+  if(nova === _splitPilha.pilha){ showToast('A nova pilha precisa ser diferente da atual.','#e05c1a','#fff'); return; }
+  if(!checked.length){ showToast('Selecione ao menos uma bobina.','#e05c1a','#fff'); return; }
+  const existe = _mapaPilhasDoBL(_splitPilha.bl, _splitPilha.arm).includes(nova);
+  if(!confirm(`Mover ${checked.length} bobina(s) do BL ${_splitPilha.bl}, no armazém ${_splitPilha.arm},\n\n`
+      + `da pilha ${_splitPilha.pilha} para a pilha ${nova}${existe?' (que já existe)':' (nova)'}?`)) return;
+
+  showLoading(`Movendo ${checked.length} bobina(s) para a pilha ${nova}...`);
+  let movidas = 0, falhas = 0;
+  for(const cb of checked){
+    const coil = cb.value, navio = cb.dataset.navio, bl = cb.dataset.bl;
+    const c = coilsDB.find(x=>x.coil===coil && (x.navio||'')===navio && (x.bl||'')===bl);
+    if(!c) continue;
+    try{
+      await supa(`coilsdb?coil=eq.${encodeURIComponent(coil)}&navio=eq.${encodeURIComponent(navio)}&bl=eq.${encodeURIComponent(bl)}`,
+        {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify({pilha:nova})});
+      c.pilha = nova;   // só depois que o banco aceitou
+      movidas++;
+    }catch(err){
+      if(/pilha/i.test(err.message) && /column|coluna|schema cache|PGRST204/i.test(err.message)){
+        hideLoading(); closeModal('modal-split-pile'); _avisoColunaPilha(); return;
+      }
+      console.warn('[mapa] divisão falhou em', coil, err.message); falhas++;
+    }
+  }
+  hideLoading();
+  closeModal('modal-split-pile');
+  renderMapa();
+  if(movidas) registrarAudit('edicao',
+    `Divisão de pilha: ${movidas} bobina(s) do BL ${_splitPilha.bl} (${_splitPilha.arm}) da pilha ${_splitPilha.pilha} para a pilha ${nova}`,
+    { bl:_splitPilha.bl, armazem:_splitPilha.arm, de:_splitPilha.pilha, para:nova, movidas });
+  showToast(falhas ? `⚠ ${movidas} movida(s), ${falhas} falharam — tente de novo.` : `✓ ${movidas} bobina(s) agora na pilha ${nova}.`,
+    falhas ? '#f59e0b' : '#22c55e', '#000');
+}
 
 function getTarifaBL(bl, tarifaGlobal){
   const v = _fatGet(getTarifaKey(bl));
@@ -16057,63 +16049,6 @@ alter table users add column if not exists email text;
   </div>
 </div>
 
-<!-- ═══════════════════ EDITAR POSIÇÃO NO MAPA ══════════════════ -->
-<div class="modal-overlay" id="modal-map-edit">
-  <div class="modal" style="max-width:500px;">
-    <div class="modal-title">🗺 EDITAR POSIÇÃO NO MAPA</div>
-    <div class="modal-body">
-      <input type="hidden" id="map-edit-coil">
-      <input type="hidden" id="map-edit-coil-navio">
-      <input type="hidden" id="map-edit-coil-bl">
-      <!-- Info da bobina -->
-      <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1.2rem;font-family:'JetBrains Mono',monospace;">
-        <div style="font-size:13px;font-weight:700;color:var(--accent);" id="map-edit-coil-label">—</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;" id="map-edit-coil-info">—</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-        <div class="form-group" style="grid-column:span 2;">
-          <label>Armazém *</label>
-          <div style="display:flex;gap:.5rem;">
-            <input type="text" id="map-edit-armazem" placeholder="ex: ARM-01, BLOCO-A"
-              style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;text-transform:uppercase;"
-              oninput="this.value=this.value.toUpperCase()">
-            <select id="map-edit-armazem-sel" onchange="document.getElementById('map-edit-armazem').value=this.value"
-              style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem .75rem;border-radius:8px;font-size:13px;outline:none;">
-              <option value="">Existentes...</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>Posição na pilha (ordem)</label>
-          <input type="number" id="map-edit-posicao" min="1"
-            placeholder="1 = topo (1ª a sair), maior = fundo"
-            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
-          <div style="font-size:10px;color:var(--muted);margin-top:3px;">1 = topo (primeira a sair) · maior número = fundo da pilha</div>
-        </div>
-        <div class="form-group">
-          <label>Observação de posição</label>
-          <input type="text" id="map-edit-obs-pos" placeholder="ex: Linha 3, Coluna B"
-            style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:14px;outline:none;width:100%;">
-        </div>
-      </div>
-      <!-- Mover pilha inteira -->
-      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-top:.5rem;">
-        <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;margin-bottom:.5rem;">MOVER PILHA INTEIRA (mesmo BL)</div>
-        <div style="display:flex;gap:.5rem;align-items:center;">
-          <span style="font-size:13px;color:var(--text);">Mover todas as bobinas do BL <strong id="map-edit-bl-label">—</strong> para:</span>
-          <input type="text" id="map-edit-arm-pilha" placeholder="Novo armazém"
-            style="flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .75rem;border-radius:6px;font-size:13px;outline:none;text-transform:uppercase;"
-            oninput="this.value=this.value.toUpperCase()">
-          <button class="btn btn-warn btn-sm" onclick="moverPilhaInteira()">MOVER TUDO</button>
-        </div>
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="closeModal('modal-map-edit')">CANCELAR</button>
-      <button class="btn btn-primary" onclick="salvarMapEdit()">✓ SALVAR POSIÇÃO</button>
-    </div>
-  </div>
-</div>
 <!-- ═══════════════════════════════════════════════════
      SCREEN: FATURAMENTO
 ═══════════════════════════════════════════════════ -->
@@ -17187,15 +17122,25 @@ o</label>
   <div class="modal" style="max-width:480px;">
     <div class="modal-title">✂ DIVIDIR PILHA</div>
     <div class="modal-body">
-      <div style="font-size:13px;color:var(--muted);margin-bottom:1rem;">
-        Selecione as bobinas do BL <strong id="split-bl-label" style="color:var(--accent);font-family:'JetBrains Mono',monospace;"></strong> que deseja mover para outro armazém:
+      <div style="font-size:13px;color:var(--muted);margin-bottom:.6rem;">
+        Pilha <strong id="split-pilha-label" style="color:var(--accent);font-family:'JetBrains Mono',monospace;"></strong>
+        do BL <strong id="split-bl-label" style="color:var(--accent);font-family:'JetBrains Mono',monospace;"></strong>
+        no armazém <strong id="split-arm-label" style="color:var(--accent);font-family:'JetBrains Mono',monospace;"></strong>.
+        Marque as bobinas que vão formar a nova pilha — elas ficam no mesmo armazém. As já expedidas não aparecem.
+      </div>
+      <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.4rem;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;" onclick="_splitMarcarTodas(true)">MARCAR TODAS</button>
+        <button class="btn btn-secondary btn-sm" style="font-size:11px;padding:2px 8px;" onclick="_splitMarcarTodas(false)">LIMPAR</button>
+        <span id="split-conta" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"></span>
       </div>
       <div id="split-coil-list" style="max-height:280px;overflow-y:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem;margin-bottom:1rem;"></div>
       <div class="form-group">
-        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Armazém de Destino *</label>
-        <input type="text" id="split-destino" placeholder="ex: ARM-02, BLOCO-B"
-          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;outline:none;text-transform:uppercase;"
+        <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;text-transform:uppercase;display:block;margin-bottom:6px;">Nova pilha *</label>
+        <input type="text" id="split-destino" list="split-pilhas" maxlength="10" placeholder="ex: 2"
+          style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.75rem 1rem;border-radius:8px;font-size:15px;outline:none;text-transform:uppercase;font-family:'JetBrains Mono',monospace;"
           oninput="this.value=this.value.toUpperCase()">
+        <datalist id="split-pilhas"></datalist>
+        <div style="font-size:10px;color:var(--muted);margin-top:3px;">O armazém não muda. A pilha fica gravada no Banco de Dados e vale para todos os usuários.</div>
       </div>
     </div>
     <div class="modal-actions">
