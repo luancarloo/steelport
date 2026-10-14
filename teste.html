@@ -442,6 +442,17 @@ tr.row-selected td{background:rgba(224,92,26,.07) !important;}
 .cg-form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.85rem;margin-bottom:1rem;}
 .cg-saldo-box{padding:1rem 1.2rem;background:var(--surface2);border:1px solid var(--border);border-radius:10px;display:flex;align-items:center;gap:1rem;}
 .cg-saldo-num{font-size:28px;font-weight:900;color:#f97316;font-family:'Barlow Condensed',sans-serif;line-height:1;}
+/* ── Blocos de pesagem do Granel (Porto × armazém) ───────────────── */
+.gr-pesagens{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:.8rem;margin-bottom:.6rem;}
+.gr-pesagem-bloco{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;}
+.gr-pesagem-tit{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin-bottom:.5rem;display:flex;align-items:center;flex-wrap:wrap;}
+.gr-pesagem-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:.5rem;}
+
+/* ── Campos do Granel ────────────────────────────────────────────── */
+.gr-lbl{display:block;font-size:11px;color:var(--muted);font-weight:700;margin-bottom:.3rem;letter-spacing:.5px;font-family:'JetBrains Mono',monospace;text-transform:uppercase;}
+.gr-in{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.55rem .7rem;border-radius:8px;font-size:13px;outline:none;width:100%;box-sizing:border-box;font-family:'Barlow Condensed',sans-serif;}
+.gr-in:focus{border-color:var(--accent);}
+
 /* ── Toque duplo não amplia a página ──────────────────────────────
    No Android, dois toques rápidos num botão (ADICIONAR, LER, CONTINUAR) disparam
    o zoom de toque duplo. manipulation desliga só isso — o zoom de pinça continua. */
@@ -617,7 +628,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.0.8 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.11 · Acesso restrito</div>
   </div>
 </div>
 
@@ -808,6 +819,18 @@ body{
         </div>
       </div>
 
+      <!-- GRANEL -->
+      <div class="module-card" id="card-granel" onclick="openModule('granel')" style="border-color:rgba(34,211,238,.2);display:none;">
+        <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(34,211,238,.08),transparent 70%);pointer-events:none;"></div>
+        <div class="module-icon">🫗</div>
+        <h2 style="color:#22d3ee;">GRANEL</h2>
+        <p>Descarga, ensaque e expedição de produtos a granel, controlados por peso e D.I.</p>
+        <div class="module-stats">
+          <div><span id="home-gr-lotes">0</span> lotes cadastrados</div>
+          <div><span id="home-gr-pend">0</span> com saldo a descarregar</div>
+        </div>
+      </div>
+
       <!-- FOLLOW-UP (admin only) -->
       <div class="module-card" id="card-followup" onclick="openModule('followup')" style="border-color:rgba(59,130,246,.2);display:none;">
         <div style="position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,rgba(59,130,246,.08),transparent 70%);pointer-events:none;"></div>
@@ -985,7 +1008,7 @@ body{
     <!-- PANEL: CONSULTAR DESCARGA -->
     <div id="dpanel-consultar" class="panel">
       <div class="search-row">
-        <input type="text" id="d-search" placeholder="⌕  Buscar por coil, BL, veículo, motorista, obs..." oninput="applyFilters('d')" style="min-width:220px;">
+        <input type="text" id="d-search" placeholder="⌕  Buscar por coil, BL, veículo, motorista, ticket, obs..." oninput="applyFilters('d')" style="min-width:220px;">
         <select id="d-filter-navio" onchange="onFilterNavioChange('d')"><option value="">Todos os navios</option></select>
         <select id="d-filter-cliente" onchange="applyFilters('d')"><option value="">Todos os clientes</option></select>
         <select id="d-filter-bl" onchange="applyFilters('d')"><option value="">Todos os BLs</option></select>
@@ -1168,7 +1191,7 @@ body{
     <!-- PANEL: CONSULTAR EXPEDIÇÃO -->
     <div id="epanel-consultar" class="panel">
       <div class="search-row">
-        <input type="text" id="e-search" placeholder="⌕  Buscar por coil, BL, veículo, motorista, obs..." oninput="applyFilters('e')" style="min-width:220px;">
+        <input type="text" id="e-search" placeholder="⌕  Buscar por coil, BL, veículo, motorista, ticket, obs..." oninput="applyFilters('e')" style="min-width:220px;">
         <select id="e-filter-navio" onchange="onFilterNavioChange('e')"><option value="">Todos os navios</option></select>
         <select id="e-filter-cliente" onchange="applyFilters('e')"><option value="">Todos os clientes</option></select>
         <select id="e-filter-bl" onchange="applyFilters('e')"><option value="">Todos os BLs</option></select>
@@ -1497,6 +1520,9 @@ body{
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-carga-geral" style="accent-color:#f97316;width:16px;height:16px;"> 📦 Carga Geral
+            </label>
+            <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
+              <input type="checkbox" id="perm-granel" style="accent-color:#22d3ee;width:16px;height:16px;"> 🫗 Granel
             </label>
             <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);">
               <input type="checkbox" id="perm-cg-relatorio" style="accent-color:#f97316;width:16px;height:16px;"> 📊 CG · Relatório
@@ -1925,6 +1951,7 @@ function applySessionUI(){
     if(bkpCard)  bkpCard.style.display='';
     if(fuCard)   fuCard.style.display='';
   const cgCard=document.getElementById('card-carga-geral'); if(cgCard) cgCard.style.display='';
+    const grCard=document.getElementById('card-granel'); if(grCard) grCard.style.display='';
     const badge = document.getElementById('api-status-badge');
     if(badge) badge.innerHTML = (SUPA_URL && SUPA_KEY)
       ? 'Status: <span style="color:var(--success);">✓ CONECTADO</span>'
@@ -1942,6 +1969,7 @@ function applySessionUI(){
     if(bkpCard)  bkpCard.style.display='none';
     if(fuCard)   fuCard.style.display='none';
   const cgCard2=document.getElementById('card-carga-geral'); if(cgCard2) cgCard2.style.display='none';
+    const grCard2=document.getElementById('card-granel'); if(grCard2) grCard2.style.display='none';
   } else {
     // operator
     if(descCard) descCard.style.display=(perms.descarga===false)?'none':'';
@@ -1959,6 +1987,8 @@ function applySessionUI(){
     if(mapCard) mapCard.style.display=(perms.mapeamento===true)?'':'none';
     const cgCard3=document.getElementById('card-carga-geral');
     if(cgCard3) cgCard3.style.display=(perms.cargaGeral===true||perms.cgRelatorio===true)?'':'none';
+    const grCard3=document.getElementById('card-granel');
+    if(grCard3) grCard3.style.display=(perms.granel===true)?'':'none';
   }
 }
 
@@ -1982,6 +2012,7 @@ function canAccess(mod){
   if(mod==='mapeamento') return (perms.mapeamento  === true);
   if(mod==='followup')   return (perms.followup    === true);
   if(mod==='carga-geral')return (perms.cargaGeral===true || perms.cgRelatorio===true);
+  if(mod==='granel')     return (perms.granel      === true);
   return false;
 }
 
@@ -2076,6 +2107,7 @@ async function saveUser(){
         dashFat:     document.getElementById('perm-dash-fat').checked,
         mapeamento:  document.getElementById('perm-mapeamento').checked,
         cargaGeral:  document.getElementById('perm-carga-geral').checked,
+        granel:      document.getElementById('perm-granel').checked,
         cgRelatorio: document.getElementById('perm-cg-relatorio').checked
       };
   // Armazéns permitidos (vazio = todos)
@@ -2127,6 +2159,7 @@ function editUser(id){
       ? (u.perms.dashFat === true) : (u.perms?.faturamento === true);
     document.getElementById('perm-mapeamento').checked  = u.perms?.mapeamento  === true;
     document.getElementById('perm-carga-geral').checked   = u.perms?.cargaGeral  === true;
+    document.getElementById('perm-granel').checked        = u.perms?.granel      === true;
     document.getElementById('perm-cg-relatorio').checked  = u.perms?.cgRelatorio === true;
   }
   // Populate armazens
@@ -2169,6 +2202,7 @@ function clearUserForm(){
   document.getElementById('perm-dash-fat').checked=false;
   document.getElementById('perm-mapeamento').checked=false;
   document.getElementById('perm-carga-geral').checked=false;
+  document.getElementById('perm-granel').checked=false;
   document.getElementById('perm-cg-relatorio').checked=false;
   // Deselect all armazens (= access to all)
   const sel=document.getElementById('uf-armazens');
@@ -2530,6 +2564,9 @@ async function loadAllData(forcarBobinas){
     // fat_config só interessa a quem fatura — evita 4 requisições por login
     // para operador de pátio. Quem abrir o módulo depois carrega pelo autoSync.
     if(canAccess('faturamento')) carregarFatConfig();
+    // Lançamentos que ficaram presos neste aparelho sobem assim que há rede.
+    _movFlushPending(false).then(()=>_movAvisaPendentes());
+    _tkFlushPending(false);
     navios     = (navs ||[]).map(r=>r.nome).filter(Boolean);
     users      = (usrs ||[]).map(normalizeUser);
     if(!users.length) users=[DEFAULT_ADMIN];
@@ -2835,6 +2872,7 @@ async function openModule(mod){
   if(mod==='historico')  { loadAuditFromSupabase().then(renderHistorico); renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
   if(mod==='followup')   { renderFollowup(); showFuTab('regras'); }
+  if(mod==='granel')     { grAbrirModulo(); }
   if(mod==='carga-geral'){
     renderCargaGeral();
     // Abre na Descarga quem tem acesso completo; quem só tem o relatório abre nele.
@@ -2937,6 +2975,9 @@ function refreshHome(){
   const inStock=coilsDB.filter(c=>descSet.has(c.coil)&&!expSet.has(c.coil));
   const mapPilhas=new Set(inStock.map(c=>(c.armazem||'')+'|'+(c.bl||''))).size;
   const mapBLs=new Set(inStock.map(c=>c.bl).filter(Boolean)).size;
+  const grL=document.getElementById('home-gr-lotes'); if(grL) grL.textContent=(typeof grLotes!=='undefined'?grLotes.length:0);
+  const grP=document.getElementById('home-gr-pend');
+  if(grP) grP.textContent=(typeof grLotes!=='undefined'?grLotes.filter(l=>grSaldoDescarga(l)>0).length:0);
   const hpEl=document.getElementById('home-map-pilhas'); if(hpEl) hpEl.textContent=mapPilhas;
   const hbEl=document.getElementById('home-map-bls');    if(hbEl) hbEl.textContent=mapBLs;
 
@@ -4908,13 +4949,21 @@ async function confirmarLote(px){
       showLoading(`Sincronizando ${done}/${total}...`);
     });
   }catch(err){
+    let resolvido = false;
     if(err.message&&err.message.toLowerCase().includes('registrado')){
       try{
         const supaRowsSafe=entries.map(({registradoPor,registradoUser,editadoEm,editadoPor,...safe})=>safe);
         await supaUpsertBulk(table,supaRowsSafe,'id',100,(done,total)=>{ showLoading(`Sincronizando ${done}/${total}...`); });
-      }catch(e2){ showToast('⚠ Salvo localmente, sync falhou: '+e2.message,'#f59e0b','#000'); }
-    } else {
-      showToast('⚠ Salvo localmente, sync falhou: '+err.message,'#f59e0b','#000');
+        resolvido = true;
+      }catch(e2){ err = e2; }
+    }
+    if(!resolvido){
+      // Não confirmou no servidor: vai para a fila e é reenviado sozinho.
+      // Nunca deixar o lançamento só neste aparelho — o ticket sobe por outra
+      // fila e a carga ficaria "expedida no papel" e em estoque no sistema.
+      _movEnqueue(table, entries.map(({registradoUser, editadoEm, editadoPor, ...safe})=>safe));
+      _movFlushPending();
+      showToast('⚠ Sem conexão: '+entries.length+' lançamento(s) na FILA DE ENVIO. Serão enviados sozinhos.', '#e05c1a', '#fff');
     }
   }
 
@@ -4937,6 +4986,63 @@ async function confirmarLote(px){
   }
   showModuleTab(tipo,'consultar');
 }
+
+// ── Fila de lançamentos pendentes (descarga e expedição) ─────
+// O ticket já tinha fila; o LANÇAMENTO não. Se o envio falhasse, a bobina
+// ficava só no aparelho: o ticket subia, os registros não, e a bobina
+// continuava em estoque (aconteceu com o EXP-999269 em 06/10/2026).
+// Agora todo lançamento que não confirmar entra nesta fila e é reenviado
+// até o servidor aceitar.
+let _movPending = [];
+try{ _movPending = JSON.parse(localStorage.getItem('sp_mov_pending')||'[]'); }catch(e){ _movPending=[]; }
+
+function _movSavePending(){
+  try{ localStorage.setItem('sp_mov_pending', JSON.stringify(_movPending.slice(0,2000))); }catch(e){}
+}
+function _movEnqueue(tabela, linhas){
+  (linhas||[]).forEach(l=>{
+    if(!_movPending.some(p=>p.tabela===tabela && String(p.linha.id)===String(l.id)))
+      _movPending.push({ tabela, linha:l, em:new Date().toISOString() });
+  });
+  _movSavePending();
+}
+function _movPendingCount(){ return _movPending.length; }
+
+async function _movFlushPending(silent=true){
+  if(!SUPA_URL||!SUPA_KEY||!_movPending.length) return 0;
+  let enviados=0;
+  for(const p of _movPending.slice()){
+    try{
+      await supaUpsert(p.tabela, p.linha, 'id');
+      _movPending = _movPending.filter(x=>!(x.tabela===p.tabela && String(x.linha.id)===String(p.linha.id)));
+      _movSavePending();
+      enviados++;
+    }catch(e){
+      console.warn('[lançamentos] reenvio pendente falhou:', e.message);
+      break;                       // sem rede/servidor fora: tenta de novo depois
+    }
+  }
+  if(enviados){
+    // Carga Geral aberta: redesenha com o que acabou de subir.
+    try{
+      if(document.getElementById('screen-carga-geral')?.classList.contains('active')){
+        if(typeof renderCgDescHoje==='function') renderCgDescHoje();
+        if(typeof renderCgExpHoje==='function')  renderCgExpHoje();
+        if(typeof updateCgStats==='function')    updateCgStats();
+      }
+    }catch(e){}
+  }
+  if(enviados && !silent) showToast(`↻ ${enviados} lançamento(s) pendente(s) sincronizado(s)`,'#22c55e','#000');
+  return enviados;
+}
+
+// Avisa, reenvia ao voltar a rede e tenta de tempos em tempos enquanto houver fila.
+function _movAvisaPendentes(){
+  if(!_movPendingCount()) return;
+  showToast(`⚠ ${_movPendingCount()} lançamento(s) ainda não sincronizado(s) — mantendo tentativa`,'#f59e0b','#000');
+}
+window.addEventListener('online', ()=>{ _movFlushPending(false); _tkFlushPending(false); });
+setInterval(()=>{ if(_movPendingCount()) _movFlushPending(false).then(n=>{ if(n){ buildFilterSelects('d'); buildFilterSelects('e'); refreshHome(); } }); }, 60000);
 
 // ── Fila de tickets pendentes de envio ao servidor ───────────
 // Antes o POST do ticket era "dispare e esqueça" (.catch(()=>{})): se a rede
@@ -5120,9 +5226,10 @@ function reprintTicket(idx){
   // CGX/CGD = layout Carga Geral; EXP/DSC = layout bobinas.
   // (antes comparava com 'CG', que nunca existiu como tipo — ticket de Carga
   //  Geral acabava impresso no layout de bobinas, sem os itens.)
-  const doc  = (t.tipo==='CGD'||t.tipo==='DSC'||t.tipo==='DSCC') ? 'DESCARGA' : 'EXPEDICAO';
+  const doc  = (t.tipo==='CGD'||t.tipo==='DSC'||t.tipo==='DSCC'||t.tipo==='GRD') ? 'DESCARGA' : 'EXPEDICAO';
   const itens = t.regs || t.entries || [];
-  if(t.tipo==='CGX' || t.tipo==='CGD') _renderCgTicketWindow({...t, doc, regs:itens});
+  if(t.tipo==='GRD' || t.tipo==='GRX') _grTicketWindow({...t, doc, regs:itens});
+  else if(t.tipo==='CGX' || t.tipo==='CGD') _renderCgTicketWindow({...t, doc, regs:itens});
   else                                 _renderTicketWindow({...t, doc, entries:itens});
 }
 
@@ -5362,7 +5469,10 @@ function _cgTicketNomeArquivo(t){
     .replace(/\s+/g,' ').trim() || 'TICKET';
 }
 
-function _cgTicketDoc(lista){
+// corpoFn: o Granel desenha o próprio corpo (peso no lugar da quantidade);
+// o resto do documento — papel de 80 mm, CSS, impressão — é o mesmo.
+function _cgTicketDoc(lista, corpoFn){
+  const corpo = corpoFn || _cgTicketCorpo;
   const tickets = Array.isArray(lista) ? lista : [lista];
   if(!tickets.length) return;
   // No lote vai o nome do primeiro ticket + quantos mais vieram no mesmo arquivo.
@@ -5405,7 +5515,7 @@ function _cgTicketDoc(lista){
     <button onclick="window.close()" style="background:#ddd;color:#000;">FECHAR</button>
   </div>
 
-  ${tickets.map((tk,i)=>_cgTicketCorpo(tk)+(i<tickets.length-1?'<div class="quebra"></div>':'')).join('')}
+  ${tickets.map((tk,i)=>corpo(tk)+(i<tickets.length-1?'<div class="quebra"></div>':'')).join('')}
 
   <script>setTimeout(()=>window.print(),400);<\/script>
   </body></html>`);
@@ -5553,6 +5663,7 @@ async function openReprintModal(){
     try{
       await _tkBackfillFromLocal();   // detecta tickets presos só neste aparelho
       await _tkFlushPending();        // e os sobe antes de listar
+      await _movFlushPending();       // lançamentos presos neste aparelho também
       const isAdmin = session?.role==='admin';
       const q = isAdmin
         ? 'tickets?select=*&order=ts.desc'
@@ -5797,6 +5908,28 @@ function toggleSaldoExp(el){
   applyFilters('e');
 }
 
+// Número do ticket de cada registro, para a busca da consulta.
+// Memorizado porque getFiltered roda a cada tecla digitada: sem isso o índice
+// de ~1.200 tickets seria remontado a cada letra. Inclui os cancelados, para
+// quem procura um ticket que foi substituído.
+let _tkBuscaCache = { e:null, d:null };
+function _tkBuscaIndice(px){
+  if(!_TK_CFG[px]) return null;
+  const sig = (_tkRemotos[px] ? _tkRemotos[px].length : 0) + '|'
+            + ((ticketHistory||[]).length) + '|' + ((_tkPending||[]).length);
+  const cache = _tkBuscaCache[px];
+  if(cache && cache.sig === sig) return cache.mapa;
+  const { ativo, cancelados } = _tkIndice(px);
+  const mapa = new Map();
+  ativo.forEach((t, id)=>mapa.set(id, String(t.ticketNum||'').toLowerCase()));
+  cancelados.forEach((lista, id)=>{
+    const nums = (lista||[]).map(t=>String(t.ticketNum||'').toLowerCase());
+    mapa.set(id, [mapa.get(id)||'', ...nums].filter(Boolean).join(' '));
+  });
+  _tkBuscaCache[px] = { sig, mapa };
+  return mapa;
+}
+
 function getFiltered(px){
   let src = px==='d'?records:expedicoes;
   if(px==='e' && saldoModeE){
@@ -5813,8 +5946,11 @@ function getFiltered(px){
   const fdi = document.getElementById(px+'-filter-data-ini')?.value||'';
   const fdf = document.getElementById(px+'-filter-data-fim')?.value||'';
   const ap  = activeFilter[px]||'';
+  // No modo SALDO a lista é de descargas, então o ticket a procurar é o de descarga.
+  const tkIdx = q ? _tkBuscaIndice((px==='e' && saldoModeE) ? 'd' : px) : null;
   return src.filter(r=>{
-    const mQ=!q||[r.coil,r.bl,r.navio,r.veiculo,r.motorista,r.cliente,r.obs,r.produto,r.armazem].some(f=>f&&f.toLowerCase().includes(q));
+    const mQ=!q||[r.coil,r.bl,r.navio,r.veiculo,r.motorista,r.cliente,r.obs,r.produto,r.armazem].some(f=>f&&f.toLowerCase().includes(q))
+      || (tkIdx && (tkIdx.get(String(r.id))||'').includes(q));
     return mQ
       &&(!fn||r.navio===fn)&&(!fc||r.cliente===fc)&&(!fb||r.bl===fb)
       &&(!fa||r.armazem===fa)&&(!fv||r.veiculo===fv)&&(!fp||r.produto===fp)
@@ -11521,6 +11657,7 @@ function applyFatConfig(rows){
     if(k.startsWith('state_'))     _fatSet('sp_fat_'+k, v);
     if(k.startsWith('peso_'))      _fatSet('sp_fat_'+k, v);
     if(k.startsWith('porto_'))     _fatSet('sp_fat_'+k, v);   // config da API do Porto
+    if(k.startsWith('gr_'))        _fatSet('sp_fat_'+k, v);   // tarifas do Granel
   });
 }
 
@@ -12708,6 +12845,15 @@ function _cgSetSyncStatus(status){
 
 // A tabela bulk_expedicoes NÃO possui a coluna 'armazem' (apenas descargas usam praça).
 // Enviar 'armazem' faz o PostgREST rejeitar o INSERT inteiro (42703) → nada sincroniza.
+// Lançamento da Carga Geral que não confirmou no servidor entra na MESMA fila
+// dos lançamentos de bobina (sp_mov_pending): assim ele é reenviado no login,
+// quando a rede volta e a cada minuto — e não só enquanto o módulo fica aberto.
+function _cgEnfileira(tbl, reg, aviso){
+  _movEnqueue(tbl, [_cgSanitizeReg(tbl, reg)]);
+  _movFlushPending();
+  if(aviso) showToast('⚠ Sem conexão: lançamento na FILA DE ENVIO. Será enviado sozinho.','#e05c1a','#fff');
+}
+
 function _cgSanitizeReg(tbl, reg){
   if(tbl==='bulk_expedicoes'){ const {armazem:_omit, ...rest}=reg; return rest; }
   return reg;
@@ -12758,7 +12904,7 @@ async function _cgPushMissing(tbl, list){
   await Promise.all(list.map(reg=>
     supa(tbl+'?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(_cgSanitizeReg(tbl,reg))})
       .then(()=>{ _cgSynced[reg.id]=1; if(_cgEdit[reg.id]) delete _cgEdit[reg.id]; _cgSavePending(); })
-      .catch(e=>console.warn('CG push',tbl,e.message))
+      .catch(e=>{ console.warn('CG push',tbl,e.message); _cgEnfileira(tbl, reg, false); })
   ));
 }
 
@@ -12799,6 +12945,7 @@ function _cgPruneTombstones(descs, exps){
 async function cgSyncNow(showFeedback=false){
   if(!SUPA_URL||!SUPA_KEY){ _cgSetSyncStatus('offline'); return; }
   _cgSetSyncStatus('syncing');
+  await _movFlushPending();          // o que ficou preso neste aparelho sobe primeiro
   try{
     await _cgFetchServerDeletions(); // aprende exclusões feitas em outros dispositivos ANTES de mesclar
     const [items, descs, exps] = await Promise.all([
@@ -12820,6 +12967,7 @@ async function cgSyncNow(showFeedback=false){
     _cgPruneTombstones(descs, exps);
     _portoCarregar();           // pesagens do Porto acompanham o sync
     _tkFlushPending();          // tickets presos neste aparelho sobem junto com o sync da CG
+    _movFlushPending();         // e os lançamentos de descarga/expedição
     _cgRenderAfterSync();
     _cgSetSyncStatus('ok');
     if(showFeedback) showToast('↻ Dados sincronizados!','#22c55e','#000');
@@ -13582,6 +13730,2190 @@ function renderCargaGeral(){
   cgRenderItems('exp');
 }
 
+// ══════════════════════════════════════════════════════════════════
+// GRANEL — lotes (navio + produto + D.I.), descarga e ticket
+// ══════════════════════════════════════════════════════════════════
+// Mesma lógica da Carga Geral, mas o controle é por PESO, não por volume.
+// Um lote é NAVIO + PRODUTO + D.I.: é nele que o peso declarado, o
+// descarregado e (entrega 2) o processado e o expedido se encontram.
+// Tabelas: granel_lotes, granel_descargas (SQL em granel.sql).
+
+let grLotes = [], grDescargas = [], grProcessamentos = [], grExpedicoes = [];
+let grCarregando = null, grCarregado = false;
+let grEditLote = null, grEditDesc = null, grEditProc = null, grEditExp = null;
+
+// Formatos de embalagem (o ensaque entra na entrega 2; o granel usa o peso cheio)
+// Tipos de saída, como nas abas da planilha de controle do navio.
+// granel:true = produto solto (caminhão granel ou silo): desconta do granel,
+// não tem volume e não gera cobrança de ensaque.
+const GR_FORMATOS = [
+  { id:'GRANEL', nome:'Caminhão granel',   kg:0,    granel:true },
+  { id:'SILO',   nome:'Caminhão silo',     kg:0,    granel:true },
+  { id:'BB1000', nome:'Big bag 1.000 kg',  kg:1000 },
+  { id:'BB1250', nome:'Big bag 1.250 kg',  kg:1250 },
+  { id:'SC25',   nome:'Saco 25 kg',        kg:25   },
+  { id:'SC50',   nome:'Saco 50 kg',        kg:50   }
+];
+const GR_EMBALAGENS = () => GR_FORMATOS.filter(f=>!f.granel);
+function _grEhGranel(formato){ return !!(_grFormato(formato).granel); }
+
+function _grUUID(){
+  try{ return crypto.randomUUID(); }catch(e){
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{
+      const r=Math.random()*16|0; return (c==='x'?r:(r&0x3|0x8)).toString(16);
+    });
+  }
+}
+// Número em pt-BR ou no formato do campo numérico do navegador.
+// "1.250" e "1.250,5" têm ponto de milhar; "12.5" (campo type=number) é decimal.
+function _grNum(v){
+  if(typeof v === 'number') return isNaN(v) ? 0 : v;
+  let s = String(v==null?'':v).trim().replace(/\s|kg|KG|R\$/g,'');
+  if(!s) return 0;
+  if(s.includes(',')){
+    s = s.replace(/\./g,'').replace(',','.');          // pt-BR: ponto é milhar
+  } else if(/^-?\d{1,3}(\.\d{3})+$/.test(s)){
+    s = s.replace(/\./g,'');                            // 1.250 / 1.250.000 = milhar
+  }                                                     // senão o ponto é decimal
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+function _grTon(kg){ return (Number(kg||0)/1000).toLocaleString('pt-BR',{minimumFractionDigits:3,maximumFractionDigits:3})+' t'; }
+function _grV(id){ return (document.getElementById(id)?.value||'').trim(); }
+function _grSet(id, v){ const el=document.getElementById(id); if(el) el.value = v==null?'':v; }
+
+// ── Carga ───────────────────────────────────────────────────────────
+async function grCarregar(forcar){
+  if(grCarregando) return grCarregando;
+  if(grCarregado && !forcar) return Promise.resolve(true);
+  grCarregando = Promise.all([
+    supaAll('granel_lotes?select=*&order=created_at.asc'),
+    supaAll('granel_descargas?select=*&order=data.asc,created_at.asc'),
+    supaAll('granel_processamentos?select=*&order=data.asc,created_at.asc'),
+    supaAll('granel_expedicoes?select=*&order=data.asc,created_at.asc')
+  ]).then(([lotes, descs, procs, exps])=>{
+    grLotes = lotes||[]; grDescargas = descs||[];
+    grProcessamentos = procs||[]; grExpedicoes = exps||[];
+    grCarregado = true;
+    return true;
+  }).catch(e=>{
+    // Tabela ainda não criada: avisa com o SQL em vez de um erro solto.
+    if(/granel_/.test(e.message) && /does not exist|not find the table|schema cache/i.test(e.message)) _grAvisoSQL();
+    else showToast('⚠ Não foi possível carregar o Granel: '+e.message,'#e05c1a','#fff');
+    return false;
+  }).finally(()=>{ grCarregando = null; });
+  return grCarregando;
+}
+
+function _grAvisoSQL(){
+  if(document.getElementById('modal-granel-sql')) return;
+  const el = document.createElement('div');
+  el.className = 'modal-overlay open'; el.id = 'modal-granel-sql';
+  el.innerHTML = `<div class="modal" style="max-width:560px;">
+    <div class="modal-title">⚠ FALTAM AS TABELAS DO GRANEL</div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--text);line-height:1.6;">
+        O módulo Granel usa tabelas próprias no Supabase. Abra o <b>SQL Editor</b>
+        (supabase.com → projeto → SQL Editor), cole o conteúdo do arquivo
+        <b>granel.sql</b> (que está junto do sistema) e rode uma vez. Depois entre no módulo de novo.
+      </p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">FECHAR</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+}
+
+async function grAbrirModulo(){
+  showGrTab('descarga');
+  const ok = await grCarregar(true);
+  if(!ok) return;
+  _portoCarregar().then(()=>{ if(document.getElementById('gr-panel-descarga')?.classList.contains('active')) renderGrDescDia(); });
+  grPreencherDataPeriodo(); grProcPreencher(); grExpPreencher();
+  _grFormatoOptions('gr-p-formato', false);
+  _grFormatoOptions('gr-e-formato', true);
+  updateGrStats(); renderGrLotes(); renderGrDescDia(); renderGrProcDia(); renderGrExpDia(); renderGrEstoque();
+  renderGrRelatorio(); renderGrHistorico();
+  grMontaSelects(); grProcInfo(); grExpInfo(); grDescInfo();
+}
+
+function showGrTab(tab){
+  ['descarga','proc','exp','estoque','lotes','relatorio','historico','faturamento'].forEach(t=>{
+    document.getElementById('gr-tab-'+t)?.classList.toggle('active', t===tab);
+    document.getElementById('gr-panel-'+t)?.classList.toggle('active', t===tab);
+  });
+  if(tab==='lotes')    renderGrLotes();
+  if(tab==='descarga'){ grMontaSelects(); renderGrDescDia(); }
+  if(tab==='proc')    { grMontaSelects(); grProcPreencher(); renderGrProcDia(); grProcInfo(); }
+  if(tab==='exp')     { grMontaSelects(); grExpPreencher(); renderGrExpDia(); grExpInfo(); }
+  if(tab==='estoque')   renderGrEstoque();
+  if(tab==='relatorio') renderGrRelatorio();
+  if(tab==='historico') renderGrHistorico();
+  // as tarifas moram no fat_config, que carrega sob demanda
+  if(tab==='faturamento'){ autoSyncFatConfig().then(()=>{ grCarregarTarifas(true); renderGrFaturamento(); }); grCarregarTarifas(); renderGrFaturamento(); }
+}
+
+// ── Saldos ──────────────────────────────────────────────────────────
+function grDescarregado(loteId){
+  return grDescargas.filter(d=>String(d.lote_id)===String(loteId)).reduce((a,d)=>a+_grNum(d.peso_kg),0);
+}
+function grSaldoDescarga(lote){ return _grNum(lote.peso_total) - grDescarregado(lote.id); }
+function grLoteLabel(l){
+  const saldo = grSaldoDescarga(l);
+  return `${l.di||'(sem D.I.)'} · ${l.produto||'—'} · ${l.navio||'—'}` + (saldo>0?`  (faltam ${_grTon(saldo)})`:'  (completo)');
+}
+
+function grMontaSelects(){
+  const ordenados = grLotes.slice().sort((a,b)=>String(a.di||'').localeCompare(String(b.di||''),'pt-BR'));
+  // Descarga mostra o que falta chegar; ensaque e expedição mostram o que há em estoque.
+  [['gr-d-lote', l=>grLoteLabel(l)],
+   ['gr-p-lote', l=>`${l.di||'(sem D.I.)'} · ${l.produto||'—'} · ${l.navio||'—'}  (granel: ${_grTon(grSaldoGranel(l.id))})`],
+   ['gr-e-lote', l=>`${l.di||'(sem D.I.)'} · ${l.produto||'—'} · ${l.navio||'—'}  (estoque: ${_grTon(grEstoqueLote(l.id).total)})`]
+  ].forEach(([id, rotulo])=>{
+    const sel = document.getElementById(id);
+    if(!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">Selecione o lote…</option>'
+      + ordenados.map(l=>`<option value="${_esc(l.id)}">${_esc(rotulo(l))}</option>`).join('');
+    if(cur && ordenados.some(l=>String(l.id)===cur)) sel.value = cur;
+  });
+  const dl = document.getElementById('gr-armazens');
+  if(dl){
+    const arms = [...new Set([...grLotes.map(l=>l.armazem), ...grDescargas.map(d=>d.armazem)].filter(Boolean))].sort();
+    dl.innerHTML = arms.map(a=>`<option value="${_esc(a)}">`).join('');
+  }
+  const dn = document.getElementById('gr-navios');
+  if(dn) dn.innerHTML = (navios||[]).map(n=>`<option value="${_esc(n)}">`).join('');
+}
+
+function updateGrStats(){
+  const hoje = dataOperacional();
+  const pend = grLotes.filter(l=>grSaldoDescarga(l) > 0).length;
+  const kgHoje = grDescargas.filter(d=>d.data===hoje).reduce((a,d)=>a+_grNum(d.peso_kg),0);
+  const expHoje = grExpedicoes.filter(e=>e.data===hoje).reduce((a,e)=>a+_grNum(e.peso_kg),0);
+  const estoque = grLotes.reduce((a,l)=>a+grEstoqueLote(l.id).total,0);
+  const set=(id,v)=>{ const el=document.getElementById(id); if(el) el.textContent=v; };
+  set('gr-stat-lotes', grLotes.length);
+  set('gr-stat-pend', pend);
+  set('gr-stat-hoje', _grTon(kgHoje));
+  set('gr-stat-exp-hoje', _grTon(expHoje));
+  set('gr-stat-estoque', _grTon(estoque));
+}
+
+// ── Banco de lotes ──────────────────────────────────────────────────
+function _grLotesFiltrados(){
+  const f = s => String(s||'').toUpperCase();
+  const fn=f(_grV('gr-f-navio')), fp=f(_grV('gr-f-produto')), fd=f(_grV('gr-f-di')), fa=f(_grV('gr-f-armazem'));
+  const fs=_grV('gr-f-situacao');
+  return grLotes.filter(l=>{
+    if(fn && !f(l.navio).includes(fn)) return false;
+    if(fp && !f(l.produto).includes(fp)) return false;
+    if(fd && !f(l.di).includes(fd)) return false;
+    if(fa && !f(l.armazem).includes(fa)) return false;
+    const saldo = grSaldoDescarga(l);
+    if(fs==='aberto'   && saldo<=0) return false;
+    if(fs==='completo' && saldo>0)  return false;
+    return true;
+  });
+}
+
+function renderGrLotes(){
+  const el = document.getElementById('gr-lotes-list'); if(!el) return;
+  const lista = _grLotesFiltrados();
+  updateGrStats();
+  if(!lista.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">🫗</span>'
+      + (grLotes.length?'Nenhum lote com esses filtros.':'Nenhum lote cadastrado. Use + NOVO LOTE.')+'</div>';
+    return;
+  }
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:1000px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>D.I.</th><th>NAVIO</th><th>PRODUTO</th><th>CLIENTE</th><th>ARMAZÉM</th><th>CHEGADA</th>'
+    + '<th>PESO DECLARADO</th><th>DESCARREGADO</th><th>SALDO</th><th>AÇÕES</th></tr></thead><tbody>'
+    + lista.map((l,i)=>{
+        const desc = grDescarregado(l.id), saldo = _grNum(l.peso_total)-desc;
+        // saldo negativo = descarregou mais do que a D.I. declara: avisa em vermelho
+        const cor = saldo<0 ? 'var(--danger)' : saldo===0 ? 'var(--success)' : (desc>0 ? '#f59e0b' : 'var(--muted)');
+        return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+          + `<td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);">${_esc(l.di)||'—'}</td>`
+          + `<td>${_esc(l.navio)||'—'}</td><td style="font-weight:600;">${_esc(l.produto)||'—'}</td>`
+          + `<td style="font-size:11px;">${_esc(l.cliente)||'—'}</td><td>${_esc(l.armazem)||'—'}</td>`
+          + `<td style="white-space:nowrap;">${l.data_chegada?formatDate(l.data_chegada):'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${_grTon(l.peso_total)}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${_grTon(desc)}</td>`
+          + `<td style="white-space:nowrap;font-weight:700;color:${cor};">${_grTon(saldo)}</td>`
+          + `<td style="white-space:nowrap;"><div class="actions">`
+          + `<button class="btn btn-info btn-sm" onclick="abrirModalGrLote('${_esc(l.id)}')" title="Editar">✏</button>`
+          + `<button class="btn btn-danger btn-sm" onclick="excluirGrLote('${_esc(l.id)}')" title="Excluir">✕</button>`
+          + `</div></td></tr>`;
+      }).join('')
+    + '</tbody></table></div>'
+    + `<div style="padding:.6rem 0;font-size:12px;color:var(--muted);">${lista.length} lote(s) · declarado ${_grTon(lista.reduce((a,l)=>a+_grNum(l.peso_total),0))} · descarregado ${_grTon(lista.reduce((a,l)=>a+grDescarregado(l.id),0))}</div>`;
+}
+
+function abrirModalGrLote(id){
+  grEditLote = id || null;
+  const l = id ? grLotes.find(x=>String(x.id)===String(id)) : null;
+  document.getElementById('modal-gr-lote-title').textContent = l ? '✏ EDITAR LOTE' : '➕ NOVO LOTE';
+  _grSet('gr-l-navio',   l?.navio);
+  _grSet('gr-l-produto', l?.produto);
+  _grSet('gr-l-di',      l?.di);
+  _grSet('gr-l-cliente', l?.cliente);
+  _grSet('gr-l-armazem', l?.armazem);
+  _grSet('gr-l-peso',    l?.peso_total);
+  _grSet('gr-l-chegada', l?.data_chegada);
+  _grSet('gr-l-obs',     l?.obs);
+  grMontaSelects();
+  document.getElementById('modal-gr-lote').classList.add('open');
+}
+
+async function salvarGrLote(){
+  const navio = _grV('gr-l-navio').toUpperCase(), produto = _grV('gr-l-produto').toUpperCase();
+  const di = _grV('gr-l-di').toUpperCase(), peso = _grNum(_grV('gr-l-peso'));
+  if(!navio || !produto || !di){ showToast('Navio, produto e D.I. são obrigatórios.','#e05c1a','#fff'); return; }
+  if(peso<=0){ showToast('Informe o peso declarado do lote (kg).','#e05c1a','#fff'); return; }
+  const repetido = grLotes.find(l=>String(l.id)!==String(grEditLote)
+    && String(l.navio||'').toUpperCase()===navio && String(l.produto||'').toUpperCase()===produto
+    && String(l.di||'').toUpperCase()===di);
+  if(repetido){ showToast('Já existe um lote com este navio, produto e D.I.','#e05c1a','#fff'); return; }
+
+  const lote = {
+    id: grEditLote || _grUUID(),
+    navio, produto, di,
+    cliente: _grV('gr-l-cliente').toUpperCase(),
+    armazem: _grV('gr-l-armazem').toUpperCase(),
+    peso_total: peso,
+    data_chegada: _grV('gr-l-chegada') || null,
+    obs: _grV('gr-l-obs'),
+    created_by: session?.nome || '—'
+  };
+  showLoading(grEditLote ? 'Salvando lote...' : 'Criando lote...');
+  try{
+    await supa('granel_lotes?on_conflict=id', { method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([lote]) });
+    const i = grLotes.findIndex(x=>String(x.id)===String(lote.id));
+    if(i>=0) grLotes[i] = {...grLotes[i], ...lote}; else grLotes.push(lote);
+    registrarAudit('edicao', (grEditLote?'Lote de granel editado: ':'Lote de granel criado: ')+di+' · '+produto+' · '+navio, {id:lote.id, peso});
+    closeModal('modal-gr-lote');
+    renderGrLotes(); grMontaSelects(); updateGrStats();
+    showToast('✓ Lote '+di+' salvo.','#22c55e','#000');
+  }catch(e){
+    if(/granel_/.test(e.message) && /does not exist|schema cache/i.test(e.message)) _grAvisoSQL();
+    else showToast('⚠ Não foi possível salvar: '+e.message,'#e05c1a','#fff');
+  }finally{ hideLoading(); }
+}
+
+async function excluirGrLote(id){
+  const l = grLotes.find(x=>String(x.id)===String(id)); if(!l) return;
+  const n = grDescargas.filter(d=>String(d.lote_id)===String(id)).length
+          + grProcessamentos.filter(p=>String(p.lote_id)===String(id)).length
+          + grExpedicoes.filter(e=>String(e.lote_id)===String(id)).length;
+  if(n){ showToast('Este lote tem '+n+' lançamento(s) (descarga, ensaque ou expedição). Exclua-os antes.','#e05c1a','#fff'); return; }
+  if(!confirm('Excluir o lote '+(l.di||'')+' · '+(l.produto||'')+'?')) return;
+  showLoading('Excluindo...');
+  try{
+    await supa('granel_lotes?id=eq.'+encodeURIComponent(id), {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    grLotes = grLotes.filter(x=>String(x.id)!==String(id));
+    registrarAudit('exclusao','Lote de granel excluído: '+(l.di||'')+' · '+(l.produto||''),{id});
+    renderGrLotes(); grMontaSelects(); updateGrStats();
+    showToast('✓ Lote excluído.','#22c55e','#000');
+  }catch(e){ showToast('⚠ Não foi possível excluir: '+e.message,'#e05c1a','#fff'); }
+  finally{ hideLoading(); }
+}
+
+// ── Descarga ────────────────────────────────────────────────────────
+function grPreencherDataPeriodo(){
+  if(!_grV('gr-d-data')) _grSet('gr-d-data', dataOperacional());
+  const per = document.getElementById('gr-d-periodo');
+  if(per && !per.value) per.value = getPeriodoAtual();
+}
+
+// Peso da balança do Porto: acha a pesagem da placa no dia e traz o líquido.
+function grBuscarPesagem(){
+  const veiculo = _grV('gr-d-veiculo'), data = _grV('gr-d-data');
+  if(!veiculo || !data){ showToast('Preencha a placa e a data primeiro.','#e05c1a','#fff'); return; }
+  const pz = _pesagemDoRegistro({veiculo, data});
+  if(!pz){ showToast('Nenhuma pesagem do Porto para '+veiculo+' em '+formatDate(data)+'.','#f59e0b','#000'); return; }
+  _grSet('gr-d-ticket-porto', pz.ticket);
+  _grSet('gr-d-ent-porto', pz.peso_entrada); _grSet('gr-d-sai-porto', pz.peso_saida);
+  _grSet('gr-d-liq-porto', pz.peso_liquido);
+  grCalcPesagens('d');
+  const info = document.getElementById('gr-d-pesagem-info');
+  if(info) info.innerHTML = `⚖ Ticket ${_esc(pz.ticket)} · entrada ${_esc(pz.hr_entrada||'—')} (${fmtKg(pz.peso_entrada)} kg) → saída ${_esc(pz.hr_saida||'—')} (${fmtKg(pz.peso_saida)} kg) · líquido <b>${fmtKg(pz.peso_liquido)} kg</b>`;
+  showToast('✓ Peso da balança do Porto preenchido.','#22c55e','#000');
+}
+
+async function salvarGrDescarga(){
+  const loteId = _grV('gr-d-lote');
+  const lote = grLotes.find(l=>String(l.id)===String(loteId));
+  if(!lote){ showToast('Selecione o lote.','#e05c1a','#fff'); return; }
+  const data = _grV('gr-d-data'), periodo = _grV('gr-d-periodo');
+  const veiculo = _grV('gr-d-veiculo').toUpperCase(), peso = _grNum(_grV('gr-d-peso'));
+  if(!data || !periodo){ showToast('Informe data e período.','#e05c1a','#fff'); return; }
+  if(data > hojeLocal()){ showToast('A data não pode ser futura.','#e05c1a','#fff'); return; }
+  if(!veiculo){ showToast('Informe a placa do veículo.','#e05c1a','#fff'); return; }
+  if(peso<=0){ showToast('Informe o peso descarregado (kg).','#e05c1a','#fff'); return; }
+  const saldo = grSaldoDescarga(lote) + (grEditDesc ? _grNum(grDescargas.find(d=>String(d.id)===String(grEditDesc))?.peso_kg) : 0);
+  if(peso > saldo && !confirm(`Este lançamento passa o peso declarado do lote em ${_grTon(peso-saldo)}.\n\nLançar mesmo assim?`)) return;
+
+  const reg = {
+    id: grEditDesc || _grUUID(),
+    lote_id: lote.id, navio: lote.navio, produto: lote.produto, di: lote.di,
+    data, periodo, veiculo,
+    motorista: _grV('gr-d-motorista').toUpperCase(),
+    armazem: (_grV('gr-d-armazem') || lote.armazem || '').toUpperCase(),
+    peso_kg: peso,
+    ticket_porto: _grV('gr-d-ticket-porto'),
+    ..._grPesagemCampos('d'),
+    obs: _grV('gr-d-obs'),
+    registrado_em: new Date().toISOString(),
+    created_by: session?.nome || '—'
+  };
+  showLoading(grEditDesc ? 'Salvando lançamento...' : 'Lançando descarga...');
+  try{
+    await supa('granel_descargas?on_conflict=id', { method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([reg]) });
+    const i = grDescargas.findIndex(d=>String(d.id)===String(reg.id));
+    if(i>=0) grDescargas[i] = {...grDescargas[i], ...reg}; else grDescargas.push(reg);
+    registrarAudit(grEditDesc?'edicao':'descarga',
+      'Descarga de granel: '+fmtKg(peso)+' kg · '+(lote.produto||'')+' · D.I. '+(lote.di||'')+' · '+veiculo, {id:reg.id});
+    grLimparDescarga(true);
+    renderGrDescDia(); renderGrLotes(); grMontaSelects(); updateGrStats();
+    showToast('✓ Descarga lançada: '+fmtKg(peso)+' kg.','#22c55e','#000');
+  }catch(e){
+    if(/granel_/.test(e.message) && /does not exist|schema cache/i.test(e.message)) _grAvisoSQL();
+    else showToast('⚠ Não foi possível lançar: '+e.message,'#e05c1a','#fff');
+  }finally{ hideLoading(); }
+}
+
+function grLimparDescarga(manterCabecalho){
+  grEditDesc = null;
+  ['gr-d-veiculo','gr-d-motorista','gr-d-peso','gr-d-ticket-porto','gr-d-obs'].forEach(id=>_grSet(id,''));
+  _grPesagemLimpa('d');
+  const info=document.getElementById('gr-d-pesagem-info'); if(info) info.innerHTML='';
+  const btn=document.getElementById('gr-d-salvar'); if(btn) btn.textContent='✓ LANÇAR DESCARGA';
+  if(!manterCabecalho){ _grSet('gr-d-lote',''); _grSet('gr-d-armazem',''); grPreencherDataPeriodo(); }
+}
+
+function editarGrDescarga(id){
+  const d = grDescargas.find(x=>String(x.id)===String(id)); if(!d) return;
+  grEditDesc = id;
+  _grSet('gr-d-lote', d.lote_id); _grSet('gr-d-data', d.data); _grSet('gr-d-periodo', d.periodo);
+  _grSet('gr-d-veiculo', d.veiculo); _grSet('gr-d-motorista', d.motorista); _grSet('gr-d-armazem', d.armazem);
+  _grSet('gr-d-peso', d.peso_kg); _grSet('gr-d-ticket-porto', d.ticket_porto); _grSet('gr-d-obs', d.obs);
+  _grPesagemPreenche('d', d);
+  const btn=document.getElementById('gr-d-salvar'); if(btn) btn.textContent='✓ SALVAR ALTERAÇÃO';
+  document.getElementById('gr-form-descarga')?.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+async function excluirGrDescarga(id){
+  const d = grDescargas.find(x=>String(x.id)===String(id)); if(!d) return;
+  if(!confirm('Excluir a descarga de '+fmtKg(d.peso_kg)+' kg do veículo '+(d.veiculo||'')+'?')) return;
+  showLoading('Excluindo...');
+  try{
+    await supa('granel_descargas?id=eq.'+encodeURIComponent(id), {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    grDescargas = grDescargas.filter(x=>String(x.id)!==String(id));
+    registrarAudit('exclusao','Descarga de granel excluída: '+fmtKg(d.peso_kg)+' kg · '+(d.veiculo||''),{id});
+    renderGrDescDia(); renderGrLotes(); grMontaSelects(); updateGrStats();
+    showToast('✓ Descarga excluída.','#22c55e','#000');
+  }catch(e){ showToast('⚠ Não foi possível excluir: '+e.message,'#e05c1a','#fff'); }
+  finally{ hideLoading(); }
+}
+
+function renderGrDescDia(){
+  const el = document.getElementById('gr-desc-dia'); if(!el) return;
+  const dia = _grV('gr-d-data') || dataOperacional();
+  const lista = grDescargas.filter(d=>d.data===dia)
+    .sort((a,b)=>String(b.registrado_em||b.created_at||'').localeCompare(String(a.registrado_em||a.created_at||'')));
+  const tit = document.getElementById('gr-desc-dia-titulo');
+  if(tit) tit.textContent = 'LANÇAMENTOS DE '+formatDate(dia);
+  if(!lista.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.2rem;"><span class="empty-icon">📥</span>Nenhuma descarga lançada neste dia.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:980px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>PER.</th><th>D.I.</th><th>PRODUTO</th><th>VEÍCULO</th><th>TRANSPORTADORA</th><th>ARMAZÉM</th>'
+    + '<th>PESO</th><th>TICKET PORTO</th><th>DIF.</th><th>REG. POR</th><th>AÇÕES</th></tr></thead><tbody>'
+    + lista.map((d,i)=>'<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+        + `<td style="white-space:nowrap;">${_esc(d.periodo)||'—'}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;color:var(--accent);">${_esc(d.di)||'—'}</td>`
+        + `<td>${_esc(d.produto)||'—'}</td>`
+        + `<td style="font-weight:700;color:var(--info);white-space:nowrap;">${_esc(d.veiculo)||'—'}</td>`
+        + `<td style="font-size:11px;">${_esc(d.transportadora)||_esc(d.motorista)||'—'}</td><td>${_esc(d.armazem)||'—'}</td>`
+        + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-weight:700;">${fmtKg(d.peso_kg)} kg</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;">${_esc(d.ticket_porto)||'—'}</td>`
+        + (()=>{ const dif=_grDifRegistro(d); const cor=dif==null?'var(--muted)':(Math.abs(dif)<=50?'var(--success)':(Math.abs(dif)<=500?'#f59e0b':'var(--danger)'));
+            return `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:${cor};">${dif==null?'—':(dif>0?'+':'')+fmtKg(dif)+' kg'}</td>`; })()
+        + `<td style="font-size:11px;color:var(--success);">${_esc(d.created_by)||'—'}</td>`
+        + `<td style="white-space:nowrap;"><div class="actions">`
+        + `<button class="btn btn-secondary btn-sm" onclick="imprimirTicketGranel('${_esc(d.id)}')" title="Ticket de descarga">🎫</button>`
+        + `<button class="btn btn-info btn-sm" onclick="editarGrDescarga('${_esc(d.id)}')" title="Editar">✏</button>`
+        + `<button class="btn btn-danger btn-sm" onclick="excluirGrDescarga('${_esc(d.id)}')" title="Excluir">✕</button>`
+        + `</div></td></tr>`).join('')
+    + '</tbody></table></div>'
+    + `<div style="padding:.6rem 0;font-size:12px;color:var(--muted);">${lista.length} caminhão(ões) · total ${_grTon(lista.reduce((a,d)=>a+_grNum(d.peso_kg),0))}</div>`;
+}
+
+// ── Ticket de granel ────────────────────────────────────────────────
+// Mesmo documento dos outros tickets (80 mm), com o peso no lugar da
+// quantidade e a pesagem do Porto quando o caminhão passou na balança.
+function _grTicketCorpo(t){
+  const { ticketNum, veiculo, motorista, data, periodo, obs, usuario } = t;
+  const regs = (t.regs && t.regs.length) ? t.regs : (t.entries || []);
+  const isDesc = (t.doc==='DESCARGA' || t.tipo==='GRD');
+  const LINE  = '------------------------------------------------';
+  const DLINE = '================================================';
+  const LOGO_SRC = (()=>{ try{ const m=_renderTicketWindow.toString().match(/LOGO_SRC\s*=\s*'([^']+)'/); return m?m[1]:''; }catch(e){ return ''; } })();
+  const row=(lbl,val)=>`<div class="row"><span class="lbl">${escapeHtml(lbl)}</span><span class="val">${escapeHtml((val||'-').toString().toUpperCase())}</span></div>`;
+  const totalKg = regs.reduce((a,r)=>a+_grNum(r.peso_kg),0);
+  const r0 = regs[0] || {};
+  const pz = t.pesagem;
+  const br = d=>d?String(d).split('-').reverse().join('/'):'-';
+  const kg = v=>fmtKg(v)+' KG';
+  return `  <div class="header">
+    <img src="${LOGO_SRC}" alt="" onerror="this.style.display='none'">
+    <div class="header-name">4SIDES - STEELPORT</div>
+  </div>
+  <div class="header-sub">TICKET DE ${isDesc?'DESCARGA':'EXPEDICAO'} - GRANEL${pz?' + PESAGEM':''}</div>
+  <div class="sep">${DLINE}</div>
+  <div class="tnum">${ticketNum}</div>
+  <div class="tdate">${new Date().toLocaleString('pt-BR').toUpperCase()}</div>
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">OPERADOR</div>
+  <div style="font-size:13px;font-weight:900;color:#000;word-break:normal;overflow-wrap:break-word;margin:2px 0;line-height:1.2;">SEATRADE SERV. PORT. E LOG. LTDA</div>
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">CARGA</div>
+  ${row('NAVIO:', r0.navio)}
+  ${row('PRODUTO:', r0.produto)}
+  ${row('D.I.:', r0.di)}
+  ${row('CLIENTE:', t.cliente)}
+  ${row(isDesc?'ARMAZEM:':'DESTINO:', isDesc ? (r0.armazem||t.destino) : t.destino)}
+  <div class="sep">${LINE}</div>
+
+  <div class="stitle">TRANSPORTE</div>
+  ${row('VEICULO:', veiculo)}
+  ${row('MOTORISTA:', motorista)}
+  ${row('DATA:', data ? data.split('-').reverse().join('/') : '-')}
+  ${row('PERIODO:', periodo)}
+  <div class="sep">${LINE}</div>
+
+  ${r0.formato ? row(_grEhGranel(r0.formato)?'SAIU COMO:':'EMBALAGEM:', _grFormatoNome(r0.formato)) : ''}
+  ${t.nf ? row('NOTA FISCAL:', t.nf) : ''}
+  ${_grNum(r0.unidades) ? `<div class="total-row"><span>VOLUMES:</span><span>${fmtKg(r0.unidades)} UN</span></div>` : ''}
+  <div class="total-row"><span>PESO ${isDesc?'DESCARREGADO':'EXPEDIDO'}:</span><span>${kg(totalKg)}</span></div>
+  ${pz?`<div class="sep">${LINE}</div>
+  <div class="stitle">PESAGEM - ${pz._armazem?'ARMAZEM':'PORTO SAO FRANCISCO'}</div>
+  ${row('TICKET:', pz.ticket)}
+  ${row('ENTRADA:', (br(pz.dt_entrada)+' '+(pz.hr_entrada||'')).trim())}
+  ${row('PESO ENTRADA:', kg(pz.peso_entrada))}
+  ${row('SAIDA:', (br(pz.dt_saida)+' '+(pz.hr_saida||'')).trim())}
+  ${row('PESO SAIDA:', kg(pz.peso_saida))}
+  <div class="total-row"><span>PESO LIQUIDO:</span><span>${kg(pz.peso_liquido)}</span></div>`:''}
+  ${obs?`<div class="sep">${LINE}</div><div style="font-size:13px;font-weight:900;">OBS: ${escapeHtml(obs.toString().toUpperCase())}</div>`:''}
+  <div class="sep">${DLINE}</div>
+
+  <div class="sign-area">
+    <div class="sign-line">ASSINATURA DO MOTORISTA</div>
+    <div style="margin-top:14px;padding:6px 4px;border:1px solid #000;border-radius:3px;">
+      <div style="font-size:10px;color:#000;margin-bottom:2px;">OPERADOR RESPONSAVEL</div>
+      <div style="font-size:14px;font-weight:900;text-align:center;color:#000;">${escapeHtml((usuario||'—').toUpperCase())}</div>
+    </div>
+  </div>
+  <div class="footer">4SIDES - STEELPORT WAREHOUSE SYSTEMS</div>`;
+}
+
+// Reaproveita o ticket já emitido para o mesmo lançamento; só numera uma vez.
+async function imprimirTicketGranel(id){
+  const d = grDescargas.find(x=>String(x.id)===String(id));
+  if(!d){ showToast('Lançamento não encontrado.','#e05c1a','#fff'); return; }
+  const lote = grLotes.find(l=>String(l.id)===String(d.lote_id)) || {};
+  const pz = d.ticket_porto
+    ? (pesagensPorto||[]).find(p=>String(p.ticket)===String(d.ticket_porto)) || null
+    : _pesagemDoRegistro(d);
+
+  const jaTem = await _tkBuscarPorRegistros('GRD', new Set([String(d.id)]));
+  const base = {
+    doc:'DESCARGA', tipo:'GRD', regs:[d], cliente: lote.cliente||'',
+    veiculo:d.veiculo, motorista:d.motorista, destino:d.armazem||'',
+    data:d.data, periodo:d.periodo, obs:d.obs, pesagem:pz
+  };
+  if(jaTem){ _grTicketWindow({...jaTem, ...base, ticketNum:jaTem.ticketNum, usuario:jaTem.usuario, emitidoEm:jaTem.emitidoEm}); return; }
+
+  const ticketData = {
+    ...base,
+    id: Date.now(), ticketNum: await getNextTicketNum('GRD'),
+    emitidoEm: new Date().toISOString(),
+    usuario: session?.nome||'—', userId: session?.user||''
+  };
+  _tkRegistrar(ticketData, [d]);
+  _grTicketWindow(ticketData);
+}
+
+function _grTicketWindow(t){ _cgTicketDoc([t], _grTicketCorpo); }
+
+// ══════════════════════════════════════════════════════════════════
+// GRANEL — processamento (ensaque), expedição e saldos por formato
+// ══════════════════════════════════════════════════════════════════
+// O granel descarregado pode sair como veio (GRANEL) ou ser ensacado em big
+// bag / sacaria. Por isso o estoque de um lote tem várias "caixinhas":
+//   granel disponível = descarregado − processado − expedido a granel
+//   cada formato      = processado no formato − expedido no formato
+// A expedição só tira do que existe em cada caixinha.
+
+function _grFormato(id){ return GR_FORMATOS.find(f=>f.id===id) || GR_FORMATOS[0]; }
+function _grFormatoNome(id){ return _grFormato(id).nome; }
+
+function grProcessado(loteId, formato){
+  return grProcessamentos.filter(p=>String(p.lote_id)===String(loteId) && (!formato || p.formato===formato))
+    .reduce((a,p)=>({ kg:a.kg+_grNum(p.peso_kg), un:a.un+_grNum(p.unidades) }), {kg:0, un:0});
+}
+function grExpedido(loteId, formato){
+  return grExpedicoes.filter(e=>String(e.lote_id)===String(loteId) && (!formato || e.formato===formato))
+    .reduce((a,e)=>({ kg:a.kg+_grNum(e.peso_kg), un:a.un+_grNum(e.unidades) }), {kg:0, un:0});
+}
+// Quanto ainda está solto no armazém, sem embalar
+function grSaldoGranel(loteId){
+  const soltos = grExpedicoes.filter(e=>String(e.lote_id)===String(loteId) && _grEhGranel(e.formato))
+    .reduce((a,e)=>a+_grNum(e.peso_kg),0);
+  return grDescarregado(loteId) - grProcessado(loteId).kg - soltos;
+}
+// Quanto está embalado e ainda não saiu, em um formato
+function grSaldoFormato(loteId, formato){
+  const p = grProcessado(loteId, formato), e = grExpedido(loteId, formato);
+  return { kg: p.kg - e.kg, un: p.un - e.un };
+}
+function grEstoqueLote(loteId){
+  const granel = grSaldoGranel(loteId);
+  const embalados = GR_EMBALAGENS().map(f=>({ ...f, ...grSaldoFormato(loteId, f.id) }));
+  return { granel, embalados, total: granel + embalados.reduce((a,f)=>a+f.kg,0) };
+}
+function grSaldoDoFormato(loteId, formato){
+  return _grEhGranel(formato) ? grSaldoGranel(loteId) : grSaldoFormato(loteId, formato).kg;
+}
+
+function _grFormatoOptions(sel, comGranel){
+  const el = typeof sel==='string' ? document.getElementById(sel) : sel;
+  if(!el) return;
+  const cur = el.value;
+  el.innerHTML = (comGranel ? GR_FORMATOS : GR_EMBALAGENS())
+    .map(f=>`<option value="${f.id}">${_esc(f.nome)}</option>`).join('');
+  if(cur) el.value = cur;
+}
+
+// ── Processamento (ensaque) ─────────────────────────────────────────
+function grProcPreencher(){
+  if(!_grV('gr-p-data')) _grSet('gr-p-data', dataOperacional());
+  const per = document.getElementById('gr-p-periodo');
+  if(per && !per.value) per.value = getPeriodoAtual();
+}
+
+// Peso = unidades × peso da embalagem; quem quiser ajustar, ajusta.
+function grProcCalcPeso(){
+  const f = _grFormato(_grV('gr-p-formato'));
+  const un = _grNum(_grV('gr-p-unidades'));
+  if(f.kg && un) _grSet('gr-p-peso', Math.round(un * f.kg));
+  grProcInfo();
+}
+function grProcInfo(){
+  const el = document.getElementById('gr-p-info'); if(!el) return;
+  const loteId = _grV('gr-p-lote');
+  if(!loteId){ el.innerHTML=''; return; }
+  const disp = grSaldoGranel(loteId);
+  const peso = _grNum(_grV('gr-p-peso'));
+  el.innerHTML = `Granel disponível neste lote: <b>${_grTon(disp)}</b>`
+    + (peso>disp ? ` · <span style="color:var(--danger);">este ensaque passa em ${_grTon(peso-disp)}</span>` : '');
+}
+
+async function salvarGrProcessamento(){
+  const lote = grLotes.find(l=>String(l.id)===String(_grV('gr-p-lote')));
+  if(!lote){ showToast('Selecione o lote.','#e05c1a','#fff'); return; }
+  const data=_grV('gr-p-data'), periodo=_grV('gr-p-periodo'), formato=_grV('gr-p-formato');
+  const un=_grNum(_grV('gr-p-unidades')), peso=_grNum(_grV('gr-p-peso'));
+  if(!data || !periodo){ showToast('Informe data e período.','#e05c1a','#fff'); return; }
+  if(data > hojeLocal()){ showToast('A data não pode ser futura.','#e05c1a','#fff'); return; }
+  if(un<=0){ showToast('Informe quantos volumes foram embalados.','#e05c1a','#fff'); return; }
+  if(peso<=0){ showToast('Informe o peso ensacado (kg).','#e05c1a','#fff'); return; }
+  const jaEra = grEditProc ? _grNum(grProcessamentos.find(p=>String(p.id)===String(grEditProc))?.peso_kg) : 0;
+  const disp = grSaldoGranel(lote.id) + jaEra;
+  if(peso > disp && !confirm(`O lote tem ${_grTon(disp)} de granel disponível e este ensaque é de ${_grTon(peso)}.\n\nLançar mesmo assim?`)) return;
+
+  const reg = {
+    id: grEditProc || _grUUID(),
+    lote_id: lote.id, navio: lote.navio, produto: lote.produto, di: lote.di,
+    data, periodo, formato, unidades: un, peso_kg: peso,
+    obs: _grV('gr-p-obs'), created_by: session?.nome || '—'
+  };
+  showLoading(grEditProc ? 'Salvando ensaque...' : 'Lançando ensaque...');
+  try{
+    await supa('granel_processamentos?on_conflict=id', { method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([reg]) });
+    const i = grProcessamentos.findIndex(p=>String(p.id)===String(reg.id));
+    if(i>=0) grProcessamentos[i] = {...grProcessamentos[i], ...reg}; else grProcessamentos.push(reg);
+    registrarAudit(grEditProc?'edicao':'processamento',
+      'Ensaque de granel: '+un+' × '+_grFormatoNome(formato)+' ('+fmtKg(peso)+' kg) · '+(lote.produto||'')+' · D.I. '+(lote.di||''), {id:reg.id});
+    grLimparProc(true);
+    renderGrProcDia(); renderGrEstoque(); grMontaSelects(); updateGrStats();
+    showToast('✓ Ensaque lançado: '+un+' × '+_grFormatoNome(formato)+'.','#22c55e','#000');
+  }catch(e){
+    if(/granel_/.test(e.message) && /does not exist|schema cache/i.test(e.message)) _grAvisoSQL();
+    else showToast('⚠ Não foi possível lançar: '+e.message,'#e05c1a','#fff');
+  }finally{ hideLoading(); }
+}
+
+function grLimparProc(manterCabecalho){
+  grEditProc = null;
+  ['gr-p-unidades','gr-p-peso','gr-p-obs'].forEach(id=>_grSet(id,''));
+  const btn=document.getElementById('gr-p-salvar'); if(btn) btn.textContent='✓ LANÇAR ENSAQUE';
+  if(!manterCabecalho){ _grSet('gr-p-lote',''); grProcPreencher(); }
+  grProcInfo();
+}
+
+function editarGrProcessamento(id){
+  const p = grProcessamentos.find(x=>String(x.id)===String(id)); if(!p) return;
+  grEditProc = id;
+  _grSet('gr-p-lote',p.lote_id); _grSet('gr-p-data',p.data); _grSet('gr-p-periodo',p.periodo);
+  _grSet('gr-p-formato',p.formato); _grSet('gr-p-unidades',p.unidades); _grSet('gr-p-peso',p.peso_kg); _grSet('gr-p-obs',p.obs);
+  const btn=document.getElementById('gr-p-salvar'); if(btn) btn.textContent='✓ SALVAR ALTERAÇÃO';
+  grProcInfo();
+  document.getElementById('gr-form-proc')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function excluirGrProcessamento(id){
+  const p = grProcessamentos.find(x=>String(x.id)===String(id)); if(!p) return;
+  const saldo = grSaldoFormato(p.lote_id, p.formato);
+  if(saldo.kg - _grNum(p.peso_kg) < 0){
+    showToast('Não dá para excluir: parte deste ensaque já foi expedida.','#e05c1a','#fff'); return;
+  }
+  if(!confirm('Excluir o ensaque de '+p.unidades+' × '+_grFormatoNome(p.formato)+'?')) return;
+  showLoading('Excluindo...');
+  try{
+    await supa('granel_processamentos?id=eq.'+encodeURIComponent(id), {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    grProcessamentos = grProcessamentos.filter(x=>String(x.id)!==String(id));
+    registrarAudit('exclusao','Ensaque de granel excluído: '+p.unidades+' × '+_grFormatoNome(p.formato),{id});
+    renderGrProcDia(); renderGrEstoque(); grMontaSelects(); updateGrStats();
+    showToast('✓ Ensaque excluído.','#22c55e','#000');
+  }catch(e){ showToast('⚠ Não foi possível excluir: '+e.message,'#e05c1a','#fff'); }
+  finally{ hideLoading(); }
+}
+
+function renderGrProcDia(){
+  const el = document.getElementById('gr-proc-dia'); if(!el) return;
+  const dia = _grV('gr-p-data') || dataOperacional();
+  const lista = grProcessamentos.filter(p=>p.data===dia)
+    .sort((a,b)=>String(b.created_at||'').localeCompare(String(a.created_at||'')));
+  const tit = document.getElementById('gr-proc-dia-titulo');
+  if(tit) tit.textContent = 'ENSAQUES DE '+formatDate(dia);
+  if(!lista.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.2rem;"><span class="empty-icon">🧺</span>Nenhum ensaque lançado neste dia.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:880px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>PER.</th><th>D.I.</th><th>PRODUTO</th><th>EMBALAGEM</th><th>VOLUMES</th><th>PESO</th><th>REG. POR</th><th>AÇÕES</th></tr></thead><tbody>'
+    + lista.map((p,i)=>'<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+        + `<td style="white-space:nowrap;">${_esc(p.periodo)||'—'}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;color:var(--accent);">${_esc(p.di)||'—'}</td>`
+        + `<td>${_esc(p.produto)||'—'}</td><td>${_esc(_grFormatoNome(p.formato))}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;font-weight:700;">${fmtKg(p.unidades)} un</td>`
+        + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${fmtKg(p.peso_kg)} kg</td>`
+        + `<td style="font-size:11px;color:var(--success);">${_esc(p.created_by)||'—'}</td>`
+        + `<td style="white-space:nowrap;"><div class="actions">`
+        + `<button class="btn btn-info btn-sm" onclick="editarGrProcessamento('${_esc(p.id)}')" title="Editar">✏</button>`
+        + `<button class="btn btn-danger btn-sm" onclick="excluirGrProcessamento('${_esc(p.id)}')" title="Excluir">✕</button>`
+        + `</div></td></tr>`).join('')
+    + '</tbody></table></div>'
+    + `<div style="padding:.6rem 0;font-size:12px;color:var(--muted);">${lista.length} lançamento(s) · ${_grTon(lista.reduce((a,p)=>a+_grNum(p.peso_kg),0))} ensacados</div>`;
+}
+
+// ── Expedição ───────────────────────────────────────────────────────
+function grExpPreencher(){
+  if(!_grV('gr-e-data')) _grSet('gr-e-data', dataOperacional());
+  const per = document.getElementById('gr-e-periodo');
+  if(per && !per.value) per.value = getPeriodoAtual();
+}
+
+// O peso que vale é o líquido da balança do armazém. Volumes × peso da
+// embalagem só preenchem o campo quando ele ainda está vazio.
+function _grPesoExp(){ return _grNum(_grV('gr-e-liq-arm')); }
+function grExpCalcPeso(){
+  const f = _grFormato(_grV('gr-e-formato'));
+  const un = _grNum(_grV('gr-e-unidades'));
+  if(f.kg && un && !_grNum(_grV('gr-e-liq-arm'))) _grSet('gr-e-liq-arm', Math.round(un * f.kg));
+  grExpInfo();
+}
+function grExpInfo(){
+  const el = document.getElementById('gr-e-info'); if(!el) return;
+  const loteId = _grV('gr-e-lote'), formato = _grV('gr-e-formato');
+  const unEl = document.getElementById('gr-e-unidades-box');
+  if(unEl) unEl.style.display = _grEhGranel(formato) ? 'none' : '';
+  if(!loteId){ el.innerHTML=''; return; }
+  const peso = _grPesoExp();
+  if(_grEhGranel(formato)){
+    const disp = grSaldoGranel(loteId);
+    el.innerHTML = `Granel disponível: <b>${_grTon(disp)}</b>`
+      + (peso>disp ? ` · <span style="color:var(--danger);">esta saída passa em ${_grTon(peso-disp)}</span>` : '');
+    return;
+  }
+  // Embalado: o que já está ensacado é usado primeiro; o que faltar é ensacado
+  // nesta saída e sai do granel.
+  const emb = grSaldoFormato(loteId, formato);
+  const granel = grSaldoGranel(loteId);
+  const falta = Math.max(0, peso - Math.max(0, emb.kg));
+  el.innerHTML = `Já ensacado em ${_esc(_grFormatoNome(formato))}: <b>${_grTon(Math.max(0,emb.kg))}</b>`
+    + (emb.un>0?` (${fmtKg(emb.un)} volumes)`:'')
+    + ` · granel disponível: <b>${_grTon(granel)}</b>`
+    + (falta>0 ? ` · serão ensacados agora ${_grTon(falta)}` : '')
+    + (falta>granel ? ` · <span style="color:var(--danger);">falta granel: ${_grTon(falta-granel)}</span>` : '');
+}
+
+async function salvarGrExpedicao(){
+  const lote = grLotes.find(l=>String(l.id)===String(_grV('gr-e-lote')));
+  if(!lote){ showToast('Selecione o lote.','#e05c1a','#fff'); return; }
+  const data=_grV('gr-e-data'), periodo=_grV('gr-e-periodo'), formato=_grV('gr-e-formato');
+  const veiculo=_grV('gr-e-veiculo').toUpperCase(), peso=_grPesoExp();
+  const un = _grEhGranel(formato) ? 0 : _grNum(_grV('gr-e-unidades'));
+  if(!data || !periodo){ showToast('Informe data e período.','#e05c1a','#fff'); return; }
+  if(data > hojeLocal()){ showToast('A data não pode ser futura.','#e05c1a','#fff'); return; }
+  if(!veiculo){ showToast('Informe a placa do veículo.','#e05c1a','#fff'); return; }
+  if(!_grEhGranel(formato) && un<=0){ showToast('Informe quantos volumes saíram.','#e05c1a','#fff'); return; }
+  if(peso<=0){ showToast('Informe o peso líquido da balança do armazém.','#e05c1a','#fff'); return; }
+  const jaEra = grEditExp ? _grNum(grExpedicoes.find(e=>String(e.id)===String(grEditExp))?.peso_kg) : 0;
+  // Embalado consome primeiro o que já está ensacado; o restante é ensacado
+  // agora e precisa existir como granel.
+  const procAtual = grEditExp ? _grProcDaExp(grEditExp) : null;
+  const disp = _grEhGranel(formato)
+    ? grSaldoGranel(lote.id) + jaEra
+    : Math.max(0, grSaldoFormato(lote.id, formato).kg - (procAtual?_grNum(procAtual.peso_kg):0) + jaEra)
+      + grSaldoGranel(lote.id) + (procAtual?_grNum(procAtual.peso_kg):0);
+  if(peso > disp && !confirm(`O lote tem ${_grTon(disp)} disponível para sair em ${_grFormatoNome(formato)} e esta expedição é de ${_grTon(peso)}.\n\nLançar mesmo assim?`)) return;
+
+  const reg = {
+    id: grEditExp || _grUUID(),
+    lote_id: lote.id, navio: lote.navio, produto: lote.produto, di: lote.di,
+    data, periodo, veiculo,
+    motorista: _grV('gr-e-motorista').toUpperCase(),
+    destino: _grV('gr-e-destino').toUpperCase(),
+    formato, unidades: un, peso_kg: peso,
+    nf: _grV('gr-e-nf'),
+    ticket_porto: _grV('gr-e-ticket-porto'),
+    ..._grPesagemCampos('e'),
+    obs: _grV('gr-e-obs'),
+    registrado_em: new Date().toISOString(),
+    created_by: session?.nome || '—'
+  };
+  showLoading(grEditExp ? 'Salvando lançamento...' : 'Lançando expedição...');
+  try{
+    await supa('granel_expedicoes?on_conflict=id', { method:'POST',
+      headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([reg]) });
+    const i = grExpedicoes.findIndex(e=>String(e.id)===String(reg.id));
+    if(i>=0) grExpedicoes[i] = {...grExpedicoes[i], ...reg}; else grExpedicoes.push(reg);
+    await _grSincronizaProcAuto(reg);     // bag/sacaria: cria o ensaque desta saída
+    registrarAudit(grEditExp?'edicao':'expedicao',
+      'Expedição de granel: '+fmtKg(peso)+' kg em '+_grFormatoNome(formato)+' · '+(lote.produto||'')+' · D.I. '+(lote.di||'')+' · '+veiculo, {id:reg.id});
+    grLimparExp(true);
+    renderGrExpDia(); renderGrEstoque(); grMontaSelects(); updateGrStats();
+    showToast('✓ Expedição lançada: '+fmtKg(peso)+' kg.','#22c55e','#000');
+  }catch(e){
+    if(/granel_/.test(e.message) && /does not exist|schema cache/i.test(e.message)) _grAvisoSQL();
+    else showToast('⚠ Não foi possível lançar: '+e.message,'#e05c1a','#fff');
+  }finally{ hideLoading(); }
+}
+
+function grLimparExp(manterCabecalho){
+  grEditExp = null;
+  ['gr-e-veiculo','gr-e-motorista','gr-e-unidades','gr-e-obs','gr-e-nf'].forEach(id=>_grSet(id,''));
+  _grPesagemLimpa('e');
+  const info=document.getElementById('gr-e-pesagem-info'); if(info) info.innerHTML='';
+  const btn=document.getElementById('gr-e-salvar'); if(btn) btn.textContent='✓ LANÇAR EXPEDIÇÃO';
+  if(!manterCabecalho){ _grSet('gr-e-lote',''); _grSet('gr-e-destino',''); grExpPreencher(); }
+  grExpInfo();
+}
+
+function editarGrExpedicao(id){
+  const e = grExpedicoes.find(x=>String(x.id)===String(id)); if(!e) return;
+  grEditExp = id;
+  _grSet('gr-e-lote',e.lote_id); _grSet('gr-e-data',e.data); _grSet('gr-e-periodo',e.periodo);
+  _grSet('gr-e-formato',e.formato); _grSet('gr-e-unidades',e.unidades);
+  _grSet('gr-e-veiculo',e.veiculo); _grSet('gr-e-motorista',e.motorista); _grSet('gr-e-destino',e.destino);
+  _grSet('gr-e-obs',e.obs); _grSet('gr-e-nf',e.nf);
+  _grPesagemPreenche('e', e);
+  // registro antigo, de quando o peso não vinha da balança do armazém
+  if(!_grNum(_grV('gr-e-liq-arm'))) _grSet('gr-e-liq-arm', e.peso_kg);
+  const btn=document.getElementById('gr-e-salvar'); if(btn) btn.textContent='✓ SALVAR ALTERAÇÃO';
+  grExpInfo();
+  document.getElementById('gr-form-exp')?.scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+async function excluirGrExpedicao(id){
+  const e = grExpedicoes.find(x=>String(x.id)===String(id)); if(!e) return;
+  if(!confirm('Excluir a expedição de '+fmtKg(e.peso_kg)+' kg do veículo '+(e.veiculo||'')+'?')) return;
+  showLoading('Excluindo...');
+  try{
+    await supa('granel_expedicoes?id=eq.'+encodeURIComponent(id), {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+    grExpedicoes = grExpedicoes.filter(x=>String(x.id)!==String(id));
+    await _grApagaProcAuto(_grProcDaExp(id));   // tira junto o ensaque que ela criou
+    registrarAudit('exclusao','Expedição de granel excluída: '+fmtKg(e.peso_kg)+' kg · '+(e.veiculo||''),{id});
+    renderGrExpDia(); renderGrEstoque(); grMontaSelects(); updateGrStats();
+    showToast('✓ Expedição excluída.','#22c55e','#000');
+  }catch(err){ showToast('⚠ Não foi possível excluir: '+err.message,'#e05c1a','#fff'); }
+  finally{ hideLoading(); }
+}
+
+function renderGrExpDia(){
+  const el = document.getElementById('gr-exp-dia'); if(!el) return;
+  const dia = _grV('gr-e-data') || dataOperacional();
+  const lista = grExpedicoes.filter(e=>e.data===dia)
+    .sort((a,b)=>String(b.registrado_em||b.created_at||'').localeCompare(String(a.registrado_em||a.created_at||'')));
+  const tit = document.getElementById('gr-exp-dia-titulo');
+  if(tit) tit.textContent = 'EXPEDIÇÕES DE '+formatDate(dia);
+  if(!lista.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.2rem;"><span class="empty-icon">📤</span>Nenhuma expedição lançada neste dia.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:420px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:1060px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>PER.</th><th>D.I.</th><th>PRODUTO</th><th>SAI COMO</th><th>VOL.</th><th>PESO</th>'
+    + '<th>VEÍCULO</th><th>TRANSPORTADORA</th><th>DESTINO</th><th>NF</th><th>TICKET BALANÇA</th><th>AÇÕES</th></tr></thead><tbody>'
+    + lista.map((e,i)=>'<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+        + `<td style="white-space:nowrap;">${_esc(e.periodo)||'—'}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;color:var(--accent);">${_esc(e.di)||'—'}</td>`
+        + `<td>${_esc(e.produto)||'—'}</td><td>${_esc(_grFormatoNome(e.formato))}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;">${_grNum(e.unidades)?fmtKg(e.unidades):'—'}</td>`
+        + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-weight:700;">${fmtKg(e.peso_kg)} kg</td>`
+        + `<td style="font-weight:700;color:var(--info);white-space:nowrap;">${_esc(e.veiculo)||'—'}</td>`
+        + `<td style="font-size:11px;">${_esc(e.transportadora)||_esc(e.motorista)||'—'}</td><td style="font-size:11px;">${_esc(e.destino)||'—'}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;">${_esc(e.nf)||'—'}</td>`
+        + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;">${_esc(e.ticket_armazem)||_esc(e.ticket_porto)||'—'}</td>`
+        + `<td style="white-space:nowrap;"><div class="actions">`
+        + `<button class="btn btn-secondary btn-sm" onclick="imprimirTicketGranelExp('${_esc(e.id)}')" title="Ticket de expedição">🎫</button>`
+        + `<button class="btn btn-info btn-sm" onclick="editarGrExpedicao('${_esc(e.id)}')" title="Editar">✏</button>`
+        + `<button class="btn btn-danger btn-sm" onclick="excluirGrExpedicao('${_esc(e.id)}')" title="Excluir">✕</button>`
+        + `</div></td></tr>`).join('')
+    + '</tbody></table></div>'
+    + `<div style="padding:.6rem 0;font-size:12px;color:var(--muted);">${lista.length} carregamento(s) · total ${_grTon(lista.reduce((a,e)=>a+_grNum(e.peso_kg),0))}</div>`;
+}
+
+// ── Ensaque automático ──────────────────────────────────────────────
+// A aba PROCESSAMENTO está oculta: quem ensaca é a própria expedição. Ao sair
+// big bag ou sacaria, o sistema cria (ou acerta) o ensaque daquela saída, com
+// exp_id apontando para ela. Assim o estoque por embalagem fecha e o
+// faturamento do ensaque tem o lançamento por trás.
+function _grProcDaExp(expId){
+  return grProcessamentos.find(p=>String(p.exp_id||'')===String(expId));
+}
+
+async function _grSincronizaProcAuto(reg){
+  const atual = _grProcDaExp(reg.id);
+  if(_grEhGranel(reg.formato)){
+    // virou saída a granel: o ensaque que existia não faz mais sentido
+    if(atual) await _grApagaProcAuto(atual);
+    return;
+  }
+  // o que já estava ensacado (fora deste próprio registro) cobre a saída?
+  const jaEnsacado = grProcessado(reg.lote_id, reg.formato).kg - (atual ? _grNum(atual.peso_kg) : 0);
+  const jaExpedido = grExpedicoes
+    .filter(e=>String(e.lote_id)===String(reg.lote_id) && e.formato===reg.formato && String(e.id)!==String(reg.id))
+    .reduce((a,e)=>a+_grNum(e.peso_kg),0);
+  const falta = Math.max(0, _grNum(reg.peso_kg) - Math.max(0, jaEnsacado - jaExpedido));
+  if(falta <= 0){                       // já havia ensaque suficiente lançado
+    if(atual) await _grApagaProcAuto(atual);
+    return;
+  }
+  const kgEmb = _grFormato(reg.formato).kg || 0;
+  const proporcao = _grNum(reg.peso_kg) ? falta / _grNum(reg.peso_kg) : 1;
+  const unidades = Math.round(_grNum(reg.unidades) * proporcao) || (kgEmb ? Math.round(falta/kgEmb) : 0);
+  const proc = {
+    id: atual ? atual.id : _grUUID(),
+    lote_id: reg.lote_id, navio: reg.navio, produto: reg.produto, di: reg.di,
+    data: reg.data, periodo: reg.periodo, formato: reg.formato,
+    unidades, peso_kg: falta,
+    obs: 'Ensaque da expedição ' + (reg.veiculo||'') + ' de ' + formatDate(reg.data),
+    exp_id: reg.id, automatico: true,
+    created_by: reg.created_by || (session?.nome||'—')
+  };
+  await supa('granel_processamentos?on_conflict=id', { method:'POST',
+    headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([proc]) });
+  const i = grProcessamentos.findIndex(p=>String(p.id)===String(proc.id));
+  if(i>=0) grProcessamentos[i] = {...grProcessamentos[i], ...proc}; else grProcessamentos.push(proc);
+}
+
+async function _grApagaProcAuto(proc){
+  if(!proc) return;
+  await supa('granel_processamentos?id=eq.'+encodeURIComponent(proc.id), {method:'DELETE', headers:{'Prefer':'return=minimal'}});
+  grProcessamentos = grProcessamentos.filter(p=>String(p.id)!==String(proc.id));
+}
+
+// Ticket de expedição (GRX) — mesmo documento do GRD.
+async function imprimirTicketGranelExp(id){
+  const e = grExpedicoes.find(x=>String(x.id)===String(id));
+  if(!e){ showToast('Lançamento não encontrado.','#e05c1a','#fff'); return; }
+  const lote = grLotes.find(l=>String(l.id)===String(e.lote_id)) || {};
+  // A carga sai do armazém direto para o cliente: a pesagem do ticket é a do
+  // armazém (a do Porto não entra na expedição).
+  const pz = (_grNum(e.peso_entrada_armazem) || _grNum(e.peso_saida_armazem) || _grNum(e.peso_liquido_armazem))
+    ? { ticket: e.ticket_armazem||'', dt_entrada: e.data, hr_entrada:'', dt_saida: e.data, hr_saida:'',
+        peso_entrada: e.peso_entrada_armazem, peso_saida: e.peso_saida_armazem, peso_liquido: e.peso_liquido_armazem||e.peso_kg,
+        _armazem: true }
+    : null;
+
+  const jaTem = await _tkBuscarPorRegistros('GRX', new Set([String(e.id)]));
+  const base = {
+    doc:'EXPEDICAO', tipo:'GRX', regs:[e], cliente: lote.cliente||'', nf: e.nf||'',
+    veiculo:e.veiculo, motorista:e.motorista, destino:e.destino||'',
+    data:e.data, periodo:e.periodo, obs:e.obs, pesagem:pz
+  };
+  if(jaTem){ _grTicketWindow({...jaTem, ...base, ticketNum:jaTem.ticketNum, usuario:jaTem.usuario, emitidoEm:jaTem.emitidoEm}); return; }
+
+  const ticketData = {
+    ...base,
+    id: Date.now(), ticketNum: await getNextTicketNum('GRX'),
+    emitidoEm: new Date().toISOString(),
+    usuario: session?.nome||'—', userId: session?.user||''
+  };
+  _tkRegistrar(ticketData, [e]);
+  _grTicketWindow(ticketData);
+}
+
+// ── Estoque por lote e formato ──────────────────────────────────────
+function renderGrEstoque(){
+  const el = document.getElementById('gr-estoque-list'); if(!el) return;
+  const f = s => String(s||'').toUpperCase();
+  const fn=f(_grV('gr-s-navio')), fp=f(_grV('gr-s-produto')), fd=f(_grV('gr-s-di'));
+  const soComSaldo = document.getElementById('gr-s-comsaldo')?.value === 'sim';
+  const lotes = grLotes.filter(l=>{
+    if(fn && !f(l.navio).includes(fn)) return false;
+    if(fp && !f(l.produto).includes(fp)) return false;
+    if(fd && !f(l.di).includes(fd)) return false;
+    if(soComSaldo && grEstoqueLote(l.id).total <= 0) return false;
+    return true;
+  });
+  if(!lotes.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">📊</span>Nenhum lote com esses filtros.</div>';
+    return;
+  }
+  const emb = GR_EMBALAGENS();
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:1120px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>D.I.</th><th>NAVIO</th><th>PRODUTO</th><th>DESCARREGADO</th><th>GRANEL</th>'
+    + emb.map(x=>`<th>${_esc(x.nome.toUpperCase())}</th>`).join('')
+    + '<th>EXPEDIDO</th><th>EM ESTOQUE</th></tr></thead><tbody>'
+    + lotes.map((l,i)=>{
+        const est = grEstoqueLote(l.id);
+        const exp = grExpedido(l.id).kg;
+        return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+          + `<td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);">${_esc(l.di)||'—'}</td>`
+          + `<td>${_esc(l.navio)||'—'}</td><td style="font-weight:600;">${_esc(l.produto)||'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${_grTon(grDescarregado(l.id))}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:${est.granel<0?'var(--danger)':'var(--text)'};">${_grTon(est.granel)}</td>`
+          + est.embalados.map(x=>`<td style="white-space:nowrap;font-size:11px;font-family:'JetBrains Mono',monospace;">${x.kg?`${fmtKg(x.un)} un<br>${_grTon(x.kg)}`:'—'}</td>`).join('')
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--exp);">${_grTon(exp)}</td>`
+          + `<td style="white-space:nowrap;font-weight:700;color:${est.total>0?'var(--success)':'var(--muted)'};">${_grTon(est.total)}</td>`
+          + '</tr>';
+      }).join('')
+    + '</tbody></table></div>'
+    + `<div style="padding:.6rem 0;font-size:12px;color:var(--muted);">${lotes.length} lote(s) · em estoque ${_grTon(lotes.reduce((a,l)=>a+grEstoqueLote(l.id).total,0))}</div>`;
+}
+
+async function exportGrEstoqueExcel(){
+  if(!grLotes.length){ showToast('⚠ Nada para exportar.','#f59e0b','#000'); return; }
+  const emb = GR_EMBALAGENS();
+  const aoa = [['D.I.','NAVIO','PRODUTO','CLIENTE','ARMAZÉM','DESCARREGADO (kg)','GRANEL (kg)']
+    .concat(emb.flatMap(x=>[x.nome.toUpperCase()+' (vol.)', x.nome.toUpperCase()+' (kg)']))
+    .concat(['EXPEDIDO (kg)','EM ESTOQUE (kg)'])];
+  grLotes.forEach(l=>{
+    const est = grEstoqueLote(l.id);
+    aoa.push([l.di||'', l.navio||'', l.produto||'', l.cliente||'', l.armazem||'',
+      grDescarregado(l.id), est.granel]
+      .concat(est.embalados.flatMap(x=>[x.un, x.kg]))
+      .concat([grExpedido(l.id).kg, est.total]));
+  });
+  const numFmts = {}; for(let i=5;i<aoa[0].length;i++) numFmts[i]='#,##0';
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Granel_Estoque_'+hojeLocal()+'.xlsx',
+    sheets:[{ name:'Estoque de Granel', title:'📊 GRANEL — ESTOQUE POR LOTE E EMBALAGEM', aoa, numFmts, totals:false }]
+  });
+  if(ok) showToast('✓ Estoque exportado ('+grLotes.length+' lotes).','#22c55e','#000');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GRANEL — pesagens (Porto × armazém), importação por Excel e modelos
+// ══════════════════════════════════════════════════════════════════
+// A planilha que o pessoal já usava traz, na mesma linha, as duas pesagens:
+// a do Porto (onde o caminhão carrega) e a do armazém (onde descarrega).
+// A diferença entre as duas é o que a planilha chamava de "Pesagem".
+
+// O líquido é sempre a diferença entre as duas pesagens, em qualquer ordem:
+// no Porto o caminhão entra vazio e sai cheio; no armazém, o contrário.
+function _grLiquido(entrada, saida){
+  const e=_grNum(entrada), s=_grNum(saida);
+  if(!e || !s) return 0;
+  return Math.abs(s - e);
+}
+
+// px: 'd' (descarga) ou 'e' (expedição) — os dois formulários têm os mesmos campos.
+function grCalcPesagens(px){
+  const g = id => _grV('gr-'+px+'-'+id);
+  const liqP = _grNum(g('liq-porto')) || _grLiquido(g('ent-porto'), g('sai-porto'));
+  const liqA = _grNum(g('liq-arm'))   || _grLiquido(g('ent-arm'),   g('sai-arm'));
+  if(liqP) _grSet('gr-'+px+'-liq-porto', Math.round(liqP));
+  if(liqA) _grSet('gr-'+px+'-liq-arm',   Math.round(liqA));
+  // Na descarga o peso que vale é o recebido no armazém; sem ele, o do Porto.
+  // Na expedição não existe campo separado: o peso É o líquido do armazém.
+  const oficial = liqA || liqP;
+  if(oficial && px==='d') _grSet('gr-d-peso', Math.round(oficial));
+  const el = document.getElementById('gr-'+px+'-dif');
+  if(el){
+    if(liqP && liqA){
+      const dif = liqP - liqA;
+      const cor = Math.abs(dif)<=50 ? 'var(--success)' : (Math.abs(dif)<=500 ? '#f59e0b' : 'var(--danger)');
+      el.innerHTML = `Diferença Porto × armazém: <b style="color:${cor};">${dif>0?'+':''}${fmtKg(dif)} kg</b>`;
+    } else el.innerHTML = '';
+  }
+  if(px==='d') grDescInfo(); else grExpInfo();
+}
+
+function grDescInfo(){
+  const el = document.getElementById('gr-d-info'); if(!el) return;
+  const lote = grLotes.find(l=>String(l.id)===String(_grV('gr-d-lote')));
+  el.innerHTML = lote ? `Falta descarregar neste lote: <b>${_grTon(grSaldoDescarga(lote))}</b>` : '';
+}
+
+// Campos de pesagem que entram no registro gravado
+function _grPesagemCampos(px){
+  return {
+    transportadora: _grV('gr-'+px+'-transportadora').toUpperCase(),
+    ticket_armazem: _grV('gr-'+px+'-ticket-arm'),
+    peso_entrada_porto:   _grNum(_grV('gr-'+px+'-ent-porto')) || null,
+    peso_saida_porto:     _grNum(_grV('gr-'+px+'-sai-porto')) || null,
+    peso_liquido_porto:   _grNum(_grV('gr-'+px+'-liq-porto')) || null,
+    peso_entrada_armazem: _grNum(_grV('gr-'+px+'-ent-arm')) || null,
+    peso_saida_armazem:   _grNum(_grV('gr-'+px+'-sai-arm')) || null,
+    peso_liquido_armazem: _grNum(_grV('gr-'+px+'-liq-arm')) || null
+  };
+}
+function _grPesagemPreenche(px, r){
+  _grSet('gr-'+px+'-transportadora', r.transportadora);
+  _grSet('gr-'+px+'-ticket-arm', r.ticket_armazem);
+  _grSet('gr-'+px+'-ent-porto', r.peso_entrada_porto);
+  _grSet('gr-'+px+'-sai-porto', r.peso_saida_porto);
+  _grSet('gr-'+px+'-liq-porto', r.peso_liquido_porto);
+  _grSet('gr-'+px+'-ent-arm', r.peso_entrada_armazem);
+  _grSet('gr-'+px+'-sai-arm', r.peso_saida_armazem);
+  _grSet('gr-'+px+'-liq-arm', r.peso_liquido_armazem);
+  grCalcPesagens(px);
+}
+function _grPesagemLimpa(px){
+  ['transportadora','ticket-arm','ent-porto','sai-porto','liq-porto','ent-arm','sai-arm','liq-arm']
+    .forEach(id=>_grSet('gr-'+px+'-'+id,''));
+  const el=document.getElementById('gr-'+px+'-dif'); if(el) el.innerHTML='';
+}
+// Diferença de um registro já gravado (usada nas listas e relatórios)
+function _grDifRegistro(r){
+  const p=_grNum(r.peso_liquido_porto), a=_grNum(r.peso_liquido_armazem);
+  return (p && a) ? p - a : null;
+}
+
+// ── Importação por Excel ────────────────────────────────────────────
+// Os títulos são reconhecidos pelo nome (sem acento e sem diferenciar
+// maiúsculas), então a planilha que já existe entra sem precisar reorganizar.
+const GR_IMPORT = {
+  lotes: {
+    nome:'Banco de lotes', tabela:'granel_lotes',
+    colunas:[
+      {campo:'navio',        titulos:['navio'], obrig:true},
+      {campo:'produto',      titulos:['produto'], obrig:true},
+      {campo:'di',           titulos:['d.i','di','d i','declaracao','declaração'], obrig:true},
+      {campo:'cliente',      titulos:['cliente','importador']},
+      {campo:'armazem',      titulos:['armazem','armazém','praca','praça']},
+      {campo:'peso_total',   titulos:['peso declarado','peso total','peso'], num:true, obrig:true},
+      {campo:'data_chegada', titulos:['chegada','data chegada','data'], data:true},
+      {campo:'obs',          titulos:['obs','observacao','observação']}
+    ]
+  },
+  descargas: {
+    nome:'Descargas', tabela:'granel_descargas',
+    colunas:[
+      {campo:'data',      titulos:['data'], data:true, obrig:true},
+      {campo:'veiculo',   titulos:['placa','veiculo','veículo'], obrig:true},
+      {campo:'periodo',   titulos:['periodo','período','turno']},
+      {campo:'transportadora', titulos:['transportadora']},
+      {campo:'motorista', titulos:['motorista']},
+      {campo:'di',        titulos:['d.i','di','d i']},
+      {campo:'navio',     titulos:['navio']},
+      {campo:'produto',   titulos:['produto']},
+      {campo:'armazem',   titulos:['armazem','armazém']},
+      {campo:'ticket_porto', titulos:['ticket porto','ticket do porto']},
+      {campo:'peso_entrada_porto', titulos:['peso entrada porto','entrada porto'], num:true},
+      {campo:'peso_saida_porto',   titulos:['peso saida porto','peso saída porto','saida porto','saída porto'], num:true},
+      {campo:'peso_liquido_porto', titulos:['peso liquido porto','peso líquido porto','liquido porto','líquido porto'], num:true},
+      {campo:'ticket_armazem',     titulos:['ticket armazem','ticket armazém','ticket']},
+      {campo:'peso_entrada_armazem', titulos:['peso entrada armazem','peso entrada armazém','entrada armazem','entrada armazém','peso entrada','entrada'], num:true},
+      {campo:'peso_saida_armazem',   titulos:['peso saida armazem','peso saída armazém','saida armazem','saída armazém','peso saida','peso saída','saida','saída'], num:true},
+      {campo:'peso_liquido_armazem', titulos:['peso liquido armazem','peso líquido armazém','liquido armazem','líquido armazém','peso liquido','peso líquido','liquido','líquido'], num:true},
+      {campo:'obs',       titulos:['obs','observacao','observação']}
+    ]
+  },
+  expedicoes: {
+    nome:'Expedições', tabela:'granel_expedicoes',
+    colunas:[
+      {campo:'data',      titulos:['data'], data:true, obrig:true},
+      {campo:'veiculo',   titulos:['placa','veiculo','veículo'], obrig:true},
+      {campo:'periodo',   titulos:['periodo','período','turno']},
+      {campo:'transportadora', titulos:['transportadora']},
+      {campo:'motorista', titulos:['motorista']},
+      {campo:'di',        titulos:['d.i','di','d i']},
+      {campo:'navio',     titulos:['navio']},
+      {campo:'produto',   titulos:['produto']},
+      {campo:'formato',   titulos:['embalagem','formato','sai como','tipo']},
+      {campo:'unidades',  titulos:['quant bags','quant sacarias','volumes','unidades','qtd','quantidade'], num:true},
+      {campo:'destino',   titulos:['destino','cliente final']},
+      {campo:'nf',        titulos:['nf','n f','nota','nota fiscal']},
+      {campo:'ticket_porto', titulos:['ticket porto','ticket do porto']},
+      {campo:'peso_entrada_porto', titulos:['peso entrada porto','entrada porto'], num:true},
+      {campo:'peso_saida_porto',   titulos:['peso saida porto','peso saída porto','saida porto','saída porto'], num:true},
+      {campo:'peso_liquido_porto', titulos:['peso liquido porto','peso líquido porto','liquido porto','líquido porto'], num:true},
+      {campo:'ticket_armazem',     titulos:['ticket armazem','ticket armazém','ticket']},
+      {campo:'peso_entrada_armazem', titulos:['peso entrada armazem','peso entrada armazém','entrada armazem','entrada armazém','peso entrada','entrada'], num:true},
+      {campo:'peso_saida_armazem',   titulos:['peso saida armazem','peso saída armazém','saida armazem','saída armazém','peso saida','peso saída','saida','saída'], num:true},
+      {campo:'peso_liquido_armazem', titulos:['peso liquido armazem','peso líquido armazém','liquido armazem','líquido armazém','peso liquido','peso líquido','liquido','líquido'], num:true},
+      {campo:'obs',       titulos:['obs','observacao','observação']}
+    ]
+  }
+};
+
+let _grImport = { tipo:'descargas', linhas:[], erros:[], novosLotes:[] };
+
+// Reconhece o tipo de saída pelo texto da planilha ("Caminhões silo",
+// "BAGS 1000", "SACARIA 25KG", "Granel"…).
+function _grFormatoDoTexto(txt){
+  const t = _grChave(txt);
+  if(!t) return 'GRANEL';
+  const exato = GR_FORMATOS.find(f=>f.id===String(txt||'').toUpperCase() || _grChave(f.nome)===t);
+  if(exato) return exato.id;
+  if(/silo/.test(t)) return 'SILO';
+  if(/granel/.test(t)) return 'GRANEL';
+  if(/1250|1 250/.test(t)) return 'BB1250';
+  if(/big bag|bags?\b|1000|1 000/.test(t)) return 'BB1000';
+  if(/25/.test(t) && /saca|saco/.test(t)) return 'SC25';
+  if(/50/.test(t) && /saca|saco/.test(t)) return 'SC50';
+  return 'GRANEL';
+}
+
+function _grChave(s){
+  return String(s==null?'':s).normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
+// Data: aceita 10/02/2026, 2026-02-10 e o número de série do próprio Excel.
+function _grData(v){
+  if(v==null || v==='') return '';
+  if(v instanceof Date && !isNaN(v)) return _dataLocalStr(v);
+  const s = String(v).trim();
+  let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if(m){
+    const a = m[3].length===2 ? '20'+m[3] : m[3];
+    return `${a}-${String(m[2]).padStart(2,'0')}-${String(m[1]).padStart(2,'0')}`;
+  }
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if(m) return m[0];
+  const n = parseFloat(s);
+  if(!isNaN(n) && n>20000 && n<80000){           // serial do Excel
+    const d = new Date(Date.UTC(1899,11,30) + n*86400000);
+    return _dataLocalStr(new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  }
+  return '';
+}
+
+function abrirGrImport(tipo){
+  _grImport = { tipo: tipo || 'descargas', linhas:[], erros:[], novosLotes:[] };
+  const sel = document.getElementById('gr-imp-tipo'); if(sel) sel.value = _grImport.tipo;
+  const selL = document.getElementById('gr-imp-lote');
+  if(selL){
+    selL.innerHTML = '<option value="">— usar a coluna D.I. da planilha —</option>'
+      + grLotes.slice().sort((a,b)=>String(a.di||'').localeCompare(String(b.di||''),'pt-BR'))
+        .map(l=>`<option value="${_esc(l.id)}">${_esc(grLoteLabel(l))}</option>`).join('');
+  }
+  const selF = document.getElementById('gr-imp-formato');
+  if(selF) selF.innerHTML = '<option value="">— pelo nome da aba / coluna da planilha —</option>'
+    + GR_FORMATOS.map(f=>`<option value="${f.id}">${_esc(f.nome)}</option>`).join('');
+  _grImportMostraLote();
+  document.getElementById('gr-imp-arquivo').value = '';
+  document.getElementById('gr-imp-preview').innerHTML = '';
+  document.getElementById('gr-imp-confirmar').style.display = 'none';
+  document.getElementById('modal-gr-import').classList.add('open');
+}
+
+function _grImportMostraLote(){
+  const tipo = _grV('gr-imp-tipo');
+  const box = document.getElementById('gr-imp-lote-box');
+  if(box) box.style.display = (tipo==='lotes') ? 'none' : '';
+  const boxF = document.getElementById('gr-imp-formato-box');
+  if(boxF) boxF.style.display = (tipo==='expedicoes') ? '' : 'none';
+}
+
+function grImportTipoMudou(){
+  _grImport = { tipo: _grV('gr-imp-tipo'), linhas:[], erros:[], novosLotes:[] };
+  _grImportMostraLote();
+  document.getElementById('gr-imp-arquivo').value = '';
+  document.getElementById('gr-imp-preview').innerHTML = '';
+  document.getElementById('gr-imp-confirmar').style.display = 'none';
+}
+
+function grImportArquivo(file){
+  if(!file) return;
+  if(!/\.(xlsx|xls)$/i.test(file.name)){ showToast('Use um arquivo .xlsx ou .xls','#e05c1a','#fff'); return; }
+  const cfg = GR_IMPORT[_grImport.tipo];
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try{
+      const wb = XLSX.read(ev.target.result, {type:'array', cellDates:true});
+      const nomeAba = wb.SheetNames[0];
+      const ws = wb.Sheets[nomeAba];
+      const raw = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', raw:true});
+      // Cabeçalho = primeira linha que reconhece pelo menos 2 títulos nossos
+      let hr = -1;
+      for(let i=0; i<Math.min(12, raw.length); i++){
+        const achou = raw[i].filter(c=>cfg.colunas.some(col=>col.titulos.includes(_grChave(c)))).length;
+        if(achou >= 2){ hr = i; break; }
+      }
+      if(hr < 0){ showToast('Não encontrei o cabeçalho. Baixe o modelo e confira os títulos.','#e05c1a','#fff'); return; }
+      const titulos = raw[hr].map(_grChave);
+      const idx = {};
+      cfg.colunas.forEach(col=>{
+        const i = titulos.findIndex(t=>col.titulos.includes(t));
+        if(i>=0) idx[col.campo] = i;
+      });
+      const faltando = cfg.colunas.filter(c=>c.obrig && idx[c.campo]==null).map(c=>c.titulos[0].toUpperCase());
+      if(faltando.length){ showToast('Faltam colunas obrigatórias: '+faltando.join(', '),'#e05c1a','#fff'); return; }
+
+      const linhas = [], erros = [], novosLotes = new Map();
+      raw.slice(hr+1).forEach((r, n)=>{
+        if(!r.some(c=>String(c).trim()!=='')) return;
+        const obj = {};
+        cfg.colunas.forEach(col=>{
+          const v = idx[col.campo]==null ? '' : r[idx[col.campo]];
+          obj[col.campo] = col.num ? (_grNum(v)||null) : col.data ? _grData(v) : String(v==null?'':v).trim();
+        });
+        const linha = hr + n + 2;   // número da linha no Excel, para o usuário achar
+        const falta = cfg.colunas.filter(c=>c.obrig && !obj[c.campo]).map(c=>c.titulos[0].toUpperCase());
+        if(falta.length){ erros.push(`Linha ${linha}: falta ${falta.join(', ')}`); return; }
+        if(_grImport.tipo!=='lotes'){
+          const loteFixo = grLotes.find(l=>String(l.id)===String(_grV('gr-imp-lote')));
+          if(!obj.di && !loteFixo){
+            erros.push(`Linha ${linha}: sem D.I. — escolha o lote no campo acima`); return;
+          }
+          const lote = obj.di
+            ? grLotes.find(l=>_grChave(l.di)===_grChave(obj.di)
+                && (!obj.produto || _grChave(l.produto)===_grChave(obj.produto)))
+            : loteFixo;
+          if(!obj.di && loteFixo){ obj.di = loteFixo.di; obj.navio = obj.navio || loteFixo.navio; obj.produto = obj.produto || loteFixo.produto; }
+          if(lote){ obj._lote = lote; }
+          else {
+            const chave = _grChave(obj.di)+'|'+_grChave(obj.produto);
+            if(!novosLotes.has(chave)) novosLotes.set(chave, {di:obj.di, produto:obj.produto, navio:obj.navio});
+            obj._novoLote = chave;
+          }
+          obj._peso = obj.peso_liquido_armazem || _grLiquido(obj.peso_entrada_armazem, obj.peso_saida_armazem)
+            || obj.peso_liquido_porto || _grLiquido(obj.peso_entrada_porto, obj.peso_saida_porto)
+            || 0;
+          if(_grImport.tipo==='expedicoes'){
+            // Sem coluna de embalagem: usa o tipo escolhido na tela e, se nada
+            // foi escolhido, o nome da aba ("EXPEDIÇÃO - CAMINHÕES SILO"…).
+            obj.formato = obj.formato ? _grFormatoDoTexto(obj.formato)
+              : (_grV('gr-imp-formato') || _grFormatoDoTexto(nomeAba));
+            // Nas abas de caminhão granel e silo a coluna "Quantidade" é o PESO,
+            // não a quantidade de volumes.
+            if(_grEhGranel(obj.formato)){
+              if(!obj._peso && obj.unidades) obj._peso = _grNum(obj.unidades);
+              obj.unidades = 0;
+            }
+          }
+          if(!obj._peso){ erros.push(`Linha ${linha}: sem peso (líquido do armazém, do Porto ou quantidade)`); return; }
+        }
+        linhas.push(obj);
+      });
+      _grImport.linhas = linhas; _grImport.erros = erros;
+      _grImport.novosLotes = [...novosLotes.values()];
+      _grImportPreview();
+    }catch(err){ showToast('⚠ Erro ao ler o arquivo: '+err.message,'#e05c1a','#fff'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function _grImportPreview(){
+  const el = document.getElementById('gr-imp-preview');
+  const { linhas, erros, novosLotes, tipo } = _grImport;
+  const peso = linhas.reduce((a,l)=>a+_grNum(l._peso||l.peso_total),0);
+  el.innerHTML = `
+    <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:.8rem;">
+      <div><div class="gr-lbl">LINHAS VÁLIDAS</div><div style="font-size:22px;font-weight:700;color:var(--success);">${linhas.length}</div></div>
+      <div><div class="gr-lbl">COM PROBLEMA</div><div style="font-size:22px;font-weight:700;color:${erros.length?'var(--danger)':'var(--muted)'};">${erros.length}</div></div>
+      <div><div class="gr-lbl">${tipo==='lotes'?'PESO DECLARADO':'PESO TOTAL'}</div><div style="font-size:22px;font-weight:700;">${_grTon(peso)}</div></div>
+    </div>
+    ${novosLotes.length?`<div style="background:rgba(240,165,0,.08);border:1px solid rgba(240,165,0,.3);border-radius:8px;padding:.6rem .8rem;margin-bottom:.8rem;font-size:12px;">
+      <label style="display:flex;gap:.5rem;align-items:flex-start;cursor:pointer;">
+        <input type="checkbox" id="gr-imp-criar-lotes" checked style="accent-color:var(--accent);width:15px;height:15px;margin-top:2px;">
+        <span>Criar os <b>${novosLotes.length}</b> lote(s) que ainda não existem (peso declarado fica 0 e você ajusta depois):
+        ${_esc(novosLotes.slice(0,6).map(l=>`${l.di}${l.produto?' · '+l.produto:''}`).join(' | '))}${novosLotes.length>6?' …':''}</span>
+      </label>
+    </div>`:''}
+    ${erros.length?`<div style="max-height:140px;overflow:auto;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--danger);">
+      ${erros.slice(0,40).map(_esc).join('<br>')}${erros.length>40?`<br>… e mais ${erros.length-40}`:''}
+    </div>`:''}
+    ${linhas.length?`<div class="table-wrap" style="overflow:auto;max-height:220px;border:1px solid var(--border);border-radius:8px;margin-top:.8rem;">
+      <table style="min-width:600px;width:100%;font-size:11px;"><thead><tr>${
+        (tipo==='lotes'?['D.I.','NAVIO','PRODUTO','PESO DECLARADO']:['DATA','PLACA','D.I.','PESO','TICKET PORTO'])
+          .map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>
+      ${linhas.slice(0,8).map(l=>tipo==='lotes'
+        ? `<tr><td>${_esc(l.di)}</td><td>${_esc(l.navio)}</td><td>${_esc(l.produto)}</td><td>${fmtKg(l.peso_total)} kg</td></tr>`
+        : `<tr><td>${l.data?formatDate(l.data):'—'}</td><td>${_esc(l.veiculo)}</td><td>${_esc(l.di)}</td><td>${fmtKg(l._peso)} kg</td><td>${_esc(l.ticket_porto)||'—'}</td></tr>`
+      ).join('')}
+      </tbody></table></div>${linhas.length>8?`<div style="font-size:11px;color:var(--muted);padding-top:.4rem;">mostrando 8 de ${linhas.length}</div>`:''}`:''}
+  `;
+  document.getElementById('gr-imp-confirmar').style.display = linhas.length ? '' : 'none';
+}
+
+async function confirmarGrImport(){
+  const { tipo, linhas, novosLotes } = _grImport;
+  if(!linhas.length) return;
+  const criarLotes = document.getElementById('gr-imp-criar-lotes')?.checked;
+  if(tipo!=='lotes' && novosLotes.length && !criarLotes){
+    showToast('Marque a criação dos lotes que faltam ou cadastre-os antes.','#e05c1a','#fff'); return;
+  }
+  if(!confirm(`Importar ${linhas.length} linha(s) para ${GR_IMPORT[tipo].nome}?`)) return;
+
+  showLoading('Importando '+linhas.length+' linha(s)...');
+  try{
+    // 1) lotes que faltam
+    const mapaNovos = new Map();
+    if(tipo!=='lotes' && criarLotes && novosLotes.length){
+      const novos = novosLotes.map(n=>({
+        id:_grUUID(), navio:(n.navio||'').toUpperCase(), produto:(n.produto||'').toUpperCase(),
+        di:(n.di||'').toUpperCase(), peso_total:0, created_by:session?.nome||'—'
+      }));
+      await supa('granel_lotes?on_conflict=id', {method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify(novos)});
+      novos.forEach((l,i)=>{ mapaNovos.set(_grChave(novosLotes[i].di)+'|'+_grChave(novosLotes[i].produto), l); grLotes.push(l); });
+    }
+    // 2) as linhas
+    const agora = new Date().toISOString(), quem = session?.nome||'—';
+    let registros;
+    if(tipo==='lotes'){
+      registros = linhas.map(l=>({
+        id:_grUUID(), navio:(l.navio||'').toUpperCase(), produto:(l.produto||'').toUpperCase(),
+        di:(l.di||'').toUpperCase(), cliente:(l.cliente||'').toUpperCase(), armazem:(l.armazem||'').toUpperCase(),
+        peso_total:_grNum(l.peso_total), data_chegada:l.data_chegada||null, obs:l.obs||'', created_by:quem
+      }));
+      // não duplica D.I. + produto + navio que já existe
+      registros = registros.filter(r=>!grLotes.some(l=>_grChave(l.di)===_grChave(r.di)
+        && _grChave(l.produto)===_grChave(r.produto) && _grChave(l.navio)===_grChave(r.navio)));
+    } else {
+      registros = linhas.map(l=>{
+        const lote = l._lote || mapaNovos.get(l._novoLote) || {};
+        const base = {
+          id:_grUUID(), lote_id:lote.id||null,
+          navio:(l.navio||lote.navio||'').toUpperCase(), produto:(l.produto||lote.produto||'').toUpperCase(),
+          di:(l.di||'').toUpperCase(), data:l.data, periodo:l.periodo||'',
+          veiculo:(l.veiculo||'').toUpperCase(), motorista:(l.motorista||'').toUpperCase(),
+          transportadora:(l.transportadora||'').toUpperCase(),
+          peso_kg:_grNum(l._peso), ticket_porto:l.ticket_porto||'', ticket_armazem:l.ticket_armazem||'',
+          peso_entrada_porto:l.peso_entrada_porto, peso_saida_porto:l.peso_saida_porto,
+          peso_liquido_porto:l.peso_liquido_porto || _grLiquido(l.peso_entrada_porto,l.peso_saida_porto) || null,
+          peso_entrada_armazem:l.peso_entrada_armazem, peso_saida_armazem:l.peso_saida_armazem,
+          peso_liquido_armazem:l.peso_liquido_armazem || _grLiquido(l.peso_entrada_armazem,l.peso_saida_armazem) || null,
+          obs:l.obs||'', registrado_em:agora, created_by:quem
+        };
+        if(tipo==='descargas') return {...base, armazem:(l.armazem||lote.armazem||'').toUpperCase()};
+        return {...base, destino:(l.destino||'').toUpperCase(), nf:l.nf||'',
+          formato:l.formato||'GRANEL', unidades:_grNum(l.unidades)||0};
+      });
+    }
+    if(!registros.length){
+      hideLoading(); showToast('Nada novo para importar (tudo já existia).','#f59e0b','#000'); return;
+    }
+    const tabela = GR_IMPORT[tipo].tabela;
+    for(let i=0;i<registros.length;i+=200){
+      await supa(tabela+'?on_conflict=id', {method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify(registros.slice(i,i+200))});
+    }
+    // Expedição embalada importada também gera o ensaque correspondente.
+    if(tipo==='expedicoes'){
+      const procs = registros.filter(r=>!_grEhGranel(r.formato) && _grNum(r.peso_kg)>0).map(r=>({
+        id:_grUUID(), lote_id:r.lote_id, navio:r.navio, produto:r.produto, di:r.di,
+        data:r.data, periodo:r.periodo, formato:r.formato,
+        unidades:_grNum(r.unidades), peso_kg:_grNum(r.peso_kg),
+        obs:'Ensaque da expedição '+(r.veiculo||'')+' (importada)',
+        exp_id:r.id, automatico:true, created_by:quem
+      }));
+      for(let i=0;i<procs.length;i+=200){
+        await supa('granel_processamentos?on_conflict=id', {method:'POST',
+          headers:{'Prefer':'resolution=merge-duplicates,return=minimal'}, body:JSON.stringify(procs.slice(i,i+200))});
+      }
+    }
+    registrarAudit('importacao','Importação de granel ('+GR_IMPORT[tipo].nome+'): '+registros.length+' linha(s)',{tipo, linhas:registros.length});
+    hideLoading();
+    closeModal('modal-gr-import');
+    await grCarregar(true);
+    grMontaSelects(); updateGrStats(); renderGrLotes(); renderGrDescDia(); renderGrProcDia(); renderGrExpDia(); renderGrEstoque();
+    if(typeof renderGrHistorico==='function') renderGrHistorico();
+    if(typeof renderGrRelatorio==='function') renderGrRelatorio();
+    showToast('✓ '+registros.length+' linha(s) importadas.','#22c55e','#000');
+  }catch(e){
+    hideLoading();
+    if(/granel_/.test(e.message) && /column|does not exist|schema cache/i.test(e.message)) _grAvisoSQL();
+    else showToast('⚠ A importação falhou: '+e.message,'#e05c1a','#fff');
+  }
+}
+
+// ── Modelo em Excel ─────────────────────────────────────────────────
+async function baixarGrModelo(){
+  const tipo = _grV('gr-imp-tipo') || 'descargas';
+  const cfg = GR_IMPORT[tipo];
+  const titulos = {
+    lotes:      ['NAVIO','PRODUTO','D.I.','CLIENTE','ARMAZÉM','PESO DECLARADO','CHEGADA','OBS'],
+    descargas:  ['DATA','PLACA','PERÍODO','TRANSPORTADORA','MOTORISTA','D.I.','NAVIO','PRODUTO','ARMAZÉM',
+                 'TICKET PORTO','PESO ENTRADA PORTO','PESO SAÍDA PORTO','PESO LÍQUIDO PORTO',
+                 'TICKET','PESO ENTRADA ARMAZÉM','PESO SAÍDA ARMAZÉM','PESO LÍQUIDO ARMAZÉM','OBS'],
+    expedicoes: ['DATA','PLACA','PERÍODO','TRANSPORTADORA','MOTORISTA','D.I.','NAVIO','PRODUTO','EMBALAGEM','VOLUMES','NF','DESTINO',
+                 'TICKET PORTO','PESO ENTRADA PORTO','PESO SAÍDA PORTO','PESO LÍQUIDO PORTO',
+                 'TICKET','PESO ENTRADA ARMAZÉM','PESO SAÍDA ARMAZÉM','PESO LÍQUIDO ARMAZÉM','OBS']
+  }[tipo];
+  const exemplo = {
+    lotes:      ['UM IMABARI','SODA ASH','26/1234567-8','CLIENTE LTDA','AZ05',500000,hojeLocal(),''],
+    descargas:  [hojeLocal(),'ABC-1234','07x13','TRANSPORTES X','JOÃO DA SILVA','26/1234567-8','UM IMABARI','SODA ASH','AZ05',
+                 '2039555',14620,39610,24990,'A-1001',39500,14560,24940,''],
+    expedicoes: [hojeLocal(),'ABC-1234','07x13','TRANSPORTES X','JOÃO DA SILVA','26/1234567-8','UM IMABARI','SODA ASH','Big bag 1.250 kg',20,'4628','FÁBRICA X',
+                 '2039555',14620,39620,25000,'A-1002',39600,14600,25000,'']
+  }[tipo];
+  const instr = [
+    ['COLUNA','OBRIGATÓRIA','COMO PREENCHER','EXEMPLO'],
+    ...cfg.colunas.map((c,i)=>[c.titulos[0].toUpperCase(), c.obrig?'SIM':'não',
+      c.num?'número em kg (ponto ou vírgula)':c.data?'data dd/mm/aaaa':'texto',
+      String(exemplo[titulos.findIndex(t=>_grChave(t)===_grChave(c.titulos[0]))] ?? '')]),
+    [''],
+    ['O sistema acha as colunas pelo NOME do título, em qualquer ordem.'],
+    ['Linhas em branco são ignoradas; o peso usado no estoque é o LÍQUIDO ARMAZÉM'],
+    ['(ou o líquido do Porto, quando o do armazém não vier preenchido).'],
+    [tipo==='lotes'?'D.I. + produto + navio que já existem não são duplicados.'
+      :'A D.I. liga a linha ao lote. Lotes que faltarem podem ser criados na importação.']
+  ];
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Granel_Modelo_'+tipo+'_'+hojeLocal()+'.xlsx',
+    sheets:[
+      // A planilha de dados vai só com os títulos: assim nada de exemplo é
+      // importado por engano. O exemplo fica na aba de instruções.
+      { name:cfg.nome.substring(0,28), title:'🫗 GRANEL — MODELO DE IMPORTAÇÃO · '+cfg.nome.toUpperCase(),
+        aoa:[titulos], totals:false },
+      { name:'Instruções', title:'COMO PREENCHER (a coluna EXEMPLO é só referência)', aoa:instr, totals:false }
+    ]
+  });
+  if(ok) showToast('✓ Modelo de '+cfg.nome+' baixado.','#22c55e','#000');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GRANEL — relatório e histórico
+// ══════════════════════════════════════════════════════════════════
+
+function _grPeriodoFiltro(px){
+  return { ini:_grV('gr-'+px+'-dt-ini'), fim:_grV('gr-'+px+'-dt-fim') };
+}
+function _grNoPeriodo(data, f){
+  if(f.ini && String(data||'') < f.ini) return false;
+  if(f.fim && String(data||'') > f.fim) return false;
+  return true;
+}
+
+// ── Relatório: uma linha por lote, com o que entrou, ensacou e saiu ──
+function _grRelLinhas(){
+  const f = _grPeriodoFiltro('r');
+  const txt = s => String(s||'').toUpperCase();
+  const fn=txt(_grV('gr-r-navio')), fp=txt(_grV('gr-r-produto')), fd=txt(_grV('gr-r-di')), fc=txt(_grV('gr-r-cliente'));
+  return grLotes.filter(l=>{
+    if(fn && !txt(l.navio).includes(fn)) return false;
+    if(fp && !txt(l.produto).includes(fp)) return false;
+    if(fd && !txt(l.di).includes(fd)) return false;
+    if(fc && !txt(l.cliente).includes(fc)) return false;
+    return true;
+  }).map(l=>{
+    const descs = grDescargas.filter(d=>String(d.lote_id)===String(l.id) && _grNoPeriodo(d.data,f));
+    const procs = grProcessamentos.filter(p=>String(p.lote_id)===String(l.id) && _grNoPeriodo(p.data,f));
+    const exps  = grExpedicoes.filter(e=>String(e.lote_id)===String(l.id) && _grNoPeriodo(e.data,f));
+    const soma = (arr,c)=>arr.reduce((a,x)=>a+_grNum(x[c]),0);
+    const difs = descs.map(_grDifRegistro).filter(x=>x!=null);
+    return {
+      lote:l, viagens:descs.length, carregamentos:exps.length,
+      descarregado:soma(descs,'peso_kg'),
+      ensacado:soma(procs,'peso_kg'), volumes:soma(procs,'unidades'),
+      expedido:soma(exps,'peso_kg'),
+      expGranel:soma(exps.filter(e=>_grEhGranel(e.formato)),'peso_kg'),
+      expEmbalado:soma(exps.filter(e=>e.formato && !_grEhGranel(e.formato)),'peso_kg'),
+      difPorto:difs.reduce((a,x)=>a+x,0), comDif:difs.length,
+      estoque:grEstoqueLote(l.id).total
+    };
+  }).filter(r=>!(_grV('gr-r-movimento')==='sim' && !r.viagens && !r.carregamentos && !r.ensacado));
+}
+
+function renderGrRelatorio(){
+  const el = document.getElementById('gr-rel-list'); if(!el) return;
+  const linhas = _grRelLinhas();
+  const tot = c => linhas.reduce((a,r)=>a+r[c],0);
+  const resumo = document.getElementById('gr-rel-resumo');
+  if(resumo) resumo.innerHTML = [
+    ['LOTES', linhas.length],
+    ['DESCARREGADO', _grTon(tot('descarregado'))],
+    ['ENSACADO', _grTon(tot('ensacado'))],
+    ['EXPEDIDO', _grTon(tot('expedido'))],
+    ['EM ESTOQUE', _grTon(tot('estoque'))]
+  ].map(([k,v])=>`<div class="rpt-summary-card"><div class="rpt-sum-label">${k}</div><div class="rpt-sum-value" style="font-size:20px;">${v}</div></div>`).join('');
+
+  if(!linhas.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">📊</span>Nenhum lote com esses filtros.</div>';
+    return;
+  }
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:520px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:1180px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>D.I.</th><th>NAVIO</th><th>PRODUTO</th><th>CLIENTE</th><th>DECLARADO</th><th>VIAGENS</th><th>DESCARREGADO</th>'
+    + '<th>DIF. PORTO</th><th>ENSACADO</th><th>EXP. GRANEL</th><th>EXP. EMBALADO</th><th>EM ESTOQUE</th></tr></thead><tbody>'
+    + linhas.map((r,i)=>{
+        const l=r.lote;
+        return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+          + `<td style="font-family:'JetBrains Mono',monospace;font-weight:700;color:var(--accent);">${_esc(l.di)||'—'}</td>`
+          + `<td>${_esc(l.navio)||'—'}</td><td style="font-weight:600;">${_esc(l.produto)||'—'}</td>`
+          + `<td style="font-size:11px;">${_esc(l.cliente)||'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${_grTon(l.peso_total)}</td>`
+          + `<td>${r.viagens||'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${_grTon(r.descarregado)}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:${Math.abs(r.difPorto)<=500?'var(--muted)':'var(--danger)'};">${r.comDif?(r.difPorto>0?'+':'')+fmtKg(r.difPorto)+' kg':'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;">${r.ensacado?`${_grTon(r.ensacado)}<br><span style="font-size:10px;color:var(--muted);">${fmtKg(r.volumes)} vol.</span>`:'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--exp);">${r.expGranel?_grTon(r.expGranel):'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:var(--exp);">${r.expEmbalado?_grTon(r.expEmbalado):'—'}</td>`
+          + `<td style="white-space:nowrap;font-weight:700;color:${r.estoque>0?'var(--success)':'var(--muted)'};">${_grTon(r.estoque)}</td>`
+          + '</tr>';
+      }).join('')
+    + `<tr style="background:rgba(240,165,0,.1);font-weight:700;"><td colspan="4">TOTAL (${linhas.length} lote(s))</td>`
+    + `<td>${_grTon(linhas.reduce((a,r)=>a+_grNum(r.lote.peso_total),0))}</td><td>${linhas.reduce((a,r)=>a+r.viagens,0)}</td>`
+    + `<td>${_grTon(tot('descarregado'))}</td><td>—</td><td>${_grTon(tot('ensacado'))}</td>`
+    + `<td>${_grTon(tot('expGranel'))}</td><td>${_grTon(tot('expEmbalado'))}</td><td>${_grTon(tot('estoque'))}</td></tr>`
+    + '</tbody></table></div>';
+}
+
+async function exportGrRelatorioExcel(){
+  const linhas = _grRelLinhas();
+  if(!linhas.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const aoa = [['D.I.','NAVIO','PRODUTO','CLIENTE','ARMAZÉM','PESO DECLARADO (kg)','VIAGENS','DESCARREGADO (kg)',
+    'DIF. PORTO × ARMAZÉM (kg)','ENSACADO (kg)','VOLUMES','EXPEDIDO GRANEL (kg)','EXPEDIDO EMBALADO (kg)','EM ESTOQUE (kg)']];
+  linhas.forEach(r=>aoa.push([r.lote.di||'', r.lote.navio||'', r.lote.produto||'', r.lote.cliente||'', r.lote.armazem||'',
+    _grNum(r.lote.peso_total), r.viagens, r.descarregado, r.comDif?r.difPorto:null, r.ensacado, r.volumes,
+    r.expGranel, r.expEmbalado, r.estoque]));
+  const numFmts={}; [5,7,8,9,10,11,12,13].forEach(i=>numFmts[i]='#,##0');
+  const f=_grPeriodoFiltro('r');
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Granel_Relatorio_'+hojeLocal()+'.xlsx',
+    sheets:[{ name:'Relatório Granel', aoa, numFmts,
+      title:'🫗 GRANEL — RELATÓRIO POR LOTE'+((f.ini||f.fim)?`\nPeríodo: ${f.ini?formatDate(f.ini):'início'} a ${f.fim?formatDate(f.fim):'hoje'}`:'') }]
+  });
+  if(ok) showToast('✓ Relatório exportado ('+linhas.length+' lotes).','#22c55e','#000');
+}
+
+function exportGrRelatorioPDF(){
+  if(!window.jspdf){ showToast('⚠ Biblioteca de PDF indisponível.','#e05c1a','#fff'); return; }
+  const linhas = _grRelLinhas();
+  if(!linhas.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+  const now = new Date().toLocaleString('pt-BR');
+  const f = _grPeriodoFiltro('r');
+  const filtro = [(f.ini||f.fim)?`Período: ${f.ini?formatDate(f.ini):'início'} a ${f.fim?formatDate(f.fim):'hoje'}`:'',
+    _grV('gr-r-navio')&&'Navio: '+_grV('gr-r-navio'), _grV('gr-r-produto')&&'Produto: '+_grV('gr-r-produto'),
+    _grV('gr-r-di')&&'D.I.: '+_grV('gr-r-di'), _grV('gr-r-cliente')&&'Cliente: '+_grV('gr-r-cliente')].filter(Boolean).join(' · ') || 'Todos os lotes';
+  const comCab = new Set();
+  const cab = ()=>{
+    const pg = doc.getCurrentPageInfo().pageNumber;
+    if(comCab.has(pg)) return; comCab.add(pg);
+    doc.setFillColor(10,12,15); doc.rect(0,0,pageW,18,'F');
+    doc.setFillColor(240,165,0); doc.rect(0,16,pageW,2,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(240,165,0);
+    doc.text('4SIDES · STEELPORT',14,11);
+    doc.setFontSize(10); doc.setTextColor(180,180,180);
+    doc.text('GRANEL · RELATÓRIO POR LOTE',14,15);
+    doc.text('Gerado: '+now,pageW-14,8,{align:'right'});
+    doc.text(filtro.length>95?filtro.slice(0,92)+'...':filtro,pageW-14,14,{align:'right'});
+    doc.setTextColor(0,0,0);
+  };
+  cab();
+  const tot = c => linhas.reduce((a,r)=>a+r[c],0);
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(10,12,15);
+  doc.text(`${linhas.length} lote(s) · descarregado ${_grTon(tot('descarregado'))} · ensacado ${_grTon(tot('ensacado'))} · expedido ${_grTon(tot('expedido'))} · em estoque ${_grTon(tot('estoque'))}`,14,25);
+  doc.autoTable({
+    startY:30,
+    head:[['D.I.','NAVIO','PRODUTO','CLIENTE','DECLARADO','VIAG.','DESCARREGADO','DIF. PORTO','ENSACADO','EXP. GRANEL','EXP. EMB.','EM ESTOQUE']],
+    body:linhas.map(r=>[r.lote.di||'—', r.lote.navio||'—', r.lote.produto||'—', (r.lote.cliente||'—').slice(0,22),
+      _grTon(r.lote.peso_total), String(r.viagens||'—'), _grTon(r.descarregado),
+      r.comDif?((r.difPorto>0?'+':'')+fmtKg(r.difPorto)+' kg'):'—',
+      r.ensacado?_grTon(r.ensacado):'—', r.expGranel?_grTon(r.expGranel):'—',
+      r.expEmbalado?_grTon(r.expEmbalado):'—', _grTon(r.estoque)]),
+    foot:[['TOTAL','','','','','', _grTon(tot('descarregado')),'', _grTon(tot('ensacado')), _grTon(tot('expGranel')), _grTon(tot('expEmbalado')), _grTon(tot('estoque'))]],
+    styles:{fontSize:7.5,cellPadding:1.5},
+    headStyles:{fillColor:[240,165,0],textColor:[0,0,0],fontStyle:'bold'},
+    footStyles:{fillColor:[253,233,200],textColor:[10,12,15],fontStyle:'bold'},
+    margin:{left:10,right:10,top:24},
+    didDrawPage:()=>cab()
+  });
+  const n = doc.getNumberOfPages();
+  for(let i=1;i<=n;i++){
+    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(120,120,120);
+    doc.text(`Página ${i} de ${n}`, pageW-14, pageH-6, {align:'right'});
+    doc.text('4SIDES · STEELPORT WAREHOUSE SYSTEMS', 14, pageH-6);
+  }
+  doc.save('4SIDES_STEELPORT_Granel_Relatorio_'+hojeLocal()+'.pdf');
+  showToast('✓ Relatório em PDF exportado.','#22c55e','#000');
+}
+
+// ── Histórico: tudo que foi lançado, na ordem do tempo ──────────────
+function _grHistLinhas(){
+  const f = _grPeriodoFiltro('h');
+  const tipo = _grV('gr-h-tipo'), txt = s => String(s||'').toUpperCase();
+  const fu=txt(_grV('gr-h-usuario')), fd=txt(_grV('gr-h-di')), fv=txt(_grV('gr-h-veiculo')).replace(/[^A-Z0-9]/g,'');
+  const linhas = [];
+  const poe = (arr, t, cor) => arr.forEach(r=>linhas.push({...r, _tipo:t, _cor:cor}));
+  if(!tipo || tipo==='descarga')     poe(grDescargas,'DESCARGA','var(--info)');
+  if(!tipo || tipo==='processamento')poe(grProcessamentos,'ENSAQUE','var(--accent)');   // inclui os gerados pela expedição
+  if(!tipo || tipo==='expedicao')    poe(grExpedicoes,'EXPEDIÇÃO','var(--exp)');
+  return linhas.filter(r=>{
+    if(!_grNoPeriodo(r.data,f)) return false;
+    if(fu && !txt(r.created_by).includes(fu)) return false;
+    if(fd && !txt(r.di).includes(fd)) return false;
+    if(fv && !txt(r.veiculo).replace(/[^A-Z0-9]/g,'').includes(fv)) return false;
+    return true;
+  }).sort((a,b)=>String(b.data+(b.registrado_em||b.created_at||'')).localeCompare(String(a.data+(a.registrado_em||a.created_at||''))));
+}
+
+function renderGrHistorico(){
+  const el = document.getElementById('gr-hist-list'); if(!el) return;
+  const linhas = _grHistLinhas();
+  const info = document.getElementById('gr-hist-info');
+  if(info) info.innerHTML = `${linhas.length} lançamento(s) · `
+    + `descarga ${_grTon(linhas.filter(r=>r._tipo==='DESCARGA').reduce((a,r)=>a+_grNum(r.peso_kg),0))} · `
+    + `ensaque ${_grTon(linhas.filter(r=>r._tipo==='ENSAQUE').reduce((a,r)=>a+_grNum(r.peso_kg),0))} · `
+    + `expedição ${_grTon(linhas.filter(r=>r._tipo==='EXPEDIÇÃO').reduce((a,r)=>a+_grNum(r.peso_kg),0))}`;
+  if(!linhas.length){
+    el.innerHTML = '<div class="empty-state" style="padding:1.5rem;"><span class="empty-icon">🕐</span>Nenhum lançamento com esses filtros.</div>';
+    return;
+  }
+  const pag = linhas.slice(0, 300);
+  el.innerHTML = '<div class="table-wrap" style="overflow:auto;max-height:560px;border:1px solid var(--border);border-radius:8px;">'
+    + '<table style="min-width:1180px;width:100%;font-size:12px;"><thead><tr>'
+    + '<th>DATA</th><th>PER.</th><th>TIPO</th><th>D.I.</th><th>PRODUTO</th><th>EMBALAGEM</th><th>VOL.</th><th>PESO</th>'
+    + '<th>VEÍCULO</th><th>TRANSPORTADORA</th><th>NF</th><th>TICKET PORTO</th><th>DIF.</th><th>REG. POR</th></tr></thead><tbody>'
+    + pag.map((r,i)=>{
+        const dif = _grDifRegistro(r);
+        return '<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+          + `<td style="white-space:nowrap;">${r.data?formatDate(r.data):'—'}</td><td>${_esc(r.periodo)||'—'}</td>`
+          + `<td style="font-weight:700;color:${r._cor};white-space:nowrap;">${r._tipo}</td>`
+          + `<td style="font-family:'JetBrains Mono',monospace;color:var(--accent);">${_esc(r.di)||'—'}</td>`
+          + `<td>${_esc(r.produto)||'—'}</td>`
+          + `<td style="font-size:11px;">${r.formato?_esc(_grFormatoNome(r.formato)):'—'}</td>`
+          + `<td style="font-family:'JetBrains Mono',monospace;">${_grNum(r.unidades)?fmtKg(r.unidades):'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;font-weight:700;">${fmtKg(r.peso_kg)} kg</td>`
+          + `<td style="white-space:nowrap;color:var(--info);font-weight:700;">${_esc(r.veiculo)||'—'}</td>`
+          + `<td style="font-size:11px;">${_esc(r.transportadora)||'—'}</td>`
+          + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;">${_esc(r.nf)||'—'}</td>`
+          + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;">${_esc(r.ticket_porto)||'—'}</td>`
+          + `<td style="white-space:nowrap;font-family:'JetBrains Mono',monospace;color:${dif==null?'var(--muted)':(Math.abs(dif)<=50?'var(--success)':(Math.abs(dif)<=500?'#f59e0b':'var(--danger)'))};">${dif==null?'—':(dif>0?'+':'')+fmtKg(dif)+' kg'}</td>`
+          + `<td style="font-size:11px;color:var(--success);">${_esc(r.created_by)||'—'}</td>`
+          + '</tr>';
+      }).join('')
+    + '</tbody></table></div>'
+    + (linhas.length>300?`<div style="padding:.6rem 0;font-size:12px;color:var(--muted);">mostrando os 300 mais recentes de ${linhas.length} — use os filtros para afinar</div>`:'');
+}
+
+async function exportGrHistoricoExcel(){
+  const linhas = _grHistLinhas();
+  if(!linhas.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const aoa = [['DATA','PERÍODO','TIPO','D.I.','NAVIO','PRODUTO','SAI COMO','VOLUMES','PESO (kg)','VEÍCULO','TRANSPORTADORA','MOTORISTA','NF',
+    'TICKET PORTO','LÍQUIDO PORTO (kg)','TICKET ARMAZÉM','LÍQUIDO ARMAZÉM (kg)','DIFERENÇA (kg)','DESTINO/ARMAZÉM','OBS','REGISTRADO POR']];
+  linhas.forEach(r=>aoa.push([r.data||'', r.periodo||'', r._tipo, r.di||'', r.navio||'', r.produto||'',
+    r.formato?_grFormatoNome(r.formato):'', _grNum(r.unidades)||null, _grNum(r.peso_kg), r.veiculo||'', r.transportadora||'', r.motorista||'', r.nf||'',
+    r.ticket_porto||'', _grNum(r.peso_liquido_porto)||null, r.ticket_armazem||'', _grNum(r.peso_liquido_armazem)||null,
+    _grDifRegistro(r), r.destino||r.armazem||'', r.obs||'', r.created_by||'']));
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Granel_Historico_'+hojeLocal()+'.xlsx',
+    sheets:[{ name:'Histórico Granel', title:'🫗 GRANEL — HISTÓRICO DE LANÇAMENTOS', aoa,
+      dateCols:[0], numFmts:{7:'#,##0',8:'#,##0',14:'#,##0',16:'#,##0',17:'#,##0'} }]
+  });
+  if(ok) showToast('✓ Histórico exportado ('+linhas.length+' lançamentos).','#22c55e','#000');
+}
+
+function grLimparFiltrosHist(){
+  ['gr-h-dt-ini','gr-h-dt-fim','gr-h-usuario','gr-h-di','gr-h-veiculo'].forEach(id=>_grSet(id,''));
+  const t=document.getElementById('gr-h-tipo'); if(t) t.value='';
+  renderGrHistorico();
+}
+function grLimparFiltrosRel(){
+  ['gr-r-dt-ini','gr-r-dt-fim','gr-r-navio','gr-r-produto','gr-r-di','gr-r-cliente'].forEach(id=>_grSet(id,''));
+  const m=document.getElementById('gr-r-movimento'); if(m) m.value='';
+  renderGrRelatorio();
+}
+
+// ══════════════════════════════════════════════════════════════════
+// GRANEL — faturamento: ensaque (por tonelada, tarifa por embalagem)
+// e armazenagem (por período, sobre o que está em estoque)
+// ══════════════════════════════════════════════════════════════════
+// As tarifas ficam na tabela fat_config (a mesma do faturamento das bobinas),
+// então valem para todos os aparelhos. O ensaque é cobrado quando o produto
+// embalado SAI — foi assim que o Luan descreveu o serviço.
+
+const GR_PERIODO_PADRAO = 15;   // dias de cada período de armazenagem
+
+function _grTarifa(chave){ return _grNum(_fatGet('sp_fat_gr_'+chave)); }
+function grTarifaEnsaque(formato){ return _grTarifa('tar_ens_'+formato); }
+function grTarifaArmazenagem(){ return _grTarifa('tar_arm'); }
+function grPeriodoDias(){ return Math.max(1, _grTarifa('periodo_dias') || GR_PERIODO_PADRAO); }
+function _grBRL(v){ return 'R$ '+Number(v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+// soSeVazio: a carga do fat_config chega depois que a tela já abriu. Se o
+// usuário já começou a digitar uma tarifa, o que ele digitou não é apagado.
+function grCarregarTarifas(soSeVazio){
+  const poe = (id, v) => {
+    const el = document.getElementById(id);
+    if(!el || (soSeVazio && String(el.value||'').trim() !== '')) return;
+    el.value = v==null ? '' : v;
+  };
+  GR_EMBALAGENS().forEach(f=>poe('gr-tar-'+f.id, _grTarifa('tar_ens_'+f.id)||''));
+  poe('gr-tar-arm', grTarifaArmazenagem()||'');
+  poe('gr-tar-dias', grPeriodoDias());
+}
+
+async function grSalvarTarifas(){
+  showLoading('Salvando tarifas...');
+  try{
+    for(const f of GR_EMBALAGENS()){
+      await fatConfigSet('gr_tar_ens_'+f.id, _grNum(_grV('gr-tar-'+f.id)));
+    }
+    await fatConfigSet('gr_tar_arm', _grNum(_grV('gr-tar-arm')));
+    await fatConfigSet('gr_periodo_dias', Math.max(1,_grNum(_grV('gr-tar-dias'))||GR_PERIODO_PADRAO));
+    registrarAudit('edicao','Tarifas do Granel atualizadas',{});
+    hideLoading();
+    renderGrFaturamento();
+    showToast('✓ Tarifas salvas para todos os usuários.','#22c55e','#000');
+  }catch(e){
+    hideLoading();
+    showToast('⚠ Não foi possível salvar as tarifas: '+e.message,'#e05c1a','#fff');
+  }
+}
+
+// ── Controle do que já foi faturado ─────────────────────────────────
+// Cada cobrança (um ensaque ou um período de armazenagem) guarda no fat_config
+// se já saiu em nota: { nf, data, usuario, valor }. Fica no servidor, então
+// todo mundo vê o mesmo status.
+function _grFatKeyEns(exp){ return 'gr_fat_ens_'+exp.id; }
+function _grNavioChave(n){
+  return String(n||'(sem navio)').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toUpperCase().replace(/[^A-Z0-9]+/g,'_').replace(/^_|_$/g,'') || 'SEM_NAVIO';
+}
+function _grFatKeyArm(navio, num){ return 'gr_fat_arm_nav_'+_grNavioChave(navio)+'_'+num; }
+
+function grFatStatus(chave){
+  const v = _fatGet('sp_fat_'+chave);
+  if(!v) return null;
+  try{ const o = JSON.parse(v); return (o && o.nf !== undefined) ? o : null; }catch(e){ return null; }
+}
+
+async function _grFatGrava(chave, obj){
+  await fatConfigSet(chave, obj ? JSON.stringify(obj) : '');
+  if(!obj) _fatRemove('sp_fat_'+chave);
+}
+
+// ── Ensaque: uma linha por expedição de produto embalado ────────────
+function _grFatEnsaque(f){
+  return grExpedicoes
+    .filter(e=>e.formato && !_grEhGranel(e.formato) && _grNoPeriodo(e.data, f.datas))
+    .map(e=>{
+      const lote = grLotes.find(l=>String(l.id)===String(e.lote_id)) || {};
+      const ton = _grNum(e.peso_kg)/1000;
+      const tarifa = grTarifaEnsaque(e.formato);
+      const chave = _grFatKeyEns(e);
+      return { tipo:'ensaque', chave, exp:e, lote, ton, tarifa, valor: ton*tarifa, status: grFatStatus(chave) };
+    })
+    .filter(r=>_grFatCasa(r.lote, f));
+}
+
+function _grFatCasa(lote, f){
+  const t = s => String(s||'').toUpperCase();
+  if(f.navio   && !t(lote.navio).includes(f.navio)) return false;
+  if(f.produto && !t(lote.produto).includes(f.produto)) return false;
+  if(f.di      && !t(lote.di).includes(f.di)) return false;
+  if(f.cliente && !t(lote.cliente).includes(f.cliente)) return false;
+  return true;
+}
+
+// ── Armazenagem: cobrada POR NAVIO ──────────────────────────────────
+// O relógio começa quando o último caminhão daquele navio é descarregado
+// (fim da descarga do navio). A tonelagem é sempre a real, de balança — a
+// descarregada, nunca a declarada na D.I. Em cada período cobra o que ainda
+// está no armazém: descarregado menos o que já saiu até o início do período.
+function _grNavioDoReg(r){
+  if(r && r.navio) return r.navio;
+  const l = grLotes.find(x=>String(x.id)===String(r.lote_id));
+  return l ? (l.navio||'') : '';
+}
+function _grNaviosComDescarga(){
+  const vistos = new Map();
+  grDescargas.forEach(d=>{
+    const nome = String(_grNavioDoReg(d)||'').trim();
+    const k = _grNavioChave(nome);
+    if(!vistos.has(k)) vistos.set(k, nome || '(sem navio)');
+  });
+  return [...vistos.values()];
+}
+function _grLotesDoNavio(navio){
+  const k = _grNavioChave(navio);
+  return grLotes.filter(l=>_grNavioChave(l.navio)===k);
+}
+
+function _grPeriodosNavio(navio){
+  const k = _grNavioChave(navio);
+  const descs = grDescargas.filter(d=>d.data && _grNavioChave(_grNavioDoReg(d))===k);
+  if(!descs.length) return [];
+  const exps = grExpedicoes.filter(e=>e.data && _grNavioChave(_grNavioDoReg(e))===k);
+  const fimDescarga = descs.map(d=>d.data).sort().slice(-1)[0];   // último caminhão do navio
+  const descarregado = descs.reduce((a,d)=>a+_grNum(d.peso_kg),0); // peso de balança
+  const dias = grPeriodoDias(), tarifa = grTarifaArmazenagem();
+  const hoje = hojeLocal();
+  const periodos = [];
+  let d = new Date(fimDescarga+'T12:00:00'), n = 1;
+  while(_dataLocalStr(d) <= hoje && n <= 400){
+    const ini = _dataLocalStr(d);
+    const saiu = exps.filter(e=>e.data<=ini).reduce((a,e)=>a+_grNum(e.peso_kg),0);
+    const kg = descarregado - saiu;
+    if(kg <= 0) break;                 // navio já saiu todo: para de cobrar
+    const chave = _grFatKeyArm(navio, n);
+    periodos.push({ tipo:'armazenagem', chave, navio, num:n, inicio:ini, fimDescarga,
+      descarregado, kg, ton:kg/1000, tarifa, valor:(kg/1000)*tarifa, status:grFatStatus(chave) });
+    d.setDate(d.getDate() + dias); n++;
+  }
+  return periodos;
+}
+
+function _grFatFiltros(){
+  const t = s => String(s||'').toUpperCase();
+  return {
+    datas:{ ini:_grV('gr-f-dt-ini'), fim:_grV('gr-f-dt-fim') },
+    navio:t(_grV('gr-f-fat-navio')), produto:t(_grV('gr-f-fat-produto')),
+    di:t(_grV('gr-f-fat-di')), cliente:t(_grV('gr-f-fat-cliente')),
+    situacao:_grV('gr-f-fat-situacao'), nf:t(_grV('gr-f-fat-nf'))
+  };
+}
+
+function _grFatSituacaoOk(r, f){
+  if(f.situacao==='pendente' && r.status) return false;
+  if(f.situacao==='faturado' && !r.status) return false;
+  if(f.nf && !String(r.status?.nf||'').toUpperCase().includes(f.nf)) return false;
+  return true;
+}
+
+function _grFatDados(){
+  const f = _grFatFiltros();
+  const ensaque = _grFatEnsaque(f).filter(r=>_grFatSituacaoOk(r, f));
+  const armazenagem = [];
+  _grNaviosComDescarga().forEach(nav=>{
+    const lotes = _grLotesDoNavio(nav);
+    // os filtros valem se QUALQUER lote do navio casar com eles
+    if(!(lotes.length ? lotes.some(l=>_grFatCasa(l, f)) : _grFatCasa({navio:nav}, f))) return;
+    const juntos = campo => [...new Set(lotes.map(l=>l[campo]).filter(Boolean))].join(', ');
+    _grPeriodosNavio(nav).forEach(p=>{
+      if(!_grNoPeriodo(p.inicio, f.datas)) return;
+      const r = { ...p, lotes, produtos:juntos('produto'), clientes:juntos('cliente'), dis:juntos('di') };
+      if(_grFatSituacaoOk(r, f)) armazenagem.push(r);
+    });
+  });
+  const soma = (arr, so) => arr.filter(r=>so==null || !!r.status===so).reduce((a,r)=>a+r.valor,0);
+  return { f, ensaque, armazenagem,
+    totalEnsaque: soma(ensaque), totalArm: soma(armazenagem),
+    aFaturar: soma(ensaque,false) + soma(armazenagem,false),
+    faturado: soma(ensaque,true) + soma(armazenagem,true),
+    tonEnsaque: ensaque.reduce((a,r)=>a+r.ton,0),
+    tonArm: armazenagem.reduce((a,r)=>a+r.ton,0) };
+}
+
+// ── Seleção para faturar em lote ────────────────────────────────────
+let _grFatSel = new Set();
+let _grFatLinhas = [];
+
+function grFatMarca(chave, marcado){
+  if(marcado) _grFatSel.add(chave); else _grFatSel.delete(chave);
+  _grFatBarra();
+}
+function grFatMarcaTodos(tipo, marcado){
+  _grFatLinhas.filter(r=>r.tipo===tipo && !r.status).forEach(r=>{ if(marcado) _grFatSel.add(r.chave); else _grFatSel.delete(r.chave); });
+  renderGrFaturamento();
+}
+function _grFatBarra(){
+  const el = document.getElementById('gr-fat-barra'); if(!el) return;
+  const sel = _grFatLinhas.filter(r=>_grFatSel.has(r.chave));
+  const valor = sel.reduce((a,r)=>a+r.valor,0);
+  el.style.display = sel.length ? '' : 'none';
+  const lbl = document.getElementById('gr-fat-sel-info');
+  if(lbl) lbl.textContent = `${sel.length} cobrança(s) selecionada(s) · ${_grBRL(valor)}`;
+}
+
+function abrirGrFatNota(){
+  const sel = _grFatLinhas.filter(r=>_grFatSel.has(r.chave));
+  if(!sel.length){ showToast('Selecione as cobranças que entraram na nota.','#e05c1a','#fff'); return; }
+  _grSet('gr-nf-numero','');
+  _grSet('gr-nf-data', hojeLocal());
+  const res = document.getElementById('gr-nf-resumo');
+  if(res) res.innerHTML = `${sel.length} cobrança(s) · <b>${_grBRL(sel.reduce((a,r)=>a+r.valor,0))}</b>`
+    + `<div style="font-size:11px;color:var(--muted);margin-top:.3rem;">`
+    + sel.slice(0,6).map(r=>r.tipo==='ensaque'
+        ? `${_esc(r.lote.di||'—')} · ensaque ${_esc(_grFormatoNome(r.exp.formato))} · ${_grBRL(r.valor)}`
+        : `${_esc(r.navio||'—')} · armazenagem ${r.num}º período · ${_grBRL(r.valor)}`).join('<br>')
+    + (sel.length>6?`<br>… e mais ${sel.length-6}`:'') + `</div>`;
+  document.getElementById('modal-gr-nf').classList.add('open');
+}
+
+async function confirmarGrFatNota(){
+  const nf = _grV('gr-nf-numero').trim();
+  const data = _grV('gr-nf-data') || hojeLocal();
+  if(!nf){ showToast('Informe o número da nota.','#e05c1a','#fff'); return; }
+  const sel = _grFatLinhas.filter(r=>_grFatSel.has(r.chave));
+  if(!sel.length) return;
+  showLoading('Marcando '+sel.length+' cobrança(s) como faturadas...');
+  try{
+    for(const r of sel){
+      await _grFatGrava(r.chave, { nf, data, usuario: session?.nome||'—', valor: Number(r.valor.toFixed(2)),
+        em: new Date().toISOString() });
+    }
+    registrarAudit('faturamento','Granel faturado: NF '+nf+' · '+sel.length+' cobrança(s) · '
+      + _grBRL(sel.reduce((a,x)=>a+x.valor,0)), { nf, itens: sel.map(r=>r.chave) });
+    _grFatSel.clear();
+    hideLoading();
+    closeModal('modal-gr-nf');
+    renderGrFaturamento();
+    showToast('✓ NF '+nf+' registrada em '+sel.length+' cobrança(s).','#22c55e','#000');
+  }catch(e){
+    hideLoading();
+    showToast('⚠ Não foi possível marcar: '+e.message,'#e05c1a','#fff');
+  }
+}
+
+async function grFatDesfazer(chave){
+  const r = _grFatLinhas.find(x=>x.chave===chave); if(!r || !r.status) return;
+  if(!confirm('Desfazer o faturamento desta cobrança (NF '+r.status.nf+')?')) return;
+  showLoading('Desfazendo...');
+  try{
+    await _grFatGrava(chave, null);
+    registrarAudit('faturamento','Granel: faturamento desfeito (NF '+r.status.nf+')',{chave});
+    hideLoading();
+    renderGrFaturamento();
+    showToast('✓ Cobrança voltou para pendente.','#22c55e','#000');
+  }catch(e){ hideLoading(); showToast('⚠ Não foi possível desfazer: '+e.message,'#e05c1a','#fff'); }
+}
+
+function _grFatStatusCel(r){
+  if(r.status){
+    return `<td style="white-space:nowrap;font-size:11px;">`
+      + `<span class="tk-selo" style="color:var(--success);border-color:var(--success);">✓ NF ${_esc(r.status.nf)}</span>`
+      + `<div style="color:var(--muted);margin-top:2px;">${r.status.data?formatDate(r.status.data):''} · ${_esc(r.status.usuario||'')}</div></td>`
+      + `<td><button class="btn btn-secondary btn-sm" onclick="grFatDesfazer('${_esc(r.chave)}')" title="Desfazer faturamento">↺</button></td>`;
+  }
+  return `<td style="white-space:nowrap;"><span class="tk-selo" style="color:var(--accent);border-color:var(--accent);">A FATURAR</span></td>`
+    + `<td><input type="checkbox" class="cb-row" ${_grFatSel.has(r.chave)?'checked':''} onchange="grFatMarca('${_esc(r.chave)}',this.checked)"></td>`;
+}
+
+function renderGrFaturamento(){
+  const el = document.getElementById('gr-fat-list'); if(!el) return;
+  const d = _grFatDados();
+  _grFatLinhas = [...d.ensaque, ...d.armazenagem];
+  _grFatSel = new Set([..._grFatSel].filter(k=>_grFatLinhas.some(r=>r.chave===k && !r.status)));
+  const semTarifa = !GR_EMBALAGENS().some(f=>grTarifaEnsaque(f.id)) && !grTarifaArmazenagem();
+
+  const resumo = document.getElementById('gr-fat-resumo');
+  if(resumo) resumo.innerHTML = [
+    ['A FATURAR', _grBRL(d.aFaturar), 'var(--accent)'],
+    ['JÁ FATURADO', _grBRL(d.faturado), 'var(--success)'],
+    ['ENSAQUE', _grBRL(d.totalEnsaque), 'var(--text)'],
+    ['ARMAZENAGEM', _grBRL(d.totalArm), 'var(--text)'],
+    ['TOTAL', _grBRL(d.totalEnsaque + d.totalArm), 'var(--info)']
+  ].map(([k,v,c])=>`<div class="rpt-summary-card"><div class="rpt-sum-label">${k}</div><div class="rpt-sum-value" style="font-size:19px;color:${c};">${v}</div></div>`).join('');
+
+  const cabExtra = '<th>SITUAÇÃO</th><th style="width:34px;"></th>';
+  el.innerHTML =
+    `<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1px;margin:.2rem 0 .5rem;">🧺 ENSAQUE — COBRADO NA SAÍDA DO PRODUTO EMBALADO</div>`
+    + (semTarifa?`<div style="background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.35);border-radius:8px;padding:.6rem .8rem;font-size:12px;margin-bottom:.6rem;">Nenhuma tarifa cadastrada ainda — preencha acima e salve para os valores aparecerem.</div>`:'')
+    + (d.ensaque.length
+      ? '<div class="table-wrap" style="overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:8px;">'
+        + '<table style="min-width:1120px;width:100%;font-size:12px;"><thead><tr>'
+        + '<th>DATA</th><th>D.I.</th><th>PRODUTO</th><th>CLIENTE</th><th>EMBALAGEM</th><th>VOL.</th><th>NF SAÍDA</th><th>TONELADAS</th><th>TARIFA (R$/t)</th><th>VALOR</th>'
+        + cabExtra.replace('<th style="width:34px;"></th>', `<th style="width:34px;"><input type="checkbox" class="cb-row" onchange="grFatMarcaTodos('ensaque',this.checked)" title="Selecionar os pendentes"></th>`)
+        + '</tr></thead><tbody>'
+        + d.ensaque.map((r,i)=>'<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+            + `<td style="white-space:nowrap;">${r.exp.data?formatDate(r.exp.data):'—'}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700;">${_esc(r.lote.di)||'—'}</td>`
+            + `<td>${_esc(r.lote.produto)||'—'}</td><td style="font-size:11px;">${_esc(r.lote.cliente)||'—'}</td>`
+            + `<td>${_esc(_grFormatoNome(r.exp.formato))}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;">${_grNum(r.exp.unidades)?fmtKg(r.exp.unidades):'—'}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;">${_esc(r.exp.nf)||'—'}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;">${r.ton.toLocaleString('pt-BR',{maximumFractionDigits:3})} t</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;color:${r.tarifa?'var(--text)':'var(--danger)'};">${r.tarifa?_grBRL(r.tarifa):'sem tarifa'}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;font-weight:700;">${_grBRL(r.valor)}</td>`
+            + _grFatStatusCel(r) + '</tr>').join('')
+        + `<tr style="background:rgba(240,165,0,.1);font-weight:700;"><td colspan="7">TOTAL ENSAQUE</td><td>${d.tonEnsaque.toLocaleString('pt-BR',{maximumFractionDigits:3})} t</td><td></td><td>${_grBRL(d.totalEnsaque)}</td><td colspan="2"></td></tr>`
+        + '</tbody></table></div>'
+      : '<div class="empty-state" style="padding:1rem;"><span class="empty-icon">🧺</span>Nenhuma saída de produto embalado no filtro.</div>')
+
+    + `<div style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--info);letter-spacing:1px;margin:1.2rem 0 .5rem;">🏭 ARMAZENAGEM — POR NAVIO, PERÍODOS DE ${grPeriodoDias()} DIAS A PARTIR DO FIM DA DESCARGA</div>`
+    + (d.armazenagem.length
+      ? '<div class="table-wrap" style="overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:8px;">'
+        + '<table style="min-width:1120px;width:100%;font-size:12px;"><thead><tr>'
+        + '<th>NAVIO</th><th>PRODUTO(S)</th><th>CLIENTE(S)</th><th>D.I.</th><th>FIM DESCARGA</th><th>PER.</th><th>INÍCIO</th><th>DESCARREGADO</th><th>EM ESTOQUE</th><th>TONELADAS</th><th>TARIFA (R$/t)</th><th>VALOR</th>'
+        + cabExtra.replace('<th style="width:34px;"></th>', `<th style="width:34px;"><input type="checkbox" class="cb-row" onchange="grFatMarcaTodos('armazenagem',this.checked)" title="Selecionar os pendentes"></th>`)
+        + '</tr></thead><tbody>'
+        + d.armazenagem.map((r,i)=>'<tr style="'+(i%2===0?'background:var(--surface2)':'')+'">'
+            + `<td style="font-weight:700;color:var(--info);">${_esc(r.navio)||'—'}</td>`
+            + `<td>${_esc(r.produtos)||'—'}</td><td style="font-size:11px;">${_esc(r.clientes)||'—'}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);">${_esc(r.dis)||'—'}</td>`
+            + `<td style="white-space:nowrap;">${formatDate(r.fimDescarga)}</td>`
+            + `<td>${r.num}º</td><td style="white-space:nowrap;">${formatDate(r.inicio)}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;color:var(--muted);">${fmtKg(r.descarregado)} kg</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;">${fmtKg(r.kg)} kg</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;">${r.ton.toLocaleString('pt-BR',{maximumFractionDigits:3})} t</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;color:${r.tarifa?'var(--text)':'var(--danger)'};">${r.tarifa?_grBRL(r.tarifa):'sem tarifa'}</td>`
+            + `<td style="font-family:'JetBrains Mono',monospace;font-weight:700;">${_grBRL(r.valor)}</td>`
+            + _grFatStatusCel(r) + '</tr>').join('')
+        + `<tr style="background:rgba(34,211,238,.1);font-weight:700;"><td colspan="9">TOTAL ARMAZENAGEM</td><td>${d.tonArm.toLocaleString('pt-BR',{maximumFractionDigits:3})} t</td><td></td><td>${_grBRL(d.totalArm)}</td><td colspan="2"></td></tr>`
+        + '</tbody></table></div>'
+      : '<div class="empty-state" style="padding:1rem;"><span class="empty-icon">🏭</span>Nenhum período de armazenagem no filtro.</div>');
+  _grFatBarra();
+}
+
+function grLimparFiltrosFat(){
+  ['gr-f-dt-ini','gr-f-dt-fim','gr-f-fat-navio','gr-f-fat-produto','gr-f-fat-di','gr-f-fat-cliente','gr-f-fat-nf'].forEach(id=>_grSet(id,''));
+  const sit=document.getElementById('gr-f-fat-situacao'); if(sit) sit.value='';
+  renderGrFaturamento();
+}
+
+async function exportGrFatExcel(){
+  const d = _grFatDados();
+  if(!d.ensaque.length && !d.armazenagem.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const st = r => r.status ? ['FATURADO', r.status.nf||'', r.status.data||'', r.status.usuario||''] : ['A FATURAR','','',''];
+  const ens = [['DATA','D.I.','NAVIO','PRODUTO','CLIENTE','EMBALAGEM','VOLUMES','PESO (kg)','TONELADAS','TARIFA (R$/t)','VALOR (R$)','VEÍCULO','DESTINO','NF DA SAÍDA','SITUAÇÃO','NF COBRANÇA','DATA NF','FATURADO POR']];
+  d.ensaque.forEach(r=>ens.push([r.exp.data||'', r.lote.di||'', r.lote.navio||'', r.lote.produto||'', r.lote.cliente||'',
+    _grFormatoNome(r.exp.formato), _grNum(r.exp.unidades)||null, _grNum(r.exp.peso_kg), r.ton, r.tarifa, r.valor,
+    r.exp.veiculo||'', r.exp.destino||'', r.exp.nf||'', ...st(r)]));
+  const arm = [['NAVIO','PRODUTO(S)','CLIENTE(S)','D.I.','FIM DA DESCARGA','PERÍODO','INÍCIO','DESCARREGADO (kg)','EM ESTOQUE (kg)','TONELADAS','TARIFA (R$/t)','VALOR (R$)','SITUAÇÃO','NF','DATA NF','FATURADO POR']];
+  d.armazenagem.forEach(r=>arm.push([r.navio||'', r.produtos||'', r.clientes||'', r.dis||'',
+    r.fimDescarga, r.num+'º', r.inicio, r.descarregado, r.kg, r.ton, r.tarifa, r.valor, ...st(r)]));
+  const per = d.f.datas.ini||d.f.datas.fim
+    ? `\nPeríodo: ${d.f.datas.ini?formatDate(d.f.datas.ini):'início'} a ${d.f.datas.fim?formatDate(d.f.datas.fim):'hoje'}` : '';
+  const sit = d.f.situacao==='pendente' ? ' · só pendentes' : d.f.situacao==='faturado' ? ' · só faturados' : '';
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Granel_Faturamento_'+hojeLocal()+'.xlsx',
+    sheets:[
+      { name:'Ensaque', title:'🫗 GRANEL — FATURAMENTO DO ENSAQUE'+per+sit, aoa:ens, dateCols:[0,15],
+        numFmts:{6:'#,##0',7:'#,##0',8:'#,##0.000',9:'#,##0.00',10:'#,##0.00'}, dateCols:[0,16] },
+      { name:'Armazenagem', title:'🫗 GRANEL — ARMAZENAGEM POR NAVIO (períodos de '+grPeriodoDias()+' dias a partir do fim da descarga)'+per+sit, aoa:arm, dateCols:[4,6,14],
+        numFmts:{7:'#,##0',8:'#,##0',9:'#,##0.000',10:'#,##0.00',11:'#,##0.00'} }
+    ]
+  });
+  if(ok) showToast('✓ Faturamento exportado (a faturar '+_grBRL(d.aFaturar)+').','#22c55e','#000');
+}
+
+function exportGrFatPDF(){
+  if(!window.jspdf){ showToast('⚠ Biblioteca de PDF indisponível.','#e05c1a','#fff'); return; }
+  const d = _grFatDados();
+  if(!d.ensaque.length && !d.armazenagem.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({orientation:'landscape',unit:'mm',format:'a4'});
+  const pageW = doc.internal.pageSize.getWidth(), pageH = doc.internal.pageSize.getHeight();
+  const now = new Date().toLocaleString('pt-BR');
+  const filtro = [ (d.f.datas.ini||d.f.datas.fim) ? `Período: ${d.f.datas.ini?formatDate(d.f.datas.ini):'início'} a ${d.f.datas.fim?formatDate(d.f.datas.fim):'hoje'}` : '',
+    d.f.situacao==='pendente'?'Só a faturar':d.f.situacao==='faturado'?'Só faturados':'',
+    d.f.nf&&'NF: '+d.f.nf,
+    d.f.navio&&'Navio: '+d.f.navio, d.f.produto&&'Produto: '+d.f.produto, d.f.di&&'D.I.: '+d.f.di, d.f.cliente&&'Cliente: '+d.f.cliente
+  ].filter(Boolean).join(' · ') || 'Todos os lotes';
+  const comCab = new Set();
+  const cab = ()=>{
+    const pg = doc.getCurrentPageInfo().pageNumber;
+    if(comCab.has(pg)) return; comCab.add(pg);
+    doc.setFillColor(10,12,15); doc.rect(0,0,pageW,18,'F');
+    doc.setFillColor(240,165,0); doc.rect(0,16,pageW,2,'F');
+    doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(240,165,0);
+    doc.text('4SIDES · STEELPORT',14,11);
+    doc.setFontSize(10); doc.setTextColor(180,180,180);
+    doc.text('GRANEL · FATURAMENTO',14,15);
+    doc.text('Gerado: '+now,pageW-14,8,{align:'right'});
+    doc.text(filtro.length>95?filtro.slice(0,92)+'...':filtro,pageW-14,14,{align:'right'});
+    doc.setTextColor(0,0,0);
+  };
+  cab();
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(10,12,15);
+  doc.text(`A FATURAR ${_grBRL(d.aFaturar)}   ·   JA FATURADO ${_grBRL(d.faturado)}   ·   TOTAL ${_grBRL(d.totalEnsaque+d.totalArm)}`,14,26);
+  const sit = r => r.status ? 'NF '+(r.status.nf||'') : 'A faturar';
+  const corSit = (data)=>{ if(data.section==='body' && data.column.index===data.table.columns.length-1){
+      data.cell.styles.textColor = /^NF/.test(String(data.cell.raw)) ? [21,128,61] : [180,100,0];
+      data.cell.styles.fontStyle = 'bold'; } };
+  let y = 32;
+  if(d.ensaque.length){
+    doc.setFontSize(10); doc.text('ENSAQUE - saidas de produto embalado',14,y);
+    doc.autoTable({ startY:y+2,
+      head:[['DATA','D.I.','PRODUTO','CLIENTE','EMBALAGEM','VOL.','TON.','TARIFA','VALOR','SITUAÇÃO']],
+      body:d.ensaque.map(r=>[r.exp.data?formatDate(r.exp.data):'—', r.lote.di||'—', r.lote.produto||'—', (r.lote.cliente||'—').slice(0,20),
+        _grFormatoNome(r.exp.formato), _grNum(r.exp.unidades)?fmtKg(r.exp.unidades):'—',
+        r.ton.toLocaleString('pt-BR',{maximumFractionDigits:3}), _grBRL(r.tarifa), _grBRL(r.valor), sit(r)]),
+      foot:[['TOTAL','','','','','', d.tonEnsaque.toLocaleString('pt-BR',{maximumFractionDigits:3}),'', _grBRL(d.totalEnsaque),'']],
+      styles:{fontSize:8,cellPadding:1.5}, headStyles:{fillColor:[240,165,0],textColor:[0,0,0],fontStyle:'bold'},
+      footStyles:{fillColor:[253,233,200],textColor:[10,12,15],fontStyle:'bold'},
+      margin:{left:10,right:10,top:24}, didDrawPage:()=>cab(), didParseCell:corSit });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+  if(d.armazenagem.length){
+    if(y > pageH-50){ doc.addPage(); cab(); y = 26; }
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(10,12,15);
+    doc.text(`ARMAZENAGEM por navio - periodos de ${grPeriodoDias()} dias a partir do fim da descarga`,14,y);
+    doc.autoTable({ startY:y+2,
+      head:[['NAVIO','PRODUTO(S)','CLIENTE(S)','FIM DESC.','PER.','INÍCIO','DESCARREGADO','EM ESTOQUE','TON.','TARIFA','VALOR','SITUAÇÃO']],
+      body:d.armazenagem.map(r=>[r.navio||'—', (r.produtos||'—').slice(0,20), (r.clientes||'—').slice(0,20),
+        formatDate(r.fimDescarga), r.num+'º', formatDate(r.inicio), fmtKg(r.descarregado)+' kg', fmtKg(r.kg)+' kg',
+        r.ton.toLocaleString('pt-BR',{maximumFractionDigits:3}), _grBRL(r.tarifa), _grBRL(r.valor), sit(r)]),
+      foot:[['TOTAL','','','','','','','', d.tonArm.toLocaleString('pt-BR',{maximumFractionDigits:3}),'', _grBRL(d.totalArm),'']],
+      styles:{fontSize:8,cellPadding:1.5}, headStyles:{fillColor:[34,211,238],textColor:[0,0,0],fontStyle:'bold'},
+      footStyles:{fillColor:[209,243,250],textColor:[10,12,15],fontStyle:'bold'},
+      margin:{left:10,right:10,top:24}, didDrawPage:()=>cab(), didParseCell:corSit });
+  }
+  const n = doc.getNumberOfPages();
+  for(let i=1;i<=n;i++){
+    doc.setPage(i); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(120,120,120);
+    doc.text(`Página ${i} de ${n}`, pageW-14, pageH-6, {align:'right'});
+    doc.text('4SIDES · STEELPORT WAREHOUSE SYSTEMS', 14, pageH-6);
+  }
+  doc.save('4SIDES_STEELPORT_Granel_Faturamento_'+hojeLocal()+'.pdf');
+  showToast('✓ Faturamento em PDF exportado.','#22c55e','#000');
+}
+
+// ── Excel dos lotes (mesmo padrão dos outros relatórios) ────────────
+async function exportGrLotesExcel(){
+  const lista = _grLotesFiltrados();
+  if(!lista.length){ showToast('⚠ Nada para exportar com os filtros atuais.','#f59e0b','#000'); return; }
+  const aoa = [['D.I.','NAVIO','PRODUTO','CLIENTE','ARMAZÉM','CHEGADA','PESO DECLARADO (kg)','DESCARREGADO (kg)','SALDO (kg)','SITUAÇÃO']];
+  lista.forEach(l=>{
+    const desc = grDescarregado(l.id), saldo = _grNum(l.peso_total) - desc;
+    aoa.push([l.di||'', l.navio||'', l.produto||'', l.cliente||'', l.armazem||'', l.data_chegada||'',
+      _grNum(l.peso_total), desc, saldo,
+      saldo<0?'EXCEDE O DECLARADO':saldo===0?'DESCARGA COMPLETA':'COM SALDO']);
+  });
+  const ok = await _xlsxStyled({
+    filename:'4SIDES_STEELPORT_Granel_Lotes_'+hojeLocal()+'.xlsx',
+    sheets:[{ name:'Lotes de Granel', title:'🫗 GRANEL — LOTES (NAVIO × PRODUTO × D.I.)', aoa,
+      dateCols:[5], numFmts:{6:'#,##0',7:'#,##0',8:'#,##0'} }]
+  });
+  if(ok) showToast('✓ Lotes exportados ('+lista.length+').','#22c55e','#000');
+}
+
 function showCgTab(tab){
   ['banco','descarga','expedicao','historico','relatorio','pesagens','ticketsporto'].forEach(t=>{
     document.getElementById('cg-tab-'+t)?.classList.toggle('active',t===tab);
@@ -13856,6 +16188,7 @@ function salvarCgItem(){
     if(item){
       _cgSetSyncStatus('syncing');
       supa('bulk_items?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify([item])})
+        .catch(e=>{ console.warn('[CG item]',e.message); _cgEnfileira('bulk_items', item, true); })
         .then(()=>_cgSetSyncStatus('ok'))
         .catch(e=>{ _cgSetSyncStatus('error'); showToast('⚠ Erro ao salvar no servidor: '+e.message,'#e05c1a','#fff'); });
     }
@@ -14026,7 +16359,10 @@ async function cgAplicarSyncItens(){
         await supa(tbl+'?id=eq.'+d.reg.id,{method:'PATCH',headers:{'Prefer':'return=minimal'},
           body:JSON.stringify(_cgSanitizeReg(tbl,patch))});
         _cgClearEdited(d.reg.id); ok++;
-      }catch(e){ falhas++; console.warn('[sync banco->registros]',e.message); }
+      }catch(e){
+        falhas++; console.warn('[sync banco->registros]',e.message);
+        _cgEnfileira(tbl, arr[idx], false);   // a linha já corrigida vai na fila
+      }
     } else ok++;
   }
   saveCgDescargas(); saveCgExpedicoes();
@@ -14140,7 +16476,8 @@ function registrarCgDescarga(){
 
   // Sync Supabase
   if(SUPA_URL&&SUPA_KEY){
-    supa('bulk_descargas',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)}).catch(e=>console.warn(e));
+    supa('bulk_descargas?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(_cgSanitizeReg('bulk_descargas',reg))})
+      .catch(e=>{ console.warn('[CG descarga]',e.message); _cgEnfileira('bulk_descargas', reg, true); });
   }
 
   // Reset form
@@ -14260,7 +16597,8 @@ function registrarCgExpedicao(){
   registrarAudit('CG_EXPEDICAO',`BL ${bl} | ${descricao} | Qtd: ${qtd} ${item.unidade||'UN'} | Veic: ${veiculo||'—'}`);
 
   if(SUPA_URL&&SUPA_KEY){
-    supa('bulk_expedicoes',{method:'POST',headers:{'Prefer':'return=minimal'},body:JSON.stringify(reg)}).catch(e=>console.warn(e));
+    supa('bulk_expedicoes?on_conflict=id',{method:'POST',headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},body:JSON.stringify(_cgSanitizeReg('bulk_expedicoes',reg))})
+      .catch(e=>{ console.warn('[CG expedição]',e.message); _cgEnfileira('bulk_expedicoes', reg, true); });
   }
 
   document.getElementById('cg-exp-qtd').value='';
@@ -16931,6 +19269,552 @@ o</label>
 <!-- ═══════════════════════════════════════════════════
      SCREEN: FOLLOW-UP
 ═══════════════════════════════════════════════════ -->
+<!-- ═══════════════════════════════════════════════════
+     SCREEN: GRANEL
+═══════════════════════════════════════════════════ -->
+<div id="screen-granel" class="screen">
+  <div class="container">
+
+    <!-- STAT CARDS -->
+    <div class="rpt-summary-grid" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:1.5rem;">
+      <div class="rpt-summary-card"><div class="rpt-sum-label">LOTES CADASTRADOS</div><div class="rpt-sum-value" id="gr-stat-lotes">0</div><div class="rpt-sum-unit">navio × produto × D.I.</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">COM SALDO A DESCARREGAR</div><div class="rpt-sum-value" style="color:#f59e0b;" id="gr-stat-pend">0</div><div class="rpt-sum-unit">lotes</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">DESCARREGADO HOJE</div><div class="rpt-sum-value" style="color:var(--info);" id="gr-stat-hoje">0 t</div><div class="rpt-sum-unit">no dia operacional</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">EXPEDIDO HOJE</div><div class="rpt-sum-value" style="color:var(--exp);" id="gr-stat-exp-hoje">0 t</div><div class="rpt-sum-unit">no dia operacional</div></div>
+      <div class="rpt-summary-card"><div class="rpt-sum-label">EM ESTOQUE</div><div class="rpt-sum-value" style="color:var(--success);" id="gr-stat-estoque">0 t</div><div class="rpt-sum-unit">granel + embalado</div></div>
+    </div>
+
+    <!-- TABS -->
+    <div class="cg-tab-bar">
+      <div class="cg-tab active" id="gr-tab-descarga" onclick="showGrTab('descarga')">📥 DESCARGA</div>
+      <!-- PROCESSAMENTO: a aba fica oculta a pedido do Luan (09/10/2026). O ensaque
+           é gerado automaticamente pela expedição embalada; a tela continua aqui e
+           volta trocando o display por ''. -->
+      <div class="cg-tab" style="display:none;" id="gr-tab-proc" onclick="showGrTab('proc')">🧺 PROCESSAMENTO</div>
+      <div class="cg-tab"        id="gr-tab-exp"      onclick="showGrTab('exp')">📤 EXPEDIÇÃO</div>
+      <div class="cg-tab"        id="gr-tab-estoque"  onclick="showGrTab('estoque')">📊 ESTOQUE</div>
+      <div class="cg-tab"        id="gr-tab-lotes"    onclick="showGrTab('lotes')">🗄 BANCO DE LOTES</div>
+      <div class="cg-tab"        id="gr-tab-relatorio" onclick="showGrTab('relatorio')">📈 RELATÓRIO</div>
+      <div class="cg-tab"        id="gr-tab-historico" onclick="showGrTab('historico')">🕐 HISTÓRICO</div>
+      <div class="cg-tab"        id="gr-tab-faturamento" onclick="showGrTab('faturamento')">💰 FATURAMENTO</div>
+    </div>
+
+    <!-- ── TAB: DESCARGA ── -->
+    <div id="gr-panel-descarga" class="cg-panel active">
+      <div class="rpt-section" id="gr-form-descarga">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title">📥 LANÇAR DESCARGA DE GRANEL</div>
+          <button class="btn btn-info btn-sm" onclick="abrirGrImport('descargas')">↑ IMPORTAR EXCEL</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.8rem;">
+          <div>
+            <label class="gr-lbl">DATA *</label>
+            <input type="date" id="gr-d-data" class="gr-in" onchange="renderGrDescDia()">
+          </div>
+          <div>
+            <label class="gr-lbl">PERÍODO *</label>
+            <select id="gr-d-periodo" class="gr-in">
+              <option value="07x13">07x13</option>
+              <option value="13x19">13x19</option>
+              <option value="19x01">19x01</option>
+              <option value="01x07">01x07</option>
+            </select>
+          </div>
+          <div style="grid-column:span 2;min-width:240px;">
+            <label class="gr-lbl">LOTE (NAVIO · PRODUTO · D.I.) *</label>
+            <select id="gr-d-lote" class="gr-in"><option value="">Selecione o lote…</option></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.8rem;">
+          <div>
+            <label class="gr-lbl">VEÍCULO / PLACA *</label>
+            <input type="text" id="gr-d-veiculo" class="gr-in" placeholder="ABC-1234" style="font-family:'JetBrains Mono',monospace;letter-spacing:1px;" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">TRANSPORTADORA</label>
+            <input type="text" id="gr-d-transportadora" class="gr-in" placeholder="Empresa" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">MOTORISTA</label>
+            <input type="text" id="gr-d-motorista" class="gr-in" placeholder="Nome do motorista" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">ARMAZÉM</label>
+            <input type="text" id="gr-d-armazem" class="gr-in" list="gr-armazens" placeholder="Onde ficou" oninput="this.value=this.value.toUpperCase()">
+            <datalist id="gr-armazens"></datalist>
+          </div>
+        </div>
+
+        <div class="gr-pesagens">
+          <div class="gr-pesagem-bloco">
+            <div class="gr-pesagem-tit">⚖ PESAGEM NO PORTO
+              <button class="btn btn-info btn-sm" style="font-size:10px;padding:1px 7px;margin-left:.4rem;" onclick="grBuscarPesagem()" title="Buscar na balança do Porto pela placa e data">BUSCAR</button>
+            </div>
+            <div class="gr-pesagem-grid">
+              <div><label class="gr-lbl">TICKET</label><input type="text" id="gr-d-ticket-porto" class="gr-in" placeholder="nº"></div>
+              <div><label class="gr-lbl">ENTRADA (kg)</label><input type="number" id="gr-d-ent-porto" class="gr-in" oninput="grCalcPesagens('d')"></div>
+              <div><label class="gr-lbl">SAÍDA (kg)</label><input type="number" id="gr-d-sai-porto" class="gr-in" oninput="grCalcPesagens('d')"></div>
+              <div><label class="gr-lbl">LÍQUIDO (kg)</label><input type="number" id="gr-d-liq-porto" class="gr-in" oninput="grCalcPesagens('d')"></div>
+            </div>
+          </div>
+          <div class="gr-pesagem-bloco">
+            <div class="gr-pesagem-tit">🏭 PESAGEM NO ARMAZÉM</div>
+            <div class="gr-pesagem-grid">
+              <div><label class="gr-lbl">TICKET</label><input type="text" id="gr-d-ticket-arm" class="gr-in" placeholder="nº"></div>
+              <div><label class="gr-lbl">ENTRADA (kg)</label><input type="number" id="gr-d-ent-arm" class="gr-in" oninput="grCalcPesagens('d')"></div>
+              <div><label class="gr-lbl">SAÍDA (kg)</label><input type="number" id="gr-d-sai-arm" class="gr-in" oninput="grCalcPesagens('d')"></div>
+              <div><label class="gr-lbl">LÍQUIDO (kg)</label><input type="number" id="gr-d-liq-arm" class="gr-in" oninput="grCalcPesagens('d')"></div>
+            </div>
+          </div>
+        </div>
+        <div id="gr-d-dif" style="font-size:12px;font-family:'JetBrains Mono',monospace;color:var(--muted);margin-bottom:.6rem;"></div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.5rem;">
+          <div>
+            <label class="gr-lbl">PESO DESCARREGADO (kg) *</label>
+            <input type="number" id="gr-d-peso" class="gr-in" placeholder="0" step="1" style="font-family:'JetBrains Mono',monospace;font-weight:700;" oninput="grDescInfo()">
+          </div>
+          <div style="grid-column:span 2;min-width:240px;">
+            <label class="gr-lbl">OBSERVAÇÃO</label>
+            <input type="text" id="gr-d-obs" class="gr-in" placeholder="opcional">
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:.4rem;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="grLimparDescarga()">✕ LIMPAR</button>
+            <button class="btn btn-primary" style="flex:2;" id="gr-d-salvar" onclick="salvarGrDescarga()">✓ LANÇAR DESCARGA</button>
+          </div>
+        </div>
+        <div id="gr-d-info" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"></div>
+        <div id="gr-d-pesagem-info" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"></div>
+      </div>
+
+      <div class="rpt-section">
+        <div class="rpt-section-title" id="gr-desc-dia-titulo">LANÇAMENTOS DO DIA</div>
+        <div id="gr-desc-dia"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: PROCESSAMENTO (ENSAQUE) ── -->
+    <div id="gr-panel-proc" class="cg-panel">
+      <div class="rpt-section" id="gr-form-proc">
+        <div class="rpt-section-title">🧺 LANÇAR ENSAQUE (GRANEL → BIG BAG / SACARIA)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.8rem;">
+          <div>
+            <label class="gr-lbl">DATA *</label>
+            <input type="date" id="gr-p-data" class="gr-in" onchange="renderGrProcDia()">
+          </div>
+          <div>
+            <label class="gr-lbl">PERÍODO *</label>
+            <select id="gr-p-periodo" class="gr-in">
+              <option value="07x13">07x13</option><option value="13x19">13x19</option>
+              <option value="19x01">19x01</option><option value="01x07">01x07</option>
+            </select>
+          </div>
+          <div style="grid-column:span 2;min-width:240px;">
+            <label class="gr-lbl">LOTE (NAVIO · PRODUTO · D.I.) *</label>
+            <select id="gr-p-lote" class="gr-in" onchange="grProcInfo()"><option value="">Selecione o lote…</option></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.5rem;">
+          <div>
+            <label class="gr-lbl">EMBALAGEM *</label>
+            <select id="gr-p-formato" class="gr-in" onchange="grProcCalcPeso()"></select>
+          </div>
+          <div>
+            <label class="gr-lbl">VOLUMES *</label>
+            <input type="number" id="gr-p-unidades" class="gr-in" placeholder="0" step="1" style="font-family:'JetBrains Mono',monospace;" oninput="grProcCalcPeso()">
+          </div>
+          <div>
+            <label class="gr-lbl">PESO ENSACADO (kg) *</label>
+            <input type="number" id="gr-p-peso" class="gr-in" placeholder="0" step="1" style="font-family:'JetBrains Mono',monospace;" oninput="grProcInfo()">
+          </div>
+          <div>
+            <label class="gr-lbl">OBSERVAÇÃO</label>
+            <input type="text" id="gr-p-obs" class="gr-in" placeholder="opcional">
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:.4rem;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="grLimparProc()">✕ LIMPAR</button>
+            <button class="btn btn-primary" style="flex:2;" id="gr-p-salvar" onclick="salvarGrProcessamento()">✓ LANÇAR ENSAQUE</button>
+          </div>
+        </div>
+        <div id="gr-p-info" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"></div>
+      </div>
+
+      <div class="rpt-section">
+        <div class="rpt-section-title" id="gr-proc-dia-titulo">ENSAQUES DO DIA</div>
+        <div id="gr-proc-dia"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: EXPEDIÇÃO ── -->
+    <div id="gr-panel-exp" class="cg-panel">
+      <div class="rpt-section" id="gr-form-exp">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title">📤 LANÇAR EXPEDIÇÃO DE GRANEL</div>
+          <button class="btn btn-info btn-sm" onclick="abrirGrImport('expedicoes')">↑ IMPORTAR EXCEL</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.8rem;">
+          <div>
+            <label class="gr-lbl">DATA *</label>
+            <input type="date" id="gr-e-data" class="gr-in" onchange="renderGrExpDia()">
+          </div>
+          <div>
+            <label class="gr-lbl">PERÍODO *</label>
+            <select id="gr-e-periodo" class="gr-in">
+              <option value="07x13">07x13</option><option value="13x19">13x19</option>
+              <option value="19x01">19x01</option><option value="01x07">01x07</option>
+            </select>
+          </div>
+          <div style="grid-column:span 2;min-width:240px;">
+            <label class="gr-lbl">LOTE (NAVIO · PRODUTO · D.I.) *</label>
+            <select id="gr-e-lote" class="gr-in" onchange="grExpInfo()"><option value="">Selecione o lote…</option></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.8rem;">
+          <div>
+            <label class="gr-lbl">SAI COMO *</label>
+            <select id="gr-e-formato" class="gr-in" onchange="grExpCalcPeso()"></select>
+          </div>
+          <div id="gr-e-unidades-box">
+            <label class="gr-lbl">VOLUMES *</label>
+            <input type="number" id="gr-e-unidades" class="gr-in" placeholder="0" step="1" style="font-family:'JetBrains Mono',monospace;" oninput="grExpCalcPeso()">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.8rem;">
+          <div>
+            <label class="gr-lbl">VEÍCULO / PLACA *</label>
+            <input type="text" id="gr-e-veiculo" class="gr-in" placeholder="ABC-1234" style="font-family:'JetBrains Mono',monospace;letter-spacing:1px;" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">TRANSPORTADORA</label>
+            <input type="text" id="gr-e-transportadora" class="gr-in" placeholder="Empresa" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">MOTORISTA</label>
+            <input type="text" id="gr-e-motorista" class="gr-in" placeholder="Nome do motorista" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">DESTINO</label>
+            <input type="text" id="gr-e-destino" class="gr-in" placeholder="Fábrica / cliente" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div>
+            <label class="gr-lbl">NOTA FISCAL</label>
+            <input type="text" id="gr-e-nf" class="gr-in" placeholder="nº da NF" style="font-family:'JetBrains Mono',monospace;">
+          </div>
+        </div>
+
+        <!-- A carga já está no armazém e vai direto ao cliente: só a balança do
+             armazém. O peso expedido é o líquido dessa pesagem. -->
+        <div class="gr-pesagens">
+          <div class="gr-pesagem-bloco">
+            <div class="gr-pesagem-tit">🏭 PESAGEM NO ARMAZÉM</div>
+            <div class="gr-pesagem-grid">
+              <div><label class="gr-lbl">TICKET</label><input type="text" id="gr-e-ticket-arm" class="gr-in" placeholder="nº"></div>
+              <div><label class="gr-lbl">ENTRADA (kg)</label><input type="number" id="gr-e-ent-arm" class="gr-in" oninput="grCalcPesagens('e')"></div>
+              <div><label class="gr-lbl">SAÍDA (kg)</label><input type="number" id="gr-e-sai-arm" class="gr-in" oninput="grCalcPesagens('e')"></div>
+              <div><label class="gr-lbl">PESO LÍQUIDO (kg) *</label><input type="number" id="gr-e-liq-arm" class="gr-in" style="font-weight:700;" oninput="grCalcPesagens('e')"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:.8rem;margin-bottom:.5rem;">
+          <div style="grid-column:span 2;min-width:240px;">
+            <label class="gr-lbl">OBSERVAÇÃO</label>
+            <input type="text" id="gr-e-obs" class="gr-in" placeholder="opcional">
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:.4rem;">
+            <button class="btn btn-secondary btn-sm" style="flex:1;" onclick="grLimparExp()">✕ LIMPAR</button>
+            <button class="btn btn-primary" style="flex:2;" id="gr-e-salvar" onclick="salvarGrExpedicao()">✓ LANÇAR EXPEDIÇÃO</button>
+          </div>
+        </div>
+        <div id="gr-e-info" style="font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;"></div>
+      </div>
+
+      <div class="rpt-section">
+        <div class="rpt-section-title" id="gr-exp-dia-titulo">EXPEDIÇÕES DO DIA</div>
+        <div id="gr-exp-dia"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: ESTOQUE ── -->
+    <div id="gr-panel-estoque" class="cg-panel">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">📊 ESTOQUE POR LOTE E EMBALAGEM</div>
+          <button class="btn btn-primary btn-sm" onclick="exportGrEstoqueExcel()">↓ EXCEL</button>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label class="gr-lbl">NAVIO</label><input type="text" id="gr-s-navio" class="gr-in" placeholder="Filtrar…" oninput="renderGrEstoque()"></div>
+          <div><label class="gr-lbl">PRODUTO</label><input type="text" id="gr-s-produto" class="gr-in" placeholder="Filtrar…" oninput="renderGrEstoque()"></div>
+          <div><label class="gr-lbl">D.I.</label><input type="text" id="gr-s-di" class="gr-in" placeholder="Filtrar…" oninput="renderGrEstoque()"></div>
+          <div><label class="gr-lbl">MOSTRAR</label>
+            <select id="gr-s-comsaldo" class="gr-in" onchange="renderGrEstoque()">
+              <option value="sim">Só lotes com estoque</option>
+              <option value="">Todos os lotes</option>
+            </select>
+          </div>
+        </div>
+        <div id="gr-estoque-list"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: BANCO DE LOTES ── -->
+    <div id="gr-panel-lotes" class="cg-panel">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">🗄 LOTES DE GRANEL</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-primary btn-sm" onclick="exportGrLotesExcel()">↓ EXCEL</button>
+            <button class="btn btn-info btn-sm" onclick="abrirGrImport('lotes')">↑ IMPORTAR EXCEL</button>
+            <button class="btn btn-primary btn-sm" onclick="abrirModalGrLote()">+ NOVO LOTE</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label class="gr-lbl">NAVIO</label><input type="text" id="gr-f-navio" class="gr-in" placeholder="Filtrar…" oninput="renderGrLotes()"></div>
+          <div><label class="gr-lbl">PRODUTO</label><input type="text" id="gr-f-produto" class="gr-in" placeholder="Filtrar…" oninput="renderGrLotes()"></div>
+          <div><label class="gr-lbl">D.I.</label><input type="text" id="gr-f-di" class="gr-in" placeholder="Filtrar…" oninput="renderGrLotes()"></div>
+          <div><label class="gr-lbl">ARMAZÉM</label><input type="text" id="gr-f-armazem" class="gr-in" placeholder="Filtrar…" oninput="renderGrLotes()"></div>
+          <div><label class="gr-lbl">SITUAÇÃO</label>
+            <select id="gr-f-situacao" class="gr-in" onchange="renderGrLotes()">
+              <option value="">Todos</option>
+              <option value="aberto">Com saldo a descarregar</option>
+              <option value="completo">Descarga completa</option>
+            </select>
+          </div>
+        </div>
+        <div id="gr-lotes-list"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: RELATÓRIO ── -->
+    <div id="gr-panel-relatorio" class="cg-panel">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">📊 RELATÓRIO POR LOTE</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="grLimparFiltrosRel()">✕ LIMPAR</button>
+            <button class="btn btn-primary btn-sm" onclick="exportGrRelatorioExcel()">↓ EXCEL</button>
+            <button class="btn btn-info btn-sm" onclick="exportGrRelatorioPDF()">↓ PDF</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label class="gr-lbl">DE</label><input type="date" id="gr-r-dt-ini" class="gr-in" onchange="renderGrRelatorio()"></div>
+          <div><label class="gr-lbl">ATÉ</label><input type="date" id="gr-r-dt-fim" class="gr-in" onchange="renderGrRelatorio()"></div>
+          <div><label class="gr-lbl">NAVIO</label><input type="text" id="gr-r-navio" class="gr-in" placeholder="Filtrar…" oninput="renderGrRelatorio()"></div>
+          <div><label class="gr-lbl">PRODUTO</label><input type="text" id="gr-r-produto" class="gr-in" placeholder="Filtrar…" oninput="renderGrRelatorio()"></div>
+          <div><label class="gr-lbl">D.I.</label><input type="text" id="gr-r-di" class="gr-in" placeholder="Filtrar…" oninput="renderGrRelatorio()"></div>
+          <div><label class="gr-lbl">CLIENTE</label><input type="text" id="gr-r-cliente" class="gr-in" placeholder="Filtrar…" oninput="renderGrRelatorio()"></div>
+          <div><label class="gr-lbl">MOSTRAR</label>
+            <select id="gr-r-movimento" class="gr-in" onchange="renderGrRelatorio()">
+              <option value="">Todos os lotes</option>
+              <option value="sim">Só com movimento no período</option>
+            </select>
+          </div>
+        </div>
+        <div class="rpt-summary-grid" id="gr-rel-resumo" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-bottom:1rem;"></div>
+        <div id="gr-rel-list"></div>
+      </div>
+    </div>
+
+    <!-- ── TAB: HISTÓRICO ── -->
+    <!-- ── TAB: FATURAMENTO ── -->
+    <div id="gr-panel-faturamento" class="cg-panel">
+      <div class="rpt-section">
+        <div class="rpt-section-title">💰 TARIFAS (valem para todos os usuários)</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:.8rem;">
+          <div><label class="gr-lbl">ENSAQUE BIG BAG 1.000 (R$/t)</label><input type="number" step="0.01" id="gr-tar-BB1000" class="gr-in"></div>
+          <div><label class="gr-lbl">ENSAQUE BIG BAG 1.250 (R$/t)</label><input type="number" step="0.01" id="gr-tar-BB1250" class="gr-in"></div>
+          <div><label class="gr-lbl">ENSAQUE SACO 25 (R$/t)</label><input type="number" step="0.01" id="gr-tar-SC25" class="gr-in"></div>
+          <div><label class="gr-lbl">ENSAQUE SACO 50 (R$/t)</label><input type="number" step="0.01" id="gr-tar-SC50" class="gr-in"></div>
+          <div><label class="gr-lbl">ARMAZENAGEM (R$/t por período)</label><input type="number" step="0.01" id="gr-tar-arm" class="gr-in"></div>
+          <div><label class="gr-lbl">DIAS DO PERÍODO</label><input type="number" step="1" id="gr-tar-dias" class="gr-in"></div>
+          <div style="display:flex;align-items:flex-end;"><button class="btn btn-primary" style="width:100%;" onclick="grSalvarTarifas()">✓ SALVAR TARIFAS</button></div>
+        </div>
+        <div style="font-size:11px;color:var(--muted);">O ensaque é cobrado quando o produto embalado sai (big bag e sacaria). A armazenagem é cobrada <b>por navio</b>: o 1º período começa no dia em que o último caminhão daquele navio foi descarregado, e cada período cobra o que ainda está no armazém, sempre pelo peso real da balança.</div>
+      </div>
+
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">💰 FATURAMENTO</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="grLimparFiltrosFat()">✕ LIMPAR</button>
+            <button class="btn btn-primary btn-sm" onclick="exportGrFatExcel()">↓ EXCEL</button>
+            <button class="btn btn-info btn-sm" onclick="exportGrFatPDF()">↓ PDF</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label class="gr-lbl">DE</label><input type="date" id="gr-f-dt-ini" class="gr-in" onchange="renderGrFaturamento()"></div>
+          <div><label class="gr-lbl">ATÉ</label><input type="date" id="gr-f-dt-fim" class="gr-in" onchange="renderGrFaturamento()"></div>
+          <div><label class="gr-lbl">NAVIO</label><input type="text" id="gr-f-fat-navio" class="gr-in" placeholder="Filtrar…" oninput="renderGrFaturamento()"></div>
+          <div><label class="gr-lbl">PRODUTO</label><input type="text" id="gr-f-fat-produto" class="gr-in" placeholder="Filtrar…" oninput="renderGrFaturamento()"></div>
+          <div><label class="gr-lbl">D.I.</label><input type="text" id="gr-f-fat-di" class="gr-in" placeholder="Filtrar…" oninput="renderGrFaturamento()"></div>
+          <div><label class="gr-lbl">CLIENTE</label><input type="text" id="gr-f-fat-cliente" class="gr-in" placeholder="Filtrar…" oninput="renderGrFaturamento()"></div>
+          <div><label class="gr-lbl">SITUAÇÃO</label>
+            <select id="gr-f-fat-situacao" class="gr-in" onchange="renderGrFaturamento()">
+              <option value="">Todas</option>
+              <option value="pendente">Só a faturar</option>
+              <option value="faturado">Só faturados</option>
+            </select>
+          </div>
+          <div><label class="gr-lbl">Nº DA NOTA</label><input type="text" id="gr-f-fat-nf" class="gr-in" placeholder="Filtrar…" oninput="renderGrFaturamento()"></div>
+        </div>
+        <div id="gr-fat-barra" style="display:none;align-items:center;gap:.6rem;flex-wrap:wrap;background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.35);border-radius:8px;padding:.5rem .8rem;margin-bottom:.8rem;">
+          <span id="gr-fat-sel-info" style="font-size:12px;font-family:'JetBrains Mono',monospace;"></span>
+          <button class="btn btn-primary btn-sm" onclick="abrirGrFatNota()">✓ MARCAR COMO FATURADO (NF)</button>
+          <button class="btn btn-secondary btn-sm" onclick="_grFatSel.clear();renderGrFaturamento()">LIMPAR SELEÇÃO</button>
+        </div>
+        <div class="rpt-summary-grid" id="gr-fat-resumo" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin-bottom:1rem;"></div>
+        <div id="gr-fat-list"></div>
+      </div>
+    </div>
+
+    <div id="gr-panel-historico" class="cg-panel">
+      <div class="rpt-section">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:.5rem;">
+          <div class="rpt-section-title" style="margin:0;">🕐 HISTÓRICO DE LANÇAMENTOS</div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+            <button class="btn btn-secondary btn-sm" onclick="grLimparFiltrosHist()">✕ LIMPAR</button>
+            <button class="btn btn-primary btn-sm" onclick="exportGrHistoricoExcel()">↓ EXCEL</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.7rem;margin-bottom:1rem;">
+          <div><label class="gr-lbl">DE</label><input type="date" id="gr-h-dt-ini" class="gr-in" onchange="renderGrHistorico()"></div>
+          <div><label class="gr-lbl">ATÉ</label><input type="date" id="gr-h-dt-fim" class="gr-in" onchange="renderGrHistorico()"></div>
+          <div><label class="gr-lbl">TIPO</label>
+            <select id="gr-h-tipo" class="gr-in" onchange="renderGrHistorico()">
+              <option value="">Todos</option>
+              <option value="descarga">Descarga</option>
+              <option value="processamento">Ensaque</option>
+              <option value="expedicao">Expedição</option>
+            </select>
+          </div>
+          <div><label class="gr-lbl">D.I.</label><input type="text" id="gr-h-di" class="gr-in" placeholder="Filtrar…" oninput="renderGrHistorico()"></div>
+          <div><label class="gr-lbl">VEÍCULO</label><input type="text" id="gr-h-veiculo" class="gr-in" placeholder="Placa" oninput="renderGrHistorico()"></div>
+          <div><label class="gr-lbl">REGISTRADO POR</label><input type="text" id="gr-h-usuario" class="gr-in" placeholder="Nome" oninput="renderGrHistorico()"></div>
+        </div>
+        <div id="gr-hist-info" style="font-size:12px;color:var(--muted);font-family:'JetBrains Mono',monospace;margin-bottom:.6rem;"></div>
+        <div id="gr-hist-list"></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: FATURAR (GRANEL) ══════════════════ -->
+<div class="modal-overlay" id="modal-gr-nf">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title">💰 MARCAR COMO FATURADO</div>
+    <div class="modal-body">
+      <div id="gr-nf-resumo" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:.7rem .9rem;margin-bottom:1rem;font-size:13px;"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
+        <div>
+          <label class="gr-lbl">Nº DA NOTA *</label>
+          <input type="text" id="gr-nf-numero" class="gr-in" placeholder="ex: 12345" style="font-family:'JetBrains Mono',monospace;">
+        </div>
+        <div>
+          <label class="gr-lbl">DATA DA NOTA</label>
+          <input type="date" id="gr-nf-data" class="gr-in">
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);margin-top:.5rem;">Fica gravado no servidor: todos veem a mesma situação. Dá para desfazer depois pelo botão ↺ na linha.</div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-gr-nf')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="confirmarGrFatNota()">✓ CONFIRMAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: IMPORTAR EXCEL (GRANEL) ══════════════════ -->
+<div class="modal-overlay" id="modal-gr-import">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-title">↑ IMPORTAR EXCEL — GRANEL</div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem;">
+        <div>
+          <label class="gr-lbl">O QUE VOCÊ VAI IMPORTAR</label>
+          <select id="gr-imp-tipo" class="gr-in" onchange="grImportTipoMudou()">
+            <option value="descargas">Descargas</option>
+            <option value="expedicoes">Expedições</option>
+            <option value="lotes">Banco de lotes</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;">
+          <button class="btn btn-secondary btn-sm" style="width:100%;" onclick="baixarGrModelo()">↓ BAIXAR MODELO DESTE TIPO</button>
+        </div>
+      </div>
+      <div id="gr-imp-formato-box" style="margin-bottom:.8rem;display:none;">
+        <label class="gr-lbl">TIPO DE SAÍDA DAS LINHAS SEM COLUNA DE EMBALAGEM</label>
+        <select id="gr-imp-formato" class="gr-in"><option value="">— pelo nome da aba / coluna da planilha —</option></select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Nas abas por tipo (CAMINHÕES SILO, BAGS 1000, SACARIA 25…) o tipo não é coluna. O sistema tenta pelo nome da aba; aqui você força o tipo certo.</div>
+      </div>
+      <div id="gr-imp-lote-box" style="margin-bottom:.8rem;">
+        <label class="gr-lbl">LOTE DAS LINHAS SEM D.I. (planilha do navio)</label>
+        <select id="gr-imp-lote" class="gr-in"><option value="">— usar a coluna D.I. da planilha —</option></select>
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">Nas planilhas por navio a D.I. fica no cabeçalho, não nas linhas. Escolha aqui o lote e todas as linhas sem D.I. entram nele.</div>
+      </div>
+      <div style="margin-bottom:.8rem;">
+        <label class="gr-lbl">ARQUIVO (.xlsx ou .xls)</label>
+        <input type="file" id="gr-imp-arquivo" accept=".xlsx,.xls" class="gr-in" onchange="grImportArquivo(this.files[0])">
+        <div style="font-size:10px;color:var(--muted);margin-top:4px;">As colunas são reconhecidas pelo nome do título, em qualquer ordem. A sua planilha de descarga entra como está.</div>
+      </div>
+      <div id="gr-imp-preview"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-gr-import')">CANCELAR</button>
+      <button class="btn btn-primary" id="gr-imp-confirmar" style="display:none;" onclick="confirmarGrImport()">✓ IMPORTAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════ MODAL: LOTE DE GRANEL ══════════════════ -->
+<div class="modal-overlay" id="modal-gr-lote">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-title" id="modal-gr-lote-title">➕ NOVO LOTE</div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;">
+        <div style="grid-column:span 2;">
+          <label class="gr-lbl">NAVIO *</label>
+          <input type="text" id="gr-l-navio" class="gr-in" list="gr-navios" placeholder="Nome do navio" oninput="this.value=this.value.toUpperCase()">
+          <datalist id="gr-navios"></datalist>
+        </div>
+        <div>
+          <label class="gr-lbl">PRODUTO *</label>
+          <input type="text" id="gr-l-produto" class="gr-in" placeholder="ex: SODA ASH" oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div>
+          <label class="gr-lbl">D.I. *</label>
+          <input type="text" id="gr-l-di" class="gr-in" placeholder="ex: 26/1234567-8" style="font-family:'JetBrains Mono',monospace;" oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div>
+          <label class="gr-lbl">CLIENTE</label>
+          <input type="text" id="gr-l-cliente" class="gr-in" placeholder="Importador" oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div>
+          <label class="gr-lbl">ARMAZÉM</label>
+          <input type="text" id="gr-l-armazem" class="gr-in" list="gr-armazens" placeholder="ex: AZ05" oninput="this.value=this.value.toUpperCase()">
+        </div>
+        <div>
+          <label class="gr-lbl">PESO DECLARADO (kg) *</label>
+          <input type="number" id="gr-l-peso" class="gr-in" placeholder="0" step="1" style="font-family:'JetBrains Mono',monospace;">
+        </div>
+        <div>
+          <label class="gr-lbl">CHEGADA</label>
+          <input type="date" id="gr-l-chegada" class="gr-in">
+        </div>
+        <div style="grid-column:span 2;">
+          <label class="gr-lbl">OBSERVAÇÃO</label>
+          <input type="text" id="gr-l-obs" class="gr-in" placeholder="opcional">
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-gr-lote')">CANCELAR</button>
+      <button class="btn btn-primary" onclick="salvarGrLote()">✓ SALVAR LOTE</button>
+    </div>
+  </div>
+</div>
+
 <div id="screen-followup" class="screen">
   <div class="container">
 
