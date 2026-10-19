@@ -628,7 +628,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.11 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.12 · Acesso restrito</div>
   </div>
 </div>
 
@@ -1578,12 +1578,13 @@ body{
           <table style="width:100%;border-collapse:collapse;font-size:12px;"><thead id="import-thead"></thead><tbody id="import-tbody"></tbody></table>
         </div>
         <div id="import-warn" style="display:none;margin-top:.75rem;padding:.6rem 1rem;background:rgba(240,165,0,.1);border:1px solid rgba(240,165,0,.3);border-radius:6px;font-size:12px;color:var(--accent);"></div>
+        <div id="import-dup" style="display:none;margin-top:.75rem;padding:.75rem 1rem;background:rgba(224,92,26,.08);border:2px solid var(--danger);border-radius:8px;font-size:12px;color:var(--text);"></div>
       </div>
       <div id="import-mode-row" style="display:none;margin-top:1rem;">
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;margin-bottom:.5rem;">MODO DE IMPORTAÇÃO</div>
         <div style="display:flex;gap:1.5rem;">
-          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);"><input type="radio" name="imp-mode" value="merge" checked style="accent-color:var(--accent);width:16px;height:16px;"> MESCLAR</label>
-          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);"><input type="radio" name="imp-mode" value="replace" style="accent-color:var(--accent);width:16px;height:16px;"> SUBSTITUIR TUDO</label>
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);"><input type="radio" name="imp-mode" value="merge" onchange="_impRenderDup()" checked style="accent-color:var(--accent);width:16px;height:16px;"> MESCLAR</label>
+          <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:14px;font-weight:600;color:var(--text);"><input type="radio" name="imp-mode" value="replace" onchange="_impRenderDup()" style="accent-color:var(--accent);width:16px;height:16px;"> SUBSTITUIR TUDO</label>
         </div>
       </div>
     </div>
@@ -2218,6 +2219,46 @@ let expedicoes = [];
 let ticketHistory = JSON.parse(localStorage.getItem('sp_tickets')||'[]'); // persists across sessions
 let navios     = [];
 let coilsDB    = [];
+
+// ── Coil Number duplicado ────────────────────────────────────────────
+// Por erro de etiquetagem na origem, algumas bobinas chegaram com o MESMO
+// Coil Number de outra, mas com BL e cliente diferentes (PORT OSHIMA 2601).
+// O banco aceita as duas porque a chave é (coil, navio, bl). O resto do
+// sistema, porém, identifica a bobina só pelo número — e aí descarregar uma
+// marcava a outra como descarregada também.
+// Regra: coil que aparece no banco com MAIS DE UM BL passa a ser identificado
+// por coil+BL; os demais continuam só pelo número, exatamente como antes (o BL
+// gravado nas movimentações antigas nem sempre bate com o do banco).
+const _blN = b => String(b||'').trim().toUpperCase();
+const coilBlKey = (coil, bl) => coil + '|' + _blN(bl);
+let _dupRef = null, _dupTam = -1, _dupSet = new Set();
+function coilsDuplicados(){
+  if(_dupRef === coilsDB && _dupTam === coilsDB.length) return _dupSet;
+  const bls = new Map();
+  for(const c of coilsDB){
+    if(!c.coil) continue;
+    if(!bls.has(c.coil)) bls.set(c.coil, new Set());
+    bls.get(c.coil).add(_blN(c.bl));
+  }
+  _dupSet = new Set([...bls].filter(([,s]) => s.size > 1).map(([k]) => k));
+  _dupRef = coilsDB; _dupTam = coilsDB.length;
+  return _dupSet;
+}
+function coilDuplicado(coil){ return coilsDuplicados().has(coil); }
+// Conjunto das movimentações com as duas formas de chave (número e número+BL).
+function movSet(list){
+  const s = new Set();
+  for(const r of list){ s.add(r.coil); s.add(coilBlKey(r.coil, r.bl)); }
+  return s;
+}
+// x = bobina do banco ou movimentação (precisa de coil e bl)
+function temMov(set, x){ return coilDuplicado(x.coil) ? set.has(coilBlKey(x.coil, x.bl)) : set.has(x.coil); }
+function achaMov(list, x){
+  return coilDuplicado(x.coil)
+    ? list.find(r => r.coil === x.coil && _blN(r.bl) === _blN(x.bl))
+    : list.find(r => r.coil === x.coil);
+}
+
 let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
 // Chave da bobina como ela está NO SERVIDOR quando a edição começa.
 // A chave primária de coilsdb é (coil, navio, bl) — se qualquer um dos três mudar,
@@ -2785,7 +2826,11 @@ async function apiPost(body){
     return tryUpsert(ud);
   }
   if(body.action==='importCoils')  return; // tratado diretamente em confirmImport
-  if(body.action==='deleteCoilsMultiple'){ const list=body.coils.map(c=>`"${c}"`).join(','); return supaDelete('coilsdb',`coil=in.(${list})`); }
+  if(body.action==='deleteCoilsMultiple'){
+    // Com chave completa (coil+navio+bl) apaga só a linha escolhida — um Coil
+    // duplicado em outro BL não pode ir junto.
+    if(body.keys){ for(const k of body.keys) await supaDelete('coilsdb',`coil=eq.${encodeURIComponent(k.coil)}&navio=eq.${encodeURIComponent(k.navio||'')}&bl=eq.${encodeURIComponent(k.bl||'')}`); return; }
+    const list=body.coils.map(c=>`"${c}"`).join(','); return supaDelete('coilsdb',`coil=in.(${list})`); }
   throw new Error('Ação desconhecida: '+body.action);
 }
 
@@ -2793,7 +2838,8 @@ async function api(params){
   const a=params.action;
   if(a==='deleteRecord')    return supaDelete('records',   'id=eq.'+params.id);
   if(a==='deleteExpedicao') return supaDelete('expedicoes','id=eq.'+params.id);
-  if(a==='deleteCoil')      return supaDelete('coilsdb',   'coil=eq.'+encodeURIComponent(params.coil));
+  if(a==='deleteCoil')      return supaDelete('coilsdb',   'coil=eq.'+encodeURIComponent(params.coil)
+                                  +(params.bl!==undefined ? '&navio=eq.'+encodeURIComponent(params.navio||'')+'&bl=eq.'+encodeURIComponent(params.bl||'') : ''));
   if(a==='deleteNavioAll')  return supaDelete('coilsdb',   'navio=eq.'+encodeURIComponent(params.navio));
   if(a==='deleteNavio')     return supaDelete('navios',    'nome=eq.'+encodeURIComponent(params.nome));
   if(a==='deleteUser')      return supaDelete('users',     'id=eq.'+params.id);
@@ -2971,8 +3017,8 @@ function refreshHome(){
   document.getElementById('home-rep-clientes').textContent = new Set(coilsDB.map(c=>c.cliente).filter(Boolean)).size;
   document.getElementById('home-users-count').textContent = users.length;
   // Mapeamento badges
-  const descSet=new Set(records.map(r=>r.coil)); const expSet=new Set(expedicoes.map(r=>r.coil));
-  const inStock=coilsDB.filter(c=>descSet.has(c.coil)&&!expSet.has(c.coil));
+  const descSet=movSet(records); const expSet=movSet(expedicoes);
+  const inStock=coilsDB.filter(c=>temMov(descSet,c)&&!temMov(expSet,c));
   const mapPilhas=new Set(inStock.map(c=>(c.armazem||'')+'|'+(c.bl||''))).size;
   const mapBLs=new Set(inStock.map(c=>c.bl).filter(Boolean)).size;
   const grL=document.getElementById('home-gr-lotes'); if(grL) grL.textContent=(typeof grLotes!=='undefined'?grLotes.length:0);
@@ -2984,7 +3030,7 @@ function refreshHome(){
   // ── Operational dashboard ───────────────────────────────────────
   const dbSet = new Set(coilsDB.map(c=>c.coil));
   // Bobinas em estoque = descargadas mas não expedidas
-  const estoqueCoils = records.filter(r=>!expSet.has(r.coil));
+  const estoqueCoils = records.filter(r=>!temMov(expSet,r));
   const estoquePeso  = estoqueCoils.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
   // Inconsistências = descargadas ou expedidas sem cadastro no coilsDB
   const semCadastro = [...new Set([
@@ -3014,7 +3060,7 @@ function openInconsistModal(){
     return;
   }
   const dbSet=new Set(coilsDB.map(c=>c.coil));
-  const expSet=new Set(expedicoes.map(r=>r.coil));
+  const expSet=movSet(expedicoes);
   const semCadastro=[...new Set([...records.map(r=>r.coil),...expedicoes.map(r=>r.coil)])].filter(c=>!dbSet.has(c));
   const modal=document.getElementById('modal-inconsist');
   const body=document.getElementById('modal-inconsist-body');
@@ -3169,7 +3215,9 @@ function editCoilAutofill(){
   const coil = sanitizeCoil(document.getElementById('edit-coil').value);
   const hint = document.getElementById('edit-coil-hint');
   if(!coil){ hint.textContent=''; return; }
-  const db = coilsDB.find(c=>c.coil===coil);
+  // Coil duplicado: fica com a do BL que já está no registro, se houver
+  const blAtual = _blN(document.getElementById('edit-bl')?.value);
+  const db = coilsDB.find(c=>c.coil===coil && _blN(c.bl)===blAtual) || coilsDB.find(c=>c.coil===coil);
   if(!db){
     hint.style.color='var(--warning)';
     hint.textContent='⚠ Coil não encontrado no banco de dados';
@@ -3186,7 +3234,9 @@ function editCoilAutofill(){
   fill('edit-pesob',   db.pesob);
   fill('edit-pesol',   db.pesol);
   hint.style.color='var(--success)';
-  hint.textContent=`✓ Dados preenchidos: ${db.navio||''} · ${db.cliente||''} · BL ${db.bl||''}`;
+  hint.textContent=`✓ Dados preenchidos: ${db.navio||''} · ${db.cliente||''} · BL ${db.bl||''}`
+    + (coilDuplicado(coil) ? ' · ⚠ Coil duplicado em outro BL — confira cliente e peso' : '');
+  if(coilDuplicado(coil)) hint.style.color='var(--warning)';
 }
 
 function editMovimento(id, px){
@@ -3403,17 +3453,17 @@ function renderDBDescarga(){
     return;
   }
 
-  const descSet = new Set(records.map(r=>r.coil));
-  const expSet  = new Set(expedicoes.map(r=>r.coil));
+  const descSet = movSet(records);
+  const expSet  = movSet(expedicoes);
 
   // Lista completa filtrada (sem status) para contadores
   const listAll = coilsDB.filter(c=>{
     const mQ = !q || [c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(q));
     return mQ && (!fn||c.navio===fn) && (!fc||c.cliente===fc);
   });
-  const pend = listAll.filter(c=>!descSet.has(c.coil)).length;
-  const desc = listAll.filter(c=>descSet.has(c.coil)&&!expSet.has(c.coil)).length;
-  const exped= listAll.filter(c=>expSet.has(c.coil)).length;
+  const pend = listAll.filter(c=>!temMov(descSet,c)).length;
+  const desc = listAll.filter(c=>temMov(descSet,c)&&!temMov(expSet,c)).length;
+  const exped= listAll.filter(c=>temMov(expSet,c)).length;
   document.getElementById('ddb-count-total').textContent = listAll.length;
   document.getElementById('ddb-count-pend').textContent  = pend;
   document.getElementById('ddb-count-desc').textContent  = desc;
@@ -3421,9 +3471,9 @@ function renderDBDescarga(){
 
   // Lista com filtro de status para a tabela
   const list = listAll.filter(c=>{
-    if(fst==='pendente')     return !descSet.has(c.coil);
-    if(fst==='descarregada') return descSet.has(c.coil) && !expSet.has(c.coil);
-    if(fst==='expedida')     return expSet.has(c.coil);
+    if(fst==='pendente')     return !temMov(descSet,c);
+    if(fst==='descarregada') return temMov(descSet,c) && !temMov(expSet,c);
+    if(fst==='expedida')     return temMov(expSet,c);
     return true;
   });
 
@@ -3441,9 +3491,9 @@ function renderDBDescarga(){
   const slice = list.slice(start, start+ddbPageSize);
 
   tbody.innerHTML = slice.map((c,i)=>{
-    const isDesc = descSet.has(c.coil);
-    const isExp  = expSet.has(c.coil);
-    const rec    = records.find(r=>r.coil===c.coil);
+    const isDesc = temMov(descSet,c);
+    const isExp  = temMov(expSet,c);
+    const rec    = achaMov(records,c);
     const rowStyle = isExp ? 'opacity:.55' : '';
     let statusBadge;
     if(isExp){
@@ -3502,16 +3552,16 @@ function ddbGoPage(p){
   const fn=document.getElementById('ddb-filter-navio')?.value||'';
   const fc=document.getElementById('ddb-filter-cliente')?.value||'';
   const fst=document.getElementById('ddb-filter-status')?.value||'';
-  const descSet=new Set(records.map(r=>r.coil));
-  const expSet=new Set(expedicoes.map(r=>r.coil));
+  const descSet=movSet(records);
+  const expSet=movSet(expedicoes);
   const listAll=coilsDB.filter(c=>{
     const mQ=!q||[c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(q));
     return mQ&&(!fn||c.navio===fn)&&(!fc||c.cliente===fc);
   });
   const list=listAll.filter(c=>{
-    if(fst==='pendente')     return !descSet.has(c.coil);
-    if(fst==='descarregada') return descSet.has(c.coil)&&!expSet.has(c.coil);
-    if(fst==='expedida')     return expSet.has(c.coil);
+    if(fst==='pendente')     return !temMov(descSet,c);
+    if(fst==='descarregada') return temMov(descSet,c)&&!temMov(expSet,c);
+    if(fst==='expedida')     return temMov(expSet,c);
     return true;
   });
   const pages=Math.max(1,Math.ceil(list.length/ddbPageSize));
@@ -3541,16 +3591,16 @@ function autocompleteCoil(px){
   }
 
   // Filtrar por status pendente conforme o módulo
-  const descSet = new Set(records.map(r=>r.coil));
-  const expSet  = new Set(expedicoes.map(r=>r.coil));
+  const descSet = movSet(records);
+  const expSet  = movSet(expedicoes);
 
   let pool;
   if(px==='d'){
     // Descarga: mostrar apenas bobinas que ainda NÃO foram descarregadas
-    pool = coilsDB.filter(c => !descSet.has(c.coil));
+    pool = coilsDB.filter(c => !temMov(descSet,c));
   } else {
     // Expedição: mostrar apenas bobinas que foram descarregadas mas ainda NÃO foram expedidas
-    pool = coilsDB.filter(c => descSet.has(c.coil) && !expSet.has(c.coil));
+    pool = coilsDB.filter(c => temMov(descSet,c) && !temMov(expSet,c));
   }
 
   // Se digitou 5 ou menos dígitos numéricos, busca por sufixo
@@ -3561,6 +3611,7 @@ function autocompleteCoil(px){
   } else {
     matches = pool.filter(c=>c.coil && c.coil.startsWith(raw)).map(c=>c.coil).slice(0,8);
   }
+  matches = [...new Set(matches)];   // Coil duplicado aparece uma vez; o cliente é escolhido ao adicionar
 
   // Remove old suggestions
   document.getElementById(px+'l-coil-suggestions')?.remove();
@@ -3576,7 +3627,10 @@ function autocompleteCoil(px){
     const db  = pool.find(c=>c.coil===coil);
     const div = document.createElement('div');
     div.style.cssText = `padding:.5rem .75rem;cursor:pointer;font-size:13px;font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);`;
-    div.innerHTML = `<span style="color:var(--accent);font-weight:700">${_esc(coil)}</span><span style="color:var(--muted);font-size:11px">${_esc(db?.navio)||''} ${db?.cliente?'· '+_esc(db.cliente):''}</span>`;
+    const nCli = pool.filter(c=>c.coil===coil).length;
+    div.innerHTML = nCli > 1
+      ? `<span style="color:var(--accent);font-weight:700">${_esc(coil)}</span><span style="color:var(--warning);font-size:11px;font-weight:700">⚠ DUPLICADO · ${nCli} clientes</span>`
+      : `<span style="color:var(--accent);font-weight:700">${_esc(coil)}</span><span style="color:var(--muted);font-size:11px">${_esc(db?.navio)||''} ${db?.cliente?'· '+_esc(db.cliente):''}</span>`;
     div.onmousedown = (e)=>{ e.preventDefault(); inputEl.value=coil; box.remove(); };
     box.appendChild(div);
   });
@@ -3774,7 +3828,21 @@ function _bobEntrega(px, coil, ajuste){
   if(!inp) return;
   const antes = loteItems[px].length;
   inp.value = coil;
-  addCoilLote(px, true);            // sem foco: não abre teclado nem mexe no zoom da página
+  // sem foco: não abre teclado nem mexe no zoom da página
+  const r = addCoilLote(px, true, null, ok => {
+    if(ok){ _bobRetomar(); _bobEntregaFim(px, coil, ajuste, antes); return; }
+    _bobRegistra('• ' + coil + '  (Coil duplicado — cancelado)', '#f59e0b');
+    _bobRetomar();
+  });
+  if(r === 'escolha'){              // Coil duplicado: espera o operador escolher o cliente
+    if(_bobCam) _bobCam.parado = true;
+    _bobMsg('⚠ ' + coil + ' — Coil duplicado: escolha o cliente conferindo o peso', '#f59e0b');
+    return;
+  }
+  _bobEntregaFim(px, coil, ajuste, antes);
+}
+
+function _bobEntregaFim(px, coil, ajuste, antes){
   const lista = loteItems[px];
   if(lista.length === antes){
     _bobBip(false);
@@ -4474,10 +4542,10 @@ function _bobDist(a, b, teto){
 // Se o lote já tem bobinas de um único navio, restringe a ele — um caminhão
 // quase sempre carrega de um navio só, e isso reduz muito o campo de busca.
 function _bobPool(px){
-  const descSet = new Set(records.map(r => r.coil));
-  const expSet  = new Set(expedicoes.map(r => r.coil));
-  let pool = px === 'd' ? coilsDB.filter(c => !descSet.has(c.coil))
-                        : coilsDB.filter(c => descSet.has(c.coil) && !expSet.has(c.coil));
+  const descSet = movSet(records);
+  const expSet  = movSet(expedicoes);
+  let pool = px === 'd' ? coilsDB.filter(c => !temMov(descSet,c))
+                        : coilsDB.filter(c => temMov(descSet,c) && !temMov(expSet,c));
   if(!pool.length) pool = coilsDB;
   const navios = new Set((loteItems[px] || []).map(r => r.navio).filter(Boolean));
   if(navios.size === 1){
@@ -4764,7 +4832,10 @@ async function _bobLerTextoAgora(video, px){
 
 // semFoco: quando a bobina vem da câmera. Dar foco ao campo, que fica por baixo
 // da tela da câmera, faz o Android abrir o teclado e reposicionar/ampliar a página.
-function addCoilLote(px, semFoco){
+// escolhida: a bobina do banco que o operador apontou na tela de Coil duplicado.
+// depois:    chamado quando a escolha termina (true = adicionou) — usado pela câmera.
+// Devolve 'escolha' quando abriu a tela de escolha em vez de adicionar.
+function addCoilLote(px, semFoco, escolhida, depois){
   const inputEl = document.getElementById(px+'l-coil-add');
   // Normalise: strip special chars
   const coil = normalizeCoilInput(inputEl.value);
@@ -4772,14 +4843,21 @@ function addCoilLote(px, semFoco){
   document.getElementById(px+'l-coil-suggestions')?.remove();
   if(!coil){ showToast('Digite o Nº da bobina.','#e05c1a','#fff'); return; }
 
-  if(loteItems[px].find(r=>r.coil===coil)){
+  // Mesmo Coil Number em mais de um BL: o operador escolhe pelo cliente e confere o peso.
+  const duplicada = coilDuplicado(coil);
+  if(duplicada && !escolhida){
+    _coilDupEscolher(px, coil, semFoco, depois);
+    return 'escolha';
+  }
+
+  if(loteItems[px].find(r=>r.coil===coil && (!duplicada || _blN(r.bl)===_blN(escolhida.bl)))){
     showToast('Esta bobina já foi adicionada ao lote.','#f59e0b','#000');
     inputEl.value=''; if(!semFoco) inputEl.focus(); return;
   }
 
-  const db      = coilsDB.find(c=>c.coil===coil);
+  const db      = escolhida || coilsDB.find(c=>c.coil===coil);
   const src     = px==='e' ? expedicoes : records;
-  const already = src.find(r=>r.coil===coil);
+  const already = duplicada ? achaMov(src, db) : src.find(r=>r.coil===coil);
 
 
 
@@ -4811,8 +4889,78 @@ function addCoilLote(px, semFoco){
   renderLoteList(px);
 }
 
-function removeLoteItem(px, coil){
-  loteItems[px] = loteItems[px].filter(r=>r.coil!==coil);
+// Tela de escolha para Coil Number duplicado. Mostra cada bobina do banco com
+// esse número — cliente, BL e peso em destaque, para o operador conferir com a
+// etiqueta/balança — e já indica as que não podem entrar (já movimentadas ou já
+// no lote). Fica acima da tela da câmera.
+function _coilDupEscolher(px, coil, semFoco, depois){
+  document.getElementById('coil-dup-modal')?.remove();
+  const cands = coilsDB.filter(c=>c.coil===coil);
+  const descS = movSet(records), expS = movSet(expedicoes);
+  const naoPode = c => {
+    if(loteItems[px].some(r=>r.coil===c.coil && _blN(r.bl)===_blN(c.bl))) return 'Já está neste lote';
+    if(px==='d'){
+      const r = achaMov(records, c);
+      return r ? 'Já descarregada em '+formatDate(r.data) : '';
+    }
+    const ex = achaMov(expedicoes, c);
+    if(ex) return 'Já expedida em '+formatDate(ex.data);
+    return '';
+  };
+  const aviso = c => (px==='e' && !temMov(descS,c)) ? 'Ainda não descarregada' : '';
+
+  const ov = document.createElement('div');
+  ov.id = 'coil-dup-modal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:100000;background:rgba(0,0,0,.8);display:flex;align-items:center;justify-content:center;padding:16px;';
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--surface);border:2px solid var(--warning);border-radius:12px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto;padding:1.1rem;color:var(--text);';
+  box.innerHTML = `
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:22px;font-weight:700;color:var(--warning);letter-spacing:.5px;">⚠ COIL NUMBER DUPLICADO</div>
+    <div style="font-family:'JetBrains Mono',monospace;font-size:16px;color:var(--accent);font-weight:700;margin:.2rem 0 .5rem;">${_esc(coil)}</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:.8rem;">Este número existe em ${cands.length} BLs diferentes (erro de etiquetagem). Confira o <b>peso</b> da bobina na ${px==='e'?'expedição':'descarga'} e toque no cliente correto:</div>`;
+  cands.forEach(c=>{
+    const bloq = naoPode(c), av = aviso(c);
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.disabled = !!bloq;
+    b.style.cssText = `display:block;width:100%;text-align:left;margin-bottom:.6rem;padding:.8rem .9rem;border-radius:10px;cursor:${bloq?'not-allowed':'pointer'};`
+      + `background:var(--surface2);border:2px solid ${bloq?'var(--border)':'var(--accent)'};color:var(--text);opacity:${bloq?'.45':'1'};font-family:inherit;`;
+    b.innerHTML = `
+      <div style="font-size:15px;font-weight:700;">${_esc(c.cliente||'—')}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:.3rem 1.2rem;margin-top:.35rem;align-items:baseline;">
+        <span style="font-size:22px;font-weight:900;color:var(--accent);font-family:'JetBrains Mono',monospace;">${c.pesob?fmtKg(c.pesob)+' kg':'—'}</span>
+        <span style="font-size:12px;color:var(--muted);">P.Líq ${c.pesol?fmtKg(c.pesol)+' kg':'—'}</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:.3rem;font-family:'JetBrains Mono',monospace;">BL ${_esc(c.bl||'—')} · ${_esc(c.produto||'')} · ${_esc(armazemLabel(c.armazem)||'')}</div>
+      ${bloq?`<div style="font-size:12px;color:var(--danger);font-weight:700;margin-top:.3rem;">✕ ${_esc(bloq)}</div>`
+           :av?`<div style="font-size:12px;color:var(--warning);font-weight:700;margin-top:.3rem;">⚠ ${_esc(av)}</div>`:''}`;
+    if(!bloq) b.onclick = ()=>{
+      ov.remove();
+      const inp = document.getElementById(px+'l-coil-add');
+      if(inp) inp.value = coil;
+      addCoilLote(px, semFoco, c);
+      if(depois) depois(true);
+    };
+    box.appendChild(b);
+  });
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn-secondary';
+  cancel.style.cssText = 'width:100%;margin-top:.2rem;';
+  cancel.textContent = 'CANCELAR';
+  cancel.onclick = ()=>{
+    ov.remove();
+    const inp = document.getElementById(px+'l-coil-add');
+    if(inp){ inp.value=''; if(!semFoco) inp.focus(); }
+    if(depois) depois(false);
+  };
+  box.appendChild(cancel);
+  ov.appendChild(box);
+  document.body.appendChild(ov);
+}
+
+function removeLoteItem(px, coil, bl){
+  loteItems[px] = loteItems[px].filter(r=>!(r.coil===coil && (bl===undefined || _blN(r.bl)===_blN(bl))));
   renderLoteList(px);
 }
 
@@ -4838,7 +4986,7 @@ function renderLoteList(px){
       <span class="lote-item-field">${_esc(r.cliente)||'—'}</span>
       <span class="lote-item-field">${r.pesob?fmtKg(r.pesob)+' kg':'—'}</span>
       <span class="lote-item-status" style="color:${statusColor[r.status]}">${_esc(r.msg)}</span>
-      <button onclick="removeLoteItem('${px}','${_esc(r.coil)}')"
+      <button onclick="removeLoteItem('${px}','${_esc(r.coil)}','${_esc(r.bl)}')"
         style="background:transparent;border:none;color:var(--danger);cursor:pointer;font-size:16px;padding:0 .25rem;" title="Remover">✕</button>
     </div>`).join('');
 
@@ -5933,8 +6081,8 @@ function _tkBuscaIndice(px){
 function getFiltered(px){
   let src = px==='d'?records:expedicoes;
   if(px==='e' && saldoModeE){
-    const expSet=new Set(expedicoes.map(r=>r.coil));
-    src = records.filter(r=>!expSet.has(r.coil)); // descarregadas que ainda não foram expedidas
+    const expSet=movSet(expedicoes);
+    src = records.filter(r=>!temMov(expSet,r)); // descarregadas que ainda não foram expedidas
   }
   const q   =(document.getElementById(px+'-search')?.value||'').toLowerCase();
   const fn  = document.getElementById(px+'-filter-navio')?.value||'';
@@ -6774,17 +6922,17 @@ function renderStats(px){
       +` · ${turno.bobinas} bobina(s) · ${quem}`);
 
   if(px==='d'){
-    const descCoils=new Set(filt.map(r=>r.coil));
+    const descCoils=movSet(filt);
     const saldoPeso=pesoBDB-pesoBFilt;
-    const saldoBob=dbF.filter(c=>!descCoils.has(c.coil)).length;
+    const saldoBob=dbF.filter(c=>!temMov(descCoils,c)).length;
     const sp=document.getElementById('d-s-saldo-peso');
     sp.textContent=fmtKg(saldoPeso); sp.className='stat-value '+(saldoPeso>=0?'green':'red');
     const sb=document.getElementById('d-s-saldo-bob');
     sb.textContent=saldoBob; sb.className='stat-value '+(saldoBob>=0?'green':'red');
   } else {
     // Estoque = descarregado − expedido, em bobinas e em peso bruto
-    const expCoils=new Set(expedicoes.map(r=>r.coil));
-    const emEstoque=records.filter(r=>!expCoils.has(r.coil));
+    const expCoils=movSet(expedicoes);
+    const emEstoque=records.filter(r=>!temMov(expCoils,r));
     const saldoEstoque=emEstoque.length;
     const saldoPesoEst=emEstoque.reduce((a,r)=>a+(parseFloat(r.pesob)||0),0);
     const se=document.getElementById('e-s-saldo');
@@ -7085,7 +7233,7 @@ async function _trfExecutar(){
   try{
     await supaUpsertBulk('coilsdb', novas, 'coil,navio,bl', 200,
       (feitas, total) => showLoading('Transferindo ' + feitas + ' de ' + total + '...'));
-    novas.forEach(n => { if(!coilsDB.some(c => c.coil === n.coil)) coilsDB.push(n); });
+    novas.forEach(n => { if(!coilsDB.some(c => c.coil === n.coil && _blN(c.bl) === _blN(n.bl))) coilsDB.push(n); });
     saveData();
     _bobIdx = null; _bobIdxTam = -1;          // o índice da leitura por foto envelheceu
     buildDBNavSelect();
@@ -7118,8 +7266,8 @@ function _dbTemFiltro(f){
 
 function _dbGetFiltered(){
   const f=_dbFiltrosDB();
-  const desc=new Set(records.map(r=>r.coil));
-  const exp =new Set(expedicoes.map(r=>r.coil));
+  const desc=movSet(records);
+  const exp =movSet(expedicoes);
   return coilsDB.filter(c=>{
     if(f.q && ![c.coil,c.bl,c.cliente,c.navio,c.produto,c.armazem,c.viagem]
         .some(x=>x && String(x).toLowerCase().includes(f.q))) return false;
@@ -7128,7 +7276,7 @@ function _dbGetFiltered(){
     if(f.cliente && c.cliente !== f.cliente) return false;
     if(f.armazem && c.armazem !== f.armazem) return false;
     if(f.status){
-      const d=desc.has(c.coil), e=exp.has(c.coil);
+      const d=temMov(desc,c), e=temMov(exp,c);
       if(f.status==='pendente' && d) return false;
       if(f.status==='estoque'  && (!d || e)) return false;
       if(f.status==='expedida' && !e) return false;
@@ -7155,13 +7303,13 @@ function renderCoilsGrouped(){
   const start=(dbPage-1)*dbPageSize;
   const slice=list.slice(start,start+dbPageSize);
 
-  const discharged=new Set(records.map(r=>r.coil));
-  const expedited =new Set(expedicoes.map(r=>r.coil));
+  const discharged=movSet(records);
+  const expedited =movSet(expedicoes);
 
   const rows=slice.map(c=>{
     const idx=coilsDB.indexOf(c);
-    const isDesc=discharged.has(c.coil);
-    const isExp =expedited.has(c.coil);
+    const isDesc=temMov(discharged,c);
+    const isExp =temMov(expedited,c);
     const rowOp=(isDesc||isExp)?'opacity:.55':'';
     const badges=[
       isDesc?`<span style="margin-left:5px;font-size:10px;background:rgba(34,197,94,.15);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;border:1px solid rgba(34,197,94,.3);">✓ DESC.</span>`:'',
@@ -7264,14 +7412,18 @@ async function saveCoilDB(){
   const chaveAnt = editCoilKey || {coil, navio:entry.navio||'', bl:entry.bl||''};
   const mudouNumero = chaveAnt.coil !== coil;
   const mudouChave  = mudouNumero || chaveAnt.navio !== (entry.navio||'') || chaveAnt.bl !== (entry.bl||'');
+  // Coil duplicado (mesmo número em outro BL): só as movimentações DESTE BL são dela.
+  const dupAnt   = coilDuplicado(chaveAnt.coil);
+  const daBobina = r => r.coil===chaveAnt.coil && (!dupAnt || _blN(r.bl)===_blN(chaveAnt.bl));
+  const filtroBL = dupAnt ? `&bl=eq.${encodeURIComponent(chaveAnt.bl)}` : '';
 
   // Renumerar a bobina desliga as descargas e expedições dela, que apontam para o
   // número antigo. Avisa e renomeia junto, senão a bobina aparece como nunca
   // descarregada e some do faturamento.
   let movs = 0;
   if(mudouNumero){
-    movs = records.filter(r=>r.coil===chaveAnt.coil).length
-         + expedicoes.filter(r=>r.coil===chaveAnt.coil).length;
+    movs = records.filter(daBobina).length
+         + expedicoes.filter(daBobina).length;
     if(movs && !confirm(
         `A bobina ${chaveAnt.coil} tem ${movs} movimentação(ões) registrada(s).\n\n`+
         `Renumerar para ${coil} vai atualizar também esses registros de descarga e `+
@@ -7281,7 +7433,7 @@ async function saveCoilDB(){
   }
 
   if(editCoilIdx!==null){ coilsDB[editCoilIdx]=entry; }
-  else { const ex=coilsDB.findIndex(c=>c.coil===coil); if(ex>=0) coilsDB[ex]=entry; else coilsDB.unshift(entry); }
+  else { const ex=coilsDB.findIndex(c=>c.coil===coil&&(c.navio||'')===(entry.navio||'')&&_blN(c.bl)===_blN(entry.bl)); if(ex>=0) coilsDB[ex]=entry; else coilsDB.unshift(entry); }
   editCoilIdx=null; document.getElementById('db-edit-badge').style.display='none';
 
   // Descongelar pesos do BL para que o faturamento recalcule com o novo peso
@@ -7307,13 +7459,13 @@ async function saveCoilDB(){
     if(mudouNumero && movs){
       const novo = JSON.stringify({coil});
       await Promise.all([
-        supa(`records?coil=eq.${encodeURIComponent(chaveAnt.coil)}`,
+        supa(`records?coil=eq.${encodeURIComponent(chaveAnt.coil)}${filtroBL}`,
           {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:novo}),
-        supa(`expedicoes?coil=eq.${encodeURIComponent(chaveAnt.coil)}`,
+        supa(`expedicoes?coil=eq.${encodeURIComponent(chaveAnt.coil)}${filtroBL}`,
           {method:'PATCH', headers:{'Prefer':'return=minimal'}, body:novo})
       ]);
-      records.forEach(r=>{ if(r.coil===chaveAnt.coil) r.coil=coil; });
-      expedicoes.forEach(r=>{ if(r.coil===chaveAnt.coil) r.coil=coil; });
+      records.forEach(r=>{ if(daBobina(r)) r.coil=coil; });
+      expedicoes.forEach(r=>{ if(daBobina(r)) r.coil=coil; });
     }
 
     try{ registrarAudit('edicao',
@@ -7455,13 +7607,17 @@ async function confirmDelete(){
       clearSelMov(px);
     }
     else if(deleteType==='coil'){
+      const alvo = coilsDB[deleteTarget.idx];
       coilsDB.splice(deleteTarget.idx,1);
-      await api({ action:'deleteCoil', coil: deleteTarget.coil });
+      // Coil duplicado: apaga só a linha deste BL, a outra fica
+      await api(alvo && alvo.coil===deleteTarget.coil
+        ? { action:'deleteCoil', coil: alvo.coil, navio: alvo.navio||'', bl: alvo.bl||'' }
+        : { action:'deleteCoil', coil: deleteTarget.coil });
     }
     else if(deleteType==='coils-sel'){
-      const coilNames=deleteTarget.map(i=>coilsDB[i]?.coil).filter(Boolean);
+      const keys=deleteTarget.map(i=>coilsDB[i]).filter(Boolean).map(c=>({coil:c.coil, navio:c.navio||'', bl:c.bl||''}));
       [...deleteTarget].sort((a,b)=>b-a).forEach(i=>coilsDB.splice(i,1));
-      await apiPost({ action:'deleteCoilsMultiple', coils: coilNames });
+      await apiPost({ action:'deleteCoilsMultiple', keys });
     }
     else if(deleteType==='navio-all'){
       coilsDB=coilsDB.filter(c=>c.navio!==deleteTarget);
@@ -7755,9 +7911,9 @@ function handleXLSFile(file){
       document.getElementById('import-preview').style.display='';
       document.getElementById('import-mode-row').style.display='';
       document.getElementById('btn-confirm-import').style.display='';
-      const dups=importRows.filter(r=>coilsDB.find(c=>c.coil===r.coil)).length;
+      _impRenderDup();
       document.getElementById('import-preview-title').textContent=`✓ ${importRows.length} bobinas — ${file.name}`;
-      if(dups>0){ document.getElementById('import-warn').style.display=''; document.getElementById('import-warn').textContent=`⚠ ${dups} bobina(s) já existem no banco.`; }
+
       const hd=['COIL','ARMAZÉM','BL','CLIENTE','NAVIO','VIAGEM','PRODUTO','P.BRUTO','P.LÍQUIDO'];
       document.getElementById('import-thead').innerHTML='<tr>'+hd.map(h=>`<th style="padding:.5rem .75rem;background:var(--bg);font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap">${h}</th>`).join('')+'</tr>';
       document.getElementById('import-tbody').innerHTML=importRows.slice(0,8).map((r,i)=>`<tr style="${i%2===0?'background:var(--surface2)':''}"><td style="padding:.4rem .75rem;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent)">${r.coil}</td><td style="padding:.4rem .75rem;font-size:12px">${r.armazem||'—'}</td><td style="padding:.4rem .75rem;font-size:11px;color:var(--muted)">${r.bl||'—'}</td><td style="padding:.4rem .75rem;font-size:12px">${r.cliente||'—'}</td><td style="padding:.4rem .75rem;font-size:12px">${r.navio||'—'}</td><td style="padding:.4rem .75rem;font-size:11px;color:var(--muted)">${r.viagem||'—'}</td><td style="padding:.4rem .75rem;font-size:12px">${r.produto||'—'}</td><td style="padding:.4rem .75rem;font-size:12px;font-weight:700">${r.pesob||'—'}</td><td style="padding:.4rem .75rem;font-size:12px;font-weight:700">${r.pesol||'—'}</td></tr>`).join('')+(importRows.length>8?`<tr><td colspan="9" style="padding:.5rem;text-align:center;color:var(--muted);font-size:12px">... e mais ${importRows.length-8} bobinas</td></tr>`:'');
@@ -7765,17 +7921,93 @@ function handleXLSFile(file){
   };
   reader.readAsArrayBuffer(file);
 }
+// ── Importação × Coil Number duplicado ───────────────────────────────
+// Linha da planilha cujo Coil Number já existe no banco com OUTRO BL/navio
+// (erro de etiquetagem na origem). No modo MESCLAR ela entraria como bobina
+// nova ao lado da existente; o operador decide se quer isso. Também conta a
+// linha que repete, na própria planilha, um coil já visto com outro BL.
+// Mesmo coil+navio+BL do banco não é duplicada: é atualização.
+const _impKey = r => (r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'');
+function _impModo(){ return document.querySelector('input[name="imp-mode"]:checked')?.value || 'merge'; }
+function _impDuplicadas(mode){
+  const exatas = new Set(coilsDB.map(_impKey));
+  const vistos = new Map();                       // coil -> 1ª chave na planilha
+  const res = [];
+  importRows.forEach((r,i)=>{
+    const k = _impKey(r);
+    const noBanco = (mode==='merge' && !exatas.has(k)) ? coilsDB.filter(c=>c.coil===r.coil) : [];
+    const prim = vistos.get(r.coil);
+    if(prim===undefined) vistos.set(r.coil, k);
+    const naPlanilha = prim!==undefined && prim!==k;
+    if(noBanco.length || naPlanilha) res.push({ i, row:r, noBanco, naPlanilha });
+  });
+  return res;
+}
+function _impRenderDup(){
+  const box  = document.getElementById('import-dup');
+  const warn = document.getElementById('import-warn');
+  if(!box || !importRows.length) return;
+  const mode = _impModo();
+  const exatas = new Set(coilsDB.map(_impKey));
+  const atualiza = mode==='merge' ? importRows.filter(r=>exatas.has(_impKey(r))).length : 0;
+  if(atualiza){ warn.style.display=''; warn.textContent=`ℹ ${atualiza} bobina(s) já existem no banco com o mesmo Coil + Navio + BL — serão atualizadas.`; }
+  else warn.style.display='none';
+
+  const dups = _impDuplicadas(mode);
+  if(!dups.length){ box.style.display='none'; box.innerHTML=''; return; }
+  const escolhaAnt = document.querySelector('input[name="imp-dup"]:checked')?.value || '';
+  const td = 'padding:.3rem .5rem;border-bottom:1px solid var(--border);font-size:11px;';
+  const linhas = dups.slice(0,10).map(d=>{
+    const ja = d.noBanco.length
+      ? d.noBanco.map(c=>`${_esc(c.bl||'—')} · ${_esc(c.cliente||'—')}`).join('<br>')
+      : '<i>repetida na planilha</i>';
+    return `<tr><td style="${td}font-family:'JetBrains Mono',monospace;color:var(--accent);font-weight:700;">${_esc(d.row.coil)}</td>
+      <td style="${td}">${_esc(d.row.bl||'—')} · ${_esc(d.row.cliente||'—')}</td>
+      <td style="${td}color:var(--muted);">${ja}</td></tr>`;
+  }).join('');
+  box.style.display='';
+  box.innerHTML = `
+    <div style="font-size:14px;font-weight:700;color:var(--danger);margin-bottom:.35rem;">⚠ ${dups.length} bobina(s) com COIL NUMBER DUPLICADO</div>
+    <div style="margin-bottom:.5rem;color:var(--muted);">O número já existe ${mode==='merge'?'no banco':'na planilha'} com outro BL / cliente.
+      Se importar, cada uma fica como bobina separada pelo BL, e na descarga e na expedição o sistema pede para escolher o cliente conferindo o peso.</div>
+    <div style="overflow-x:auto;max-height:180px;border:1px solid var(--border);border-radius:6px;margin-bottom:.6rem;">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead><tr><th style="${td}text-align:left;color:var(--muted);">COIL</th><th style="${td}text-align:left;color:var(--muted);">NA PLANILHA (BL · CLIENTE)</th><th style="${td}text-align:left;color:var(--muted);">JÁ EXISTE (BL · CLIENTE)</th></tr></thead>
+        <tbody>${linhas}${dups.length>10?`<tr><td colspan="3" style="${td}text-align:center;color:var(--muted);">... e mais ${dups.length-10}</td></tr>`:''}</tbody>
+      </table>
+    </div>
+    <div style="font-weight:700;margin-bottom:.35rem;">Deseja importar as bobinas duplicadas?</div>
+    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:13px;font-weight:600;margin-bottom:.3rem;"><input type="radio" name="imp-dup" value="importar" ${escolhaAnt==='importar'?'checked':''} style="accent-color:var(--accent);width:16px;height:16px;"> SIM, importar as ${dups.length} duplicada(s)</label>
+    <label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;font-size:13px;font-weight:600;"><input type="radio" name="imp-dup" value="pular" ${escolhaAnt==='pular'?'checked':''} style="accent-color:var(--accent);width:16px;height:16px;"> NÃO, importar só as outras ${importRows.length-dups.length}</label>`;
+}
+
 async function confirmImport(){
   if(!importRows.length) return;
   const mode = document.querySelector('input[name="imp-mode"]:checked').value;
+  // Coil duplicado: a escolha é obrigatória — nada entra sem o operador decidir.
+  const dupsImp = _impDuplicadas(mode);
+  let linhas = importRows;
+  if(dupsImp.length){
+    const esc = document.querySelector('input[name="imp-dup"]:checked')?.value;
+    if(!esc){
+      showToast(`⚠ Há ${dupsImp.length} bobina(s) com Coil Number duplicado — escolha se deseja importá-las.`,'#e05c1a','#fff');
+      document.getElementById('import-dup')?.scrollIntoView({behavior:'smooth', block:'center'});
+      return;
+    }
+    if(esc==='pular'){
+      const fora = new Set(dupsImp.map(d=>d.i));
+      linhas = importRows.filter((_,i)=>!fora.has(i));
+      if(!linhas.length){ showToast('Nada a importar: todas as bobinas são duplicadas.','#f59e0b','#000'); return; }
+    }
+  }
   closeModal('modal-import');
-  showLoading(`Preparando importação de ${importRows.length} bobinas...`);
+  showLoading(`Preparando importação de ${linhas.length} bobinas...`);
   try {
     // Chave de unicidade: coil + navio + bl
     // Mesmo coil number em navio ou BL diferente = bobina diferente
     const dupeMap = {};
     const deduped = Object.values(
-      importRows.reduce((map, row) => {
+      linhas.reduce((map, row) => {
         const key = (row.coil||'') + '|' + (row.navio||'') + '|' + (row.bl||'');
         if(map[key]){
           // Registra qual foi descartado para exibir ao usuário
@@ -7786,7 +8018,7 @@ async function confirmImport(){
         return map;
       }, {})
     );
-    const dupes = importRows.length - deduped.length;
+    const dupes = linhas.length - deduped.length;
     if(dupes > 0){
       const dupeList = Object.entries(dupeMap)
         .map(([k,v]) => v.join(' / '))
@@ -7854,13 +8086,13 @@ async function confirmImport(){
     blsAfetados.forEach(bl=>descongelarPesosBL(bl));
     hideLoading();
     buildDBNavSelect(); renderCoilsGrouped(); refreshHome();
-    showToast(`✓ ${deduped.length} bobinas importadas com sucesso!`, '#22c55e', '#000');
+    showToast(`✓ ${deduped.length} bobinas importadas com sucesso!${importRows.length>linhas.length?` · ${importRows.length-linhas.length} duplicada(s) não importada(s)`:""}`, '#22c55e', '#000');
   } catch(err){
     hideLoading();
     showToast('⚠ Erro na importação: '+err.message, '#e05c1a', '#fff');
   }
 }
-function resetImport(){ importRows=[]; const dz=document.getElementById('drop-zone'); dz.style.display=''; dz.style.borderColor='var(--border)'; dz.style.background=''; ['import-preview','import-mode-row','import-warn'].forEach(id=>document.getElementById(id).style.display='none'); document.getElementById('btn-confirm-import').style.display='none'; document.getElementById('xls-input').value=''; }
+function resetImport(){ importRows=[]; const dz=document.getElementById('drop-zone'); dz.style.display=''; dz.style.borderColor='var(--border)'; dz.style.background=''; ['import-preview','import-mode-row','import-warn','import-dup'].forEach(id=>document.getElementById(id).style.display='none'); document.getElementById('btn-confirm-import').style.display='none'; document.getElementById('xls-input').value=''; }
 
 // ══════════════════════════════════════════
 // IMPORTAR MOVIMENTAÇÕES (descarga/expedição)
@@ -8217,8 +8449,8 @@ function _rptMatch(val, selected){ return !selected.length || selected.includes(
 
 // Bobinas do filtDB que ainda não têm registro de descarga (saldo "a descarregar")
 function getPendingDischarge(filtDB, sPro, qs){
-  const recSet=new Set(records.map(r=>r.coil));
-  let pend=filtDB.filter(c=>!recSet.has(c.coil));
+  const recSet=movSet(records);
+  let pend=filtDB.filter(c=>!temMov(recSet,c));
   if(sPro && sPro.length) pend=pend.filter(c=>sPro.includes(c.produto||''));
   if(qs) pend=pend.filter(c=>[c.coil,c.bl,c.navio,c.cliente,c.produto,c.armazem].some(f=>f&&f.toLowerCase().includes(qs)));
   return pend;
@@ -9593,8 +9825,8 @@ function _mapaDados(){
   const d = { fa:v('map-filter-armazem'), fb:v('map-filter-bl'), fn:v('map-filter-navio'),
               fq:v('map-search-coil').trim().toUpperCase() };
   d.temFiltro = !!(d.fa || d.fb || d.fn || d.fq);
-  d.descSet = new Set(records.map(r=>r.coil));
-  d.expSet  = new Set(expedicoes.map(r=>r.coil));
+  d.descSet = movSet(records);
+  d.expSet  = movSet(expedicoes);
   d.byArm = {};
   if(!d.temFiltro) return d;
 
@@ -9664,18 +9896,18 @@ function renderMapa(){
           const [bl, nPilha] = chavePilha.split(_TK_SEP);
           const pilhasDoBL = Object.keys(blGroups).filter(k=>k.split(_TK_SEP)[0]===bl).length;
           const total   = pile.length;
-          const expCount= pile.filter(c=>expSet.has(c.coil)).length;
-          const descCount= pile.filter(c=>descSet.has(c.coil)).length;
-          const pendDesc = pile.filter(c=>!descSet.has(c.coil)).length;
+          const expCount= pile.filter(c=>temMov(expSet,c)).length;
+          const descCount= pile.filter(c=>temMov(descSet,c)).length;
+          const pendDesc = pile.filter(c=>!temMov(descSet,c)).length;
           const cliente  = pile[0]?.cliente||'';
           const navio    = pile[0]?.navio||'';
-          const totalPB  = pile.filter(c=>descSet.has(c.coil)&&!expSet.has(c.coil)).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
+          const totalPB  = pile.filter(c=>temMov(descSet,c)&&!temMov(expSet,c)).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
 
           // Render bricks from TOP (last discharged) to BOTTOM
           // Index 0 = bottom = first discharged = last to leave
           const bricks = [...pile].reverse().map((c,pos)=>{
-            const isExp   = expSet.has(c.coil);
-            const isDesc  = descSet.has(c.coil);
+            const isExp   = temMov(expSet,c);
+            const isDesc  = temMov(descSet,c);
             const isTop   = pos===0;
             const isEditing = mapInlineEditCoil === c.coil;
             const isHighlight = fq && c.coil.toUpperCase().includes(fq);
@@ -9820,7 +10052,7 @@ function _mapaLinhas(d){
     Object.entries(bls).forEach(([chave, pile])=>{
       const [bl, nPilha] = chave.split(_TK_SEP);
       [...pile].reverse().forEach((c, i)=>out.push({ arm, bl, pilha:nPilha, pos:i+1, c,
-        status: d.expSet.has(c.coil) ? 'EXPEDIDA' : d.descSet.has(c.coil) ? 'EM ESTOQUE' : 'PENDENTE DESC.' }));
+        status: temMov(d.expSet,c) ? 'EXPEDIDA' : temMov(d.descSet,c) ? 'EM ESTOQUE' : 'PENDENTE DESC.' }));
     });
   });
   return out;
@@ -10031,10 +10263,10 @@ function abrirDividirPilha(bl, arm, pilha){
   pilha = pilha || '1';
   // Só as bobinas desta pilha (mesmo armazém, mesmo BL, mesma pilha). As já
   // expedidas não entram: elas não estão mais no armazém.
-  const expSet = new Set(expedicoes.map(r=>r.coil));
-  const descSet = new Set(records.map(r=>r.coil));
+  const expSet = movSet(expedicoes);
+  const descSet = movSet(records);
   const lista = coilsDB.filter(c => (c.bl||'')===(bl||'') && _mapaNormArm(c.armazem)===alvo
-    && _mapaPilha(c)===pilha && !expSet.has(c.coil));
+    && _mapaPilha(c)===pilha && !temMov(expSet,c));
   if(!lista.length){ showToast('Esta pilha não tem bobinas em armazém para dividir.','#f59e0b','#000'); return; }
   _splitPilha = { bl, arm:alvo, pilha };
 
@@ -10049,7 +10281,7 @@ function abrirDividirPilha(bl, arm, pilha){
   }
 
   document.getElementById('split-coil-list').innerHTML = lista.map(c=>{
-    const naDesc = descSet.has(c.coil);
+    const naDesc = temMov(descSet,c);
     const cor = naDesc ? 'var(--success)' : 'var(--accent)';
     return `<label style="display:flex;align-items:center;gap:.6rem;padding:.3rem 0;cursor:pointer;">
       <input type="checkbox" value="${_esc(c.coil)}" data-navio="${_esc(c.navio||'')}" data-bl="${_esc(c.bl||'')}"
@@ -10200,7 +10432,7 @@ function getDataFimDescarga(bl){
   const dtCG    = temCG ? _fatCgDataFimDescarga(bl) : null;   // null se ainda incompleta
   if(!bobinas.length) return dtCG;                            // BL só de Carga Geral
   // Todos os coils deste BL precisam estar descarregados
-  const descarregados = bobinas.map(c=>records.find(r=>r.coil===c.coil)).filter(Boolean);
+  const descarregados = bobinas.map(c=>achaMov(records,c)).filter(Boolean);
   if(descarregados.length < bobinas.length) return null; // descarga incompleta
   if(temCG && !dtCG) return null;                        // carga geral do BL ainda incompleta
   // Data mais recente = data em que o BL completou a descarga
@@ -10689,7 +10921,7 @@ function calcPeriodosBL(bl, periodoDias){
     // SEMPRE recalcula o peso a partir do coilsDB atual
     // Assim qualquer alteração de peso no banco reflete imediatamente no faturamento
     const pesoBobinas=bobinas.reduce((acc,c)=>{
-      const rec=records.find(r=>r.coil===c.coil);
+      const rec=achaMov(records,c);
       if(!rec||rec.data>iniStr) return acc; // não descarregada ainda neste período
       const exp=expedicoes.find(e=>e.coil===c.coil);
       if(exp&&exp.data<iniStr) return acc; // já expedida antes da cobrança
@@ -10710,8 +10942,8 @@ function calcPeriodosBL(bl, periodoDias){
     });
   }
 
-  const descCoils=bobinas.filter(c=>records.find(r=>r.coil===c.coil)).length;
-  const expCoils =bobinas.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+  const descCoils=bobinas.filter(c=>achaMov(records,c)).length;
+  const expCoils =bobinas.filter(c=>achaMov(expedicoes,c)).length;
   const cg=_fatCgResumo(bl);
   return { periodos, descCoils, expCoils, emEstoque:descCoils-expCoils, totalCoils:bobinas.length, cg };
 }
@@ -10817,8 +11049,8 @@ function renderFaturamento(){
     const produto=dbCoils[0]?.produto||cgIt?.produto||'—';
     const cliInfo=getClienteInfo(cliente);
     const totalCoils=dbCoils.length;
-    const descCoils=dbCoils.filter(c=>records.find(r=>r.coil===c.coil)).length;
-    const expCoils =dbCoils.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+    const descCoils=dbCoils.filter(c=>achaMov(records,c)).length;
+    const expCoils =dbCoils.filter(c=>achaMov(expedicoes,c)).length;
     // Carga Geral do mesmo BL: quantidades em vez de bobinas
     const cgR=_fatCgResumo(bl);
     const emEstoque=(descCoils-expCoils)+cgR.emEstoque;
@@ -10863,7 +11095,7 @@ function renderFaturamento(){
       periodos.forEach(p=>{
         const state=getFatState(bl,p.num);
         const handlingTarifa=p.num===1?(getHandlingBL(bl)||0):0;
-        const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||parseFloat(records.find(r=>r.coil===c.coil)?.pesob)||0),0)/1000;
+        const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||parseFloat(achaMov(records,c)?.pesob)||0),0)/1000;
         const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
         const ton=p.pesoBruto/1000;
         const valor=tarifaBL>0?ton*tarifaBL:null;
@@ -11136,7 +11368,7 @@ function emitirFatura(bl, periodoNum){
   const fatNum=`FAT-${bl.replace(/[^A-Z0-9]/gi,'').substring(0,8).toUpperCase()}-${String(periodoNum).padStart(2,'0')}`;
 
   const bobinasNoPeriodo=dbCoils.filter(c=>{
-    const rec=records.find(r=>r.coil===c.coil);
+    const rec=achaMov(records,c);
     if(!rec||rec.data>p.dataIni) return false;
     const exp=expedicoes.find(e=>e.coil===c.coil);
     return !(exp&&exp.data<p.dataIni);
@@ -11454,8 +11686,8 @@ function _getFatBLsFiltrados(){
   if(fq) bls=bls.filter(bl=>bl.includes(fq));
   if(fs) bls=bls.filter(bl=>{
     const dbC=_fatBobinasBL(bl);
-    const desc=dbC.filter(c=>records.find(r=>r.coil===c.coil)).length;
-    const exp=dbC.filter(c=>expedicoes.find(r=>r.coil===c.coil)).length;
+    const desc=dbC.filter(c=>achaMov(records,c)).length;
+    const exp=dbC.filter(c=>achaMov(expedicoes,c)).length;
     const cgR=_fatCgResumo(bl);
     const incompleta=(desc<dbC.length)||cgR.incompleta;
     const estoque=(desc-exp)+cgR.emEstoque;
@@ -17397,8 +17629,8 @@ function loadFollowupHistory(){
 
 // ── Data ─────────────────────────────────────────────────────
 function _fuCalcEstoque(cfg){
-  const expSet = new Set(expedicoes.map(e=>e.coil));
-  let stock = records.filter(r=>!expSet.has(r.coil));
+  const expSet = movSet(expedicoes);
+  let stock = records.filter(r=>!temMov(expSet,r));
   const f = cfg.filtros||{};
   if(f.navios   && f.navios.length)   stock=stock.filter(r=>f.navios.includes(r.navio));
   if(f.clientes && f.clientes.length) stock=stock.filter(r=>f.clientes.includes(r.cliente));
@@ -17406,8 +17638,8 @@ function _fuCalcEstoque(cfg){
   return stock;
 }
 function _fuCalcPendentes(cfg){
-  const recSet = new Set(records.map(r=>r.coil));
-  let pend = coilsDB.filter(c=>!recSet.has(c.coil));
+  const recSet = movSet(records);
+  let pend = coilsDB.filter(c=>!temMov(recSet,c));
   const f = cfg.filtros||{};
   if(f.navios   && f.navios.length)   pend=pend.filter(c=>f.navios.includes(c.navio));
   if(f.clientes && f.clientes.length) pend=pend.filter(c=>f.clientes.includes(c.cliente));
