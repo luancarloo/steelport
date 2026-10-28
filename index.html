@@ -628,7 +628,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.12 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.13 · Acesso restrito</div>
   </div>
 </div>
 
@@ -2253,10 +2253,33 @@ function movSet(list){
 }
 // x = bobina do banco ou movimentação (precisa de coil e bl)
 function temMov(set, x){ return coilDuplicado(x.coil) ? set.has(coilBlKey(x.coil, x.bl)) : set.has(x.coil); }
+// Indice de movimentacoes por bobina, montado uma vez por lista e reaproveitado.
+// Cada achaMov era um list.find: no faturamento isso virava uma varredura de
+// records E de expedicoes por bobina E por periodo (18 s para abrir a tela com
+// 198 BLs). A chave e a mesma que o find usava - numero da bobina, ou numero+BL
+// quando o coil aparece em mais de um BL - e guarda a PRIMEIRA ocorrencia,
+// exatamente o que o find devolvia.
+let _movIdxCache = new WeakMap();
+function _movIndice(list){
+  const c = _movIdxCache.get(list);
+  if(c && c.tam === list.length) return c.mapa;
+  const mapa = new Map();
+  for(const r of list){
+    if(!r || !r.coil) continue;
+    if(!mapa.has(r.coil)) mapa.set(r.coil, r);
+    const k = coilBlKey(r.coil, r.bl);
+    if(!mapa.has(k)) mapa.set(k, r);
+  }
+  _movIdxCache.set(list, { tam: list.length, mapa });
+  return mapa;
+}
+// Chamar quando uma linha de records/expedicoes for SUBSTITUIDA por outro objeto
+// sem mudar o tamanho da lista. Editar campos do mesmo objeto nao precisa: o
+// indice guarda a referencia, nao uma copia.
+function _movIdxInvalida(){ _movIdxCache = new WeakMap(); }
 function achaMov(list, x){
-  return coilDuplicado(x.coil)
-    ? list.find(r => r.coil === x.coil && _blN(r.bl) === _blN(x.bl))
-    : list.find(r => r.coil === x.coil);
+  const mapa = _movIndice(list);
+  return coilDuplicado(x.coil) ? mapa.get(coilBlKey(x.coil, x.bl)) : mapa.get(x.coil);
 }
 
 let deleteTarget=null, deleteType='', editCoilIdx=null, importRows=[];
@@ -2487,8 +2510,12 @@ async function supaInsert(table, rows){
 
 // INSERT sequencial — um registro por vez para suportar mesmo coil em navios diferentes
 // (evita conflito de PK quando múltiplos registros com mesmo coil chegam no mesmo batch)
+// Devolve as linhas que NÃO ficaram gravadas no servidor: [{row, msg}].
+// Antes a falha era engolida — o PATCH de reserva não achava linha nenhuma,
+// respondia 204 e a bobina ficava só na memória local, parecendo importada.
 async function supaInsertBulk(table, rows, batchSize=1, onProgress){
-  if(!rows.length) return;
+  const falhas = [];
+  if(!rows.length) return falhas;
   let done=0;
   for(const row of rows){
     try{
@@ -2500,14 +2527,19 @@ async function supaInsertBulk(table, rows, batchSize=1, onProgress){
       const bl=encodeURIComponent(row.bl||'');
       try{
         const {registradoPor,_dbFound,_autoFilled,...safe}=row;
-        await supa(`${table}?coil=eq.${coil}&navio=eq.${navio}&bl=eq.${bl}`,{
-          method:'PATCH', headers:{'Prefer':'return=minimal'}, body:JSON.stringify(safe)
+        const afetadas = await supa(`${table}?coil=eq.${coil}&navio=eq.${navio}&bl=eq.${bl}`,{
+          method:'PATCH', headers:{'Prefer':'return=representation'}, body:JSON.stringify(safe)
         });
-      }catch(e2){ console.warn(`[import] falhou coil=${row.coil} navio=${row.navio}:`, e2.message); }
+        if(!afetadas || !afetadas.length) falhas.push({row, msg:e.message});
+      }catch(e2){
+        console.warn(`[import] falhou coil=${row.coil} navio=${row.navio}:`, e2.message);
+        falhas.push({row, msg:e.message});
+      }
     }
     done++;
     if(onProgress) onProgress(done, rows.length);
   }
+  return falhas;
 }
 
 async function supaDelete(table, filter){
@@ -3394,6 +3426,7 @@ async function sincronizarDescargaComBD(){
     updated.editadoPor = editor;
 
     records[idx] = updated;
+    _movIdxInvalida();   // a linha trocou de objeto: o indice por bobina tem de ser refeito
 
     showLoading(`Sincronizando ${i+1}/${toSync.length}...`);
 
@@ -8031,12 +8064,13 @@ async function confirmImport(){
       );
     }
 
+    let falhas = [];   // linhas que o servidor recusou
     if(mode === 'replace'){
       showLoading('Limpando banco anterior...');
       await supaDelete('coilsdb', 'coil=neq.___none___');
       coilsDB = [];
       // INSERT puro após limpar tudo
-      await supaInsertBulk('coilsdb', deduped, 200, (done, total)=>{
+      falhas = await supaInsertBulk('coilsdb', deduped, 200, (done, total)=>{
         showLoading(`Importando bobinas: ${done}/${total} (${Math.round(done/total*100)}%)...`);
       });
     } else {
@@ -8067,26 +8101,42 @@ async function confirmImport(){
 
       // INSERT para novos registros (coil+navio+bl ainda não existe)
       if(toNew.length){
-        await supaInsertBulk('coilsdb', toNew, 200, (d,t)=>{
+        falhas = await supaInsertBulk('coilsdb', toNew, 200, (d,t)=>{
           showLoading(`Inserindo novos: ${done+d}/${total} (${Math.round((done+d)/total*100)}%)...`);
         });
       }
     }
 
-    // Atualiza memória local com chave coil+navio+bl
+    // Atualiza memória local com chave coil+navio+bl — só o que o servidor aceitou
     const lKey = r => (r.coil||'')+'|'+(r.navio||'')+'|'+(r.bl||'');
-    deduped.forEach(row=>{
+    const naoGravadas = new Set(falhas.map(f=>lKey(f.row)));
+    const gravadas = deduped.filter(r=>!naoGravadas.has(lKey(r)));
+    gravadas.forEach(row=>{
       const idx = coilsDB.findIndex(c=>lKey(c)===lKey(row));
       if(idx>=0) coilsDB[idx]=row; else coilsDB.push(row);
     });
-    if(mode==='replace') coilsDB=[...deduped];
+    if(mode==='replace') coilsDB=[...gravadas];
 
     // Descongelar pesos de todos os BLs afetados para que o faturamento recalcule
-    const blsAfetados=[...new Set(deduped.map(r=>r.bl).filter(Boolean))];
+    const blsAfetados=[...new Set(gravadas.map(r=>r.bl).filter(Boolean))];
     blsAfetados.forEach(bl=>descongelarPesosBL(bl));
     hideLoading();
     buildDBNavSelect(); renderCoilsGrouped(); refreshHome();
-    showToast(`✓ ${deduped.length} bobinas importadas com sucesso!${importRows.length>linhas.length?` · ${importRows.length-linhas.length} duplicada(s) não importada(s)`:""}`, '#22c55e', '#000');
+    if(falhas.length){
+      const indice = falhas.some(f=>/coil_navio_idx|unique|duplicate key/i.test(f.msg||''));
+      console.warn('[import] não gravadas no servidor:', falhas);
+      alert(`⚠ ${falhas.length} de ${deduped.length} bobina(s) NÃO foram gravadas no Supabase.\n\n`
+        + (indice
+          ? 'O banco ainda tem uma regra que permite um só Coil Number por navio, e ela bloqueia o Coil duplicado em outro BL. '
+            + 'Rode no SQL Editor do Supabase:\n\n'
+            + 'alter table coilsdb drop constraint if exists coilsdb_coil_navio_idx;\n'
+            + 'drop index if exists coilsdb_coil_navio_idx;\n\n'
+            + 'e importe a planilha de novo.'
+          : 'Erro do servidor: '+(falhas[0].msg||'desconhecido'))
+        + `\n\nPrimeiras: ${falhas.slice(0,5).map(f=>f.row.coil+' ('+(f.row.bl||'—')+')').join(', ')}${falhas.length>5?' ...':''}`);
+    }
+    showToast(`${falhas.length?'⚠':'✓'} ${gravadas.length} bobinas importadas${falhas.length?` · ${falhas.length} NÃO gravada(s)`:' com sucesso!'}${importRows.length>linhas.length?` · ${importRows.length-linhas.length} duplicada(s) não importada(s)`:""}`,
+      falhas.length?'#e05c1a':'#22c55e', falhas.length?'#fff':'#000');
   } catch(err){
     hideLoading();
     showToast('⚠ Erro na importação: '+err.message, '#e05c1a', '#fff');
@@ -9129,7 +9179,8 @@ function renderReport(){
       const tarifaBL=getTarifaBL(bl,tarifaGlobal);
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
-        const vArm=tarifaBL>0?ton*tarifaBL:0;
+        const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+        const vArm=tarPer>0?ton*tarPer:0;
         // Handling cobra só o que está fora do PORTO — a mesma regra da tela de
         // Faturamento. Somar o BL inteiro conta a bobina transferida duas vezes:
         // a original que ficou no Porto e a cópia com P que foi para a Pratico.
@@ -9180,14 +9231,15 @@ function renderReport(){
         if(fatStatus && statusPeriodo!==fatStatus) return;
         const nf    =state.nf||'';
         const ton   =p.pesoBruto/1000;
-        const vArm  =tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+        const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+        const vArm  =tarPer>0?parseFloat((ton*tarPer).toFixed(2)):0;
         const vHand =p.num===1&&hTarifa>0?parseFloat((hTarifa*hTon).toFixed(2)):0;
         const pIni  =p.dataIni.split('-').reverse().join('/');
         const pFim  =p.dataFim.split('-').reverse().join('/');
         const fmtR  =v=>'R$ '+v.toFixed(2).replace('.',',');
         const statusLabel=state.enviado?'✓ Enviado':p.encerrado?'⚠ Pendente':'◌ Em Aberto';
         // Linha Armazenagem
-        groupRows.push([dataEntradaFmt,TRANSP,CNPJ,navio,bl,nf||'—',vArm>0?fmtR(vArm):'—',pIni,pFim,fmtKg(p.pesoBruto),tarifaBL>0?fmtR(tarifaBL):'—','ARMAZENAGEM',statusLabel]);
+        groupRows.push([dataEntradaFmt,TRANSP,CNPJ,navio,bl,nf||'—',vArm>0?fmtR(vArm):'—',pIni,pFim,fmtKg(p.pesoBruto),tarPer>0?fmtR(tarPer):'—','ARMAZENAGEM',statusLabel]);
         // Linha Handling (apenas 1º período e se configurado)
         if(vHand>0){
           groupRows.push([dataEntradaFmt,TRANSP,CNPJ,navio,bl,nf||'—',fmtR(vHand),pIni,pFim,fmtKg(hPeso),fmtR(hTarifa),'HANDLING',statusLabel]);
@@ -9478,10 +9530,11 @@ async function exportReportXLSX(){
         const statusLabel=state.enviado?'Enviado':p.encerrado?'Pendente':'Em Aberto';
         const nf   =state.nf||'';
         const ton  =p.pesoBruto/1000;
-        const vArm =tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+        const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+        const vArm =tarPer>0?parseFloat((ton*tarPer).toFixed(2)):0;
         const vHand=p.num===1&&hTarifa>0?parseFloat((hTarifa*hTon).toFixed(2)):0;
         // Linha Armazenagem
-        dataRows.push([dataEntrada,TRANSP,CNPJ,navio,bl,nf,vArm,p.dataIni,p.dataFim,p.pesoBruto,tarifaBL,'ARMAZENAGEM',statusLabel]);
+        dataRows.push([dataEntrada,TRANSP,CNPJ,navio,bl,nf,vArm,p.dataIni,p.dataFim,p.pesoBruto,tarPer,'ARMAZENAGEM',statusLabel]);
         // Linha Handling (somente 1º período)
         if(vHand>0){
           dataRows.push([dataEntrada,TRANSP,CNPJ,navio,bl,nf,vHand,p.dataIni,p.dataFim,hPeso,hTarifa,'HANDLING',statusLabel]);
@@ -9520,7 +9573,8 @@ async function exportReportXLSX(){
       const tarifaBL=getTarifaBL(bl,tarifaGlobal);
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
-        const vArm=tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+        const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+        const vArm=tarPer>0?parseFloat((ton*tarPer).toFixed(2)):0;
         // Handling cobra só o que está fora do PORTO — a mesma regra da tela de
         // Faturamento. Somar o BL inteiro conta a bobina transferida duas vezes:
         // a original que ficou no Porto e a cópia com P que foi para a Pratico.
@@ -9533,7 +9587,7 @@ async function exportReportXLSX(){
           p.dataIni.split('-').reverse().join('/'),
           p.dataIni.split('-').reverse().join('/')+' → '+p.dataFim.split('-').reverse().join('/'),
           p.pesoBruto, parseFloat(ton.toFixed(3)),
-          tarifaBL||0, vArm||0, vHand||0, total||0,
+          tarPer||0, vArm||0, vHand||0, total||0,
           state.enviado?'ENVIADO':p.encerrado?'PENDENTE':'EM ABERTO',
           state.nf||'', state.dataEnvio||'', state.usuario||''
         ]);
@@ -9609,7 +9663,8 @@ function exportReportPDF(){
       const tarifaBL=getTarifaBL(bl,tarifaGlobal);
       fat.periodos.forEach(p=>{
         const ton=p.pesoBruto/1000;
-        const vArm=tarifaBL>0?ton*tarifaBL:0;
+        const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+        const vArm=tarPer>0?ton*tarPer:0;
         // Handling cobra só o que está fora do PORTO — a mesma regra da tela de
         // Faturamento. Somar o BL inteiro conta a bobina transferida duas vezes:
         // a original que ficou no Porto e a cópia com P que foi para a Pratico.
@@ -10617,6 +10672,57 @@ function descongelarPesosBL(bl){
 }
 function setTarifaBL(bl, v){ _fatSet(getTarifaKey(bl), String(v)); fatConfigSet('tarifa_bl_'+bl, String(v)); }
 
+// -- Tarifa de armazenagem de UM período --------------
+// A tarifa do BL é o padrão. Quando um período foi acertado por outro valor, ele
+// ganha a sua própria tarifa e só ela vale ali — tela, fatura, relatórios e
+// exportações leem todos por getTarifaPeriodo.
+function getTarifaPerKey(bl,num){ return `sp_fat_tarifa_per_${bl}_${num}`; }
+function temTarifaPeriodo(bl,num){
+  const v=_fatGet(getTarifaPerKey(bl,num));
+  return v!==null && v!=='' && !isNaN(parseFloat(v));
+}
+function getTarifaPeriodo(bl,num,tarifaBL){
+  return temTarifaPeriodo(bl,num) ? parseFloat(_fatGet(getTarifaPerKey(bl,num))) : tarifaBL;
+}
+function setTarifaPeriodo(bl,num,v){
+  _fatSet(getTarifaPerKey(bl,num), String(v));
+  fatConfigSet(`tarifa_per_${bl}_${num}`, String(v));
+}
+function limparTarifaPeriodo(bl,num){
+  _fatRemove(getTarifaPerKey(bl,num));
+  const chave=`tarifa_per_${bl}_${num}`;
+  if(SUPA_URL&&SUPA_KEY)
+    supa(`fat_config?chave=eq.${encodeURIComponent(chave)}`,
+      {method:'DELETE',headers:{'Prefer':'return=minimal'}}).catch(()=>{});
+}
+function editTarifaPeriodo(bl,num){
+  const tarGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
+  const doBL=getTarifaBL(bl,tarGlobal)||0;
+  const propria=temTarifaPeriodo(bl,num);
+  const atual=getTarifaPeriodo(bl,num,doBL)||0;
+  const _f=v=>v>0?v.toFixed(2).replace('.',','):'não definida';
+  const input=prompt(
+    `Tarifa de Armazenagem — BL ${bl} · ${num}º período\n\n`+
+    `Agora: R$ ${_f(atual)} /t  (${propria?'valor próprio deste período':'tarifa do BL'})\n`+
+    `Tarifa do BL: R$ ${_f(doBL)} /t\n\n`+
+    `Informe a tarifa só deste período (R$/t).\n`+
+    `Deixe em branco para voltar à tarifa do BL:`,
+    propria?atual.toFixed(2).replace('.',','):'');
+  if(input===null) return;
+  if(!input.trim()){
+    if(!propria) return;
+    limparTarifaPeriodo(bl,num);
+    renderFaturamento();
+    showToast(`✓ ${num}º período voltou à tarifa do BL.`,'#22c55e','#000');
+    return;
+  }
+  const v=parseFloat(input.replace(',','.'));
+  if(isNaN(v)||v<0){ showToast('⚠ Valor inválido.','#e05c1a','#fff'); return; }
+  setTarifaPeriodo(bl,num,v);
+  renderFaturamento();
+  showToast(`✓ ${num}º período do BL ${bl}: R$ ${v.toFixed(2).replace('.',',')} /t`,'#22c55e','#000');
+}
+
 function editTarifaBL(bl){
   const tarGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
   const atual=getTarifaBL(bl, tarGlobal);
@@ -10899,6 +11005,18 @@ function calcPeriodosBL(bl, periodoDias){
   if(!dataFimDesc) return null;
 
   const bobinas=_fatBobinasBL(bl);
+  // Data de descarga, data de saída e peso de cada bobina, UMA vez — antes isso
+  // era refeito a cada período, e cada consulta varria records e expedicoes
+  // inteiras. O peso do coilsDB continua tendo prioridade sobre o da descarga.
+  const expIdx=_movIndice(expedicoes);
+  const baseBobinas=[];
+  for(const c of bobinas){
+    const rec=achaMov(records,c);
+    if(!rec) continue;                       // não descarregada: não entra em período algum
+    const exp=expIdx.get(c.coil);            // mesma regra de antes: casa só pelo número
+    baseBobinas.push({ desc:rec.data, exp:exp?exp.data:null,
+                       peso:(parseFloat(c.pesob)||parseFloat(rec.pesob)||0) });
+  }
   const inicio=new Date(dataFimDesc+'T00:00:00');
   const hojeStr=hojeLocal();   // era UTC: depois das 21:00 abria um período um dia antes
   const periodos=[];
@@ -10920,15 +11038,12 @@ function calcPeriodosBL(bl, periodoDias){
 
     // SEMPRE recalcula o peso a partir do coilsDB atual
     // Assim qualquer alteração de peso no banco reflete imediatamente no faturamento
-    const pesoBobinas=bobinas.reduce((acc,c)=>{
-      const rec=achaMov(records,c);
-      if(!rec||rec.data>iniStr) return acc; // não descarregada ainda neste período
-      const exp=expedicoes.find(e=>e.coil===c.coil);
-      if(exp&&exp.data<iniStr) return acc; // já expedida antes da cobrança
-      // coilsDB.pesob tem prioridade — é a fonte de verdade atualizada
-      const peso=parseFloat(c.pesob)||parseFloat(rec.pesob)||0;
-      return acc+peso;
-    },0);
+    let pesoBobinas=0;
+    for(const b of baseBobinas){
+      if(b.desc>iniStr) continue;          // não descarregada ainda neste período
+      if(b.exp&&b.exp<iniStr) continue;    // já expedida antes da cobrança
+      pesoBobinas+=b.peso;
+    }
 
     // Carga Geral do mesmo BL entra pelo mesmo critério (estoque no 1º dia do período)
     const pesoBruto = pesoBobinas + _fatCgPesoNoDia(bl, iniStr);
@@ -11092,13 +11207,30 @@ function renderFaturamento(){
     } else if(!periodos.length){
       periodsHTML=`<tr><td colspan="8" style="padding:.75rem;text-align:center;color:var(--muted);font-size:12px;">Toda a carga expedida — sem armazenagem ativa.</td></tr>`;
     } else {
-      periodos.forEach(p=>{
+      // Só os 3 últimos períodos ficam à vista. Os anteriores são montados
+      // escondidos e aparecem no botão VER TODOS, sem recalcular nada.
+      const blId=bl.replace(/[^a-z0-9]/gi,'_');
+      const aberto=_fatAbertos.has(blId);
+      const nOcultos=Math.max(0, periodos.length-FAT_PER_VISIVEIS);
+      if(nOcultos){
+        const pendOcultos=periodos.slice(0,nOcultos).filter(p=>!getFatState(bl,p.num).enviado).length;
+        periodsHTML+=`<tr style="background:var(--bg);">
+          <td colspan="7" style="padding:.45rem .75rem;border-bottom:1px solid var(--border);">
+            <button id="fat-vm-${blId}" class="btn btn-secondary btn-sm" data-abrir="${aberto?0:1}"
+              onclick="fatVerPeriodos('${blId}',this)" style="font-size:11px;">${aberto?'⌃ MOSTRAR SÓ OS '+FAT_PER_VISIVEIS+' ÚLTIMOS':'⌄ VER TODOS OS '+periodos.length+' PERÍODOS'}</button>
+            <span style="font-size:11px;color:var(--muted);margin-left:.6rem;font-family:'JetBrains Mono',monospace;">${nOcultos} período(s) anterior(es)${pendOcultos?` · <span style="color:var(--danger);font-weight:700;">${pendOcultos} vencido(s)</span>`:' · todos faturados'}</span>
+          </td></tr>`;
+      }
+      periodos.forEach((p,iPer)=>{
+        const oculta=iPer<nOcultos && !aberto;
         const state=getFatState(bl,p.num);
         const handlingTarifa=p.num===1?(getHandlingBL(bl)||0):0;
         const tonelagemTotalBL=dbCoils.reduce((acc,c)=>acc+(parseFloat(c.pesob)||parseFloat(achaMov(records,c)?.pesob)||0),0)/1000;
         const handlingVal=p.num===1?handlingTarifa*tonelagemTotalBL:0;
         const ton=p.pesoBruto/1000;
-        const valor=tarifaBL>0?ton*tarifaBL:null;
+        const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);   // tarifa só deste período, se houver
+        const propria=temTarifaPeriodo(bl,p.num);
+        const valor=tarPer>0?ton*tarPer:null;
         const dtIni=p.dataIni.split('-').reverse().join('/');
         const dtFim=p.dataFim.split('-').reverse().join('/');
         let statusPer='', rowBg='';
@@ -11138,11 +11270,21 @@ function renderFaturamento(){
             ${state.enviado&&state.nf&&state.nf!=='—'?`<div style="font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--info);background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:3px;padding:1px 5px;white-space:nowrap;">NF: <strong>${_esc(state.nf)}</strong></div>`:''}
             ${state.enviado&&state.dataEnvio?`<div style="font-size:9px;color:var(--muted);">${_esc(state.dataEnvio)}${state.usuario?' · '+_esc(state.usuario):''}</div>`:''}
           </div>`;
-        periodsHTML+=`<tr style="${rowBg}">
+        const tarifaCell=`
+          <div style="display:flex;align-items:center;gap:.3rem;margin-top:3px;">
+            <span style="font-size:10px;color:var(--muted);font-family:'JetBrains Mono',monospace;">R$/t:</span>
+            <span title="${propria?'Tarifa própria deste período':'Tarifa do BL'}"
+              style="font-size:11px;font-weight:700;font-family:'JetBrains Mono',monospace;color:${propria?'var(--accent)':'var(--muted)'};padding:1px 4px;background:var(--surface2);border:1px solid ${propria?'rgba(240,165,0,.4)':'var(--border)'};border-radius:4px;">${tarPer>0?tarPer.toFixed(2).replace('.',','):'—'}${propria?' *':''}</span>
+            <button onclick="editTarifaPeriodo('${bl}',${p.num})" title="Editar a tarifa de armazenagem só deste período"
+              style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;color:var(--muted);font-size:10px;padding:1px 4px;line-height:1;"
+              onmouseover="this.style.color='var(--accent)';this.style.borderColor='var(--accent)'"
+              onmouseout="this.style.color='var(--muted)';this.style.borderColor='var(--border)'">✏</button>
+          </div>`;
+        periodsHTML+=`<tr class="fat-per-${blId}" style="${oculta?'display:none;':''}${rowBg}">
           <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;">${p.num}º PERÍODO${lockBadge}</td>
           <td style="padding:.5rem .75rem;font-size:12px;white-space:nowrap;"><strong style="color:var(--info);">${dtIni}</strong> → ${dtFim}</td>
           <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;">${fmtKg(p.pesoBruto)} kg<br><span style="font-size:10px;color:var(--muted);">${(p.pesoBruto/1000).toFixed(3)} t${handlingHtml}</span></td>
-          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+R$ ${handlingVal.toFixed(2).replace('.',',')} hdl</span>`:''}${totalPeriodo>(valor||0)?`<br><span style="font-size:11px;font-weight:900;color:var(--text);">= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}</td>
+          <td style="padding:.5rem .75rem;font-size:12px;font-weight:700;color:var(--success);">${valor!=null?'R$ '+valor.toFixed(2).replace('.',','):'—'}${p.num===1&&handlingVal>0?`<br><span style="font-size:10px;color:#60a5fa;">+R$ ${handlingVal.toFixed(2).replace('.',',')} hdl</span>`:''}${totalPeriodo>(valor||0)?`<br><span style="font-size:11px;font-weight:900;color:var(--text);">= R$ ${totalPeriodo.toFixed(2).replace('.',',')}</span>`:''}${tarifaCell}</td>
           <td style="padding:.5rem .75rem;">${statusPer}</td>
           <td style="padding:.5rem .75rem;">${enviadoCell}</td>
           <td style="padding:.5rem .75rem;">${state.enviado
@@ -11271,6 +11413,21 @@ function renderFaturamento(){
   }
 }
 
+// Períodos à vista por BL. O resto fica montado e escondido: BLs antigos chegam
+// a 17 períodos e a tela ficava comprida demais para achar o que importa (o fim).
+const FAT_PER_VISIVEIS=3;
+const _fatAbertos=new Set();   // BLs com todos os períodos à vista (mantido entre renders)
+function fatVerPeriodos(blId, btn){
+  const linhas=[...document.querySelectorAll('tr.fat-per-'+blId)];
+  const abrir=btn.dataset.abrir==='1';
+  linhas.slice(0, Math.max(0, linhas.length-FAT_PER_VISIVEIS))
+        .forEach(tr=>{ tr.style.display = abrir ? '' : 'none'; });
+  btn.dataset.abrir = abrir ? '0' : '1';
+  btn.textContent = abrir ? ('⌃ MOSTRAR SÓ OS '+FAT_PER_VISIVEIS+' ÚLTIMOS')
+                          : ('⌄ VER TODOS OS '+linhas.length+' PERÍODOS');
+  if(abrir) _fatAbertos.add(blId); else _fatAbertos.delete(blId);
+}
+
 function fatGoPage(p){ fatPage=Math.max(1,p); renderFaturamento(); }
 function fatSetPageSize(n){ fatPageSize=n; fatPage=1; renderFaturamento(); }
 
@@ -11337,7 +11494,8 @@ function desmarcarEnviado(bl, num){
 
 function emitirFatura(bl, periodoNum){
   const tarifa    =parseFloat(document.getElementById('fat-tarifa')?.value||0);
-  const tarifaBL  =getTarifaBL(bl,tarifa);
+  // A fatura é de UM período: vale a tarifa dele, que por padrão é a do BL.
+  const tarifaBL  =getTarifaPeriodo(bl, periodoNum, getTarifaBL(bl,tarifa));
   const periodoDias=parseInt(document.getElementById('fat-periodo-dias')?.value||15);
   const fat=calcPeriodosBL(bl,periodoDias);
   if(!fat||!fat.periodos.length) return;
@@ -11730,7 +11888,8 @@ function exportFaturamentoXLSX(){
     const cliInfo=getClienteInfo(dbCoils[0]?.cliente||'');
     fat.periodos.forEach(p=>{
       const ton=p.pesoBruto/1000;
-      const vArm=tarifaBL>0?parseFloat((ton*tarifaBL).toFixed(2)):0;
+      const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+      const vArm=tarPer>0?parseFloat((ton*tarPer).toFixed(2)):0;
       const hTarifa=p.num===1?(getHandlingBL(bl)||0):0;
       const vHand=p.num===1?parseFloat((hTarifa*tonelagemTotalBL).toFixed(2)):0;
       const total=parseFloat((vArm+vHand).toFixed(2));
@@ -11741,7 +11900,7 @@ function exportFaturamentoXLSX(){
         p.num, p.dataIni.split('-').reverse().join('/'),
         p.dataIni.split('-').reverse().join('/')+' → '+p.dataFim.split('-').reverse().join('/'),
         p.pesoBruto, parseFloat(ton.toFixed(3)),
-        tarifaBL||0, vArm||0,
+        tarPer||0, vArm||0,
         hTarifa||0, parseFloat(tonelagemTotalBL.toFixed(3)), vHand||0, total||0,
         state.enviado?'ENVIADO':p.encerrado?'PENDENTE':'EM ABERTO',
         state.nf||'', state.dataEnvio||'', state.usuario||''
@@ -11779,7 +11938,8 @@ function exportFaturamentoPDF(){
     const tonelagemTotalBL=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;
     fat.periodos.forEach(p=>{
       const ton=p.pesoBruto/1000;
-      const vArm=tarifaBL>0?ton*tarifaBL:0;
+      const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+      const vArm=tarPer>0?ton*tarPer:0;
       const hTarifa=p.num===1?(getHandlingBL(bl)||0):0;
       const vHand=p.num===1?hTarifa*tonelagemTotalBL:0;
       const total=vArm+vHand;
@@ -11885,6 +12045,7 @@ function applyFatConfig(rows){
   // Tarifas por BL (sp_fat_tarifa_bl_XXXXX)
   Object.entries(map).forEach(([k,v])=>{
     if(k.startsWith('tarifa_bl_')) _fatSet('sp_fat_'+k, v);
+    if(k.startsWith('tarifa_per_')) _fatSet('sp_fat_'+k, v);   // tarifa de um período só
     if(k.startsWith('handling_'))  _fatSet('sp_fat_'+k, v);
     if(k.startsWith('state_'))     _fatSet('sp_fat_'+k, v);
     if(k.startsWith('peso_'))      _fatSet('sp_fat_'+k, v);
@@ -11948,6 +12109,7 @@ async function fatConfigSync(){
   const pushDyn=(key,v)=>{
     if(!v||_seen.has(key)) return;
     if(key.startsWith('sp_fat_tarifa_bl_')||key.startsWith('sp_fat_handling_')||
+       key.startsWith('sp_fat_tarifa_per_')||
        key.startsWith('sp_fat_state_')||key.startsWith('sp_fat_peso_')){
       _seen.add(key); push(key.replace('sp_fat_',''), v);
     }
@@ -12192,7 +12354,8 @@ function renderDashFat(){
     fat.periodos.forEach(p=>{
       const state=getFatState(bl,p.num);
       const ton=p.pesoBruto/1000;
-      const vArm=tarifaBL>0?ton*tarifaBL:0;
+      const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
+      const vArm=tarPer>0?ton*tarPer:0;
       const hTar=p.num===1?(getHandlingBL(bl)||0):0;
       const vHand=p.num===1?hTar*tonelagemTotal:0;
       const total=vArm+vHand;
