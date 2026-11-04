@@ -668,7 +668,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.18 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.20 · Acesso restrito</div>
   </div>
 </div>
 
@@ -10180,44 +10180,89 @@ function exportReportPDF(){
 // MAPEAMENTO DE ARMAZÉM
 // ══════════════════════════════════════════
 
+// Filtros do mapa, em cascata: cada lista mostra só o que existe depois dos
+// OUTROS filtros — escolhido o navio, o BL só oferece os BLs daquele navio, o
+// cliente só os clientes que aparecem neles, e assim por diante. O que já está
+// escolhido nunca some da lista, senão o filtro se desfazia sozinho.
+const _MAP_FILTROS = [
+  { id:'map-filter-armazem', rot:'Todos os armazéns', val:c=>_mapaNormArm(c.armazem) },
+  { id:'map-filter-navio',   rot:'Todos os navios',   val:c=>String(c.navio||'').trim() },
+  { id:'map-filter-bl',      rot:'Todos os BLs',      val:c=>String(c.bl||'').trim() },
+  { id:'map-filter-cliente', rot:'Todos os clientes', val:c=>String(c.cliente||'').trim() },
+  { id:'map-filter-produto', rot:'Todos os produtos', val:c=>String(c.produto||'').trim() },
+  { id:'map-filter-pilha',   rot:'Todas as pilhas',   val:c=>_mapaPilha(c), rotulo:v=>'PILHA '+v }
+];
+
+function _mapFiltroVal(id){ return document.getElementById(id)?.value || ''; }
+function _mapVerExp() { return !!document.getElementById('map-ver-exp')?.checked; }
+function _mapVerPend(){ return !!document.getElementById('map-ver-pend')?.checked; }
+
+// O que o mapa mostra: por padrão só o que está no armazém.
+function _mapaVisivel(c, descSet, expSet, verExp, verPend){
+  if(temMov(expSet, c))   return verExp;
+  if(!temMov(descSet, c)) return verPend;
+  return true;
+}
+
+// Bobinas de um conjunto que passam pelos filtros — `ignorar` deixa um de fora,
+// que é como cada lista descobre as opções que ainda fazem sentido.
+function _mapFiltraPool(pool, ignorar){
+  const ativos = _MAP_FILTROS
+    .map(f=>({ f, v:_mapFiltroVal(f.id) }))
+    .filter(x=>x.v && x.f.id !== ignorar);
+  if(!ativos.length) return pool.slice();
+  return pool.filter(c=>ativos.every(x=>x.f.val(c) === x.v));
+}
+function _mapCoilsFiltradas(ignorar){ return _mapFiltraPool(coilsDB, ignorar); }
+
+// Só bobinas que ainda estão no armazém (ou expedidas/a descarregar, se as
+// caixas estiverem marcadas). É o que alimenta as listas de filtro: não faz
+// sentido oferecer um BL ou um navio que já saiu inteiro.
+function _mapaPoolVisivel(){
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const verExp = _mapVerExp(), verPend = _mapVerPend();
+  return coilsDB.filter(c=>_mapaVisivel(c, descSet, expSet, verExp, verPend));
+}
+
+function mapTemFiltro(){
+  return _MAP_FILTROS.some(f=>!!_mapFiltroVal(f.id))
+      || !!(document.getElementById('map-search-coil')?.value||'').trim();
+}
+
 function buildMapFilters(){
-  const normArm = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .toUpperCase().replace(/[-_]/g,' ').replace(/\s+/g,' ').trim();
-  // Use normalized names (deduped) for the dropdown
-  const armsRaw = coilsDB.map(c=>c.armazem).filter(Boolean);
-  const armsNorm = [...new Set(armsRaw.map(normArm))].sort();
-  const bls   = [...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
-  const navs  = [...new Set(coilsDB.map(c=>c.navio).filter(Boolean))].sort();
-
-  const aEl=document.getElementById('map-filter-armazem');
-  const bEl=document.getElementById('map-filter-bl');
-  const nEl=document.getElementById('map-filter-navio');
-  if(!aEl) return;
-
-  const cur = {a:aEl.value, b:bEl.value, n:nEl.value};
-  aEl.innerHTML='<option value="">Todos os armazéns</option>'+armsNorm.map(v=>`<option value="${v}">${v}</option>`).join('');
-  nEl.innerHTML='<option value="">Todos os navios</option>'+navs.map(v=>`<option value="${v}">${v}</option>`).join('');
-  aEl.value=cur.a; nEl.value=cur.n;
-  // BL dropdown: only BLs of the selected navio (or all if no navio)
-  _updateMapBLSelect(cur.b);
+  const pool = _mapaPoolVisivel();
+  _MAP_FILTROS.forEach(f=>{
+    const el = document.getElementById(f.id);
+    if(!el) return;
+    const cur = el.value;
+    // o que já está escolhido continua na lista mesmo sem estoque, senão o
+    // filtro se desfazia sozinho quando a última bobina era expedida
+    const vals = [...new Set(_mapFiltraPool(pool, f.id).map(f.val).filter(Boolean))];
+    if(cur && !vals.includes(cur)) vals.push(cur);
+    vals.sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}));
+    const sig = vals.join('|');
+    if(el.dataset.sig === sig && el.value === cur) return;
+    el.innerHTML = `<option value="">${_esc(f.rot)}</option>`
+      + vals.map(v=>`<option value="${_esc(v)}">${_esc(f.rotulo?f.rotulo(v):v)}</option>`).join('');
+    el.value = cur;
+    el.dataset.sig = sig;
+  });
 }
 
-function _updateMapBLSelect(keepBl){
-  const bEl = document.getElementById('map-filter-bl');
-  const fn  = document.getElementById('map-filter-navio')?.value||'';
-  if(!bEl) return;
-  const bls = [...new Set(coilsDB.filter(c=>!fn||c.navio===fn).map(c=>c.bl).filter(Boolean))].sort();
-  bEl.innerHTML='<option value="">Todos os BLs</option>'+bls.map(v=>`<option value="${v}">${v}</option>`).join('');
-  // Keep selection only if still valid
-  if(keepBl && bls.includes(keepBl)) bEl.value=keepBl;
-  else bEl.value='';
-}
-
-function onMapNavioChange(){
-  mapInlineEditCoil=null;
-  _updateMapBLSelect('');
+function onMapFiltroChange(){
+  mapInlineEditCoil = null;
+  buildMapFilters();
   renderMapa();
 }
+
+function limparFiltrosMapa(){
+  _MAP_FILTROS.forEach(f=>{ const el=document.getElementById(f.id); if(el){ el.value=''; el.dataset.sig=''; } });
+  const b=document.getElementById('map-search-coil'); if(b) b.value='';
+  onMapFiltroChange();
+}
+
+// compatibilidade com o nome antigo
+function onMapNavioChange(){ onMapFiltroChange(); }
 
 // ── Dados do mapa ────────────────────────────────────────────────
 // A tela e os arquivos (PDF/Excel) usam esta mesma função: o arquivo sai
@@ -10240,17 +10285,15 @@ function _mapaNormArm(s){
 function _mapaDados(){
   const v = id => document.getElementById(id)?.value || '';
   const d = { fa:v('map-filter-armazem'), fb:v('map-filter-bl'), fn:v('map-filter-navio'),
+              fc:v('map-filter-cliente'), fp:v('map-filter-produto'), fpi:v('map-filter-pilha'),
               fq:v('map-search-coil').trim().toUpperCase() };
-  d.temFiltro = !!(d.fa || d.fb || d.fn || d.fq);
+  d.temFiltro = mapTemFiltro();
   d.descSet = movSet(records);
   d.expSet  = movSet(expedicoes);
   d.byArm = {};
   if(!d.temFiltro) return d;
 
-  const fa = _mapaNormArm(d.fa);
-  const base = coilsDB.filter(c=>
-    (!d.fa || _mapaNormArm(c.armazem)===fa) && (!d.fb || c.bl===d.fb) && (!d.fn || c.navio===d.fn)
-  );
+  const base = _mapCoilsFiltradas();
   // armazém → (BL + pilha). Um mesmo BL pode ocupar mais de uma pilha no mesmo
   // armazém: quando a pilha enche e ainda há saldo, parte vai para a pilha 2, 3…
   base.forEach(c=>{
@@ -10283,11 +10326,7 @@ function _mapaDados(){
         pesoEstoque: pile.filter(c=>temMov(d.descSet,c)&&!temMov(d.expSet,c))
                          .reduce((a,c)=>a+(parseFloat(c.pesob)||0),0) };
       // O mapa é a pilha de verdade: por padrão, só o que está no armazém.
-      const vis = pile.filter(c=>{
-        if(temMov(d.expSet,c))   return verExp;
-        if(!temMov(d.descSet,c)) return verPend;
-        return true;
-      });
+      const vis = pile.filter(c=>_mapaVisivel(c, d.descSet, d.expSet, verExp, verPend));
       d.ocultas += pile.length - vis.length;
       if(vis.length) bls[ch] = vis; else delete bls[ch];
     });
@@ -10613,7 +10652,8 @@ function _avisoTabelaMapa(){
 // O operador escolhe a pilha, toca em INICIAR e vai lendo (câmera) ou digitando
 // as bobinas DO TOPO PARA O PISO. Cada leitura é gravada na hora: se a descarga
 // ainda não acabou, ele para, e ao voltar continua de onde estava.
-let mapSessao = null;   // { arm, bl, pilha, lidas:[], porCima, base }
+let mapSessao = null;          // { arm, bl, pilha, lidas:[], porCima }
+let _mapSessaoEstoque = [];    // bobinas no pátio, para os selects da janela
 
 function _mapaPilhaCoils(arm, bl, pilha){
   const alvo = _mapaNormArm(arm);
@@ -10628,7 +10668,10 @@ function _mapaEmEstoque(c, descSet, expSet){
 
 function mapSessaoAbrir(){
   if(mapSessao){ mapSessaoRender(); return; }
-  const arms = [...new Set(coilsDB.map(c=>_mapaNormArm(c.armazem)).filter(Boolean))].sort();
+  // Só armazéns/BLs com bobina no pátio: mapear o que já saiu não faz sentido.
+  const descSet0 = movSet(records), expSet0 = movSet(expedicoes);
+  _mapSessaoEstoque = coilsDB.filter(c=>_mapaEmEstoque(c, descSet0, expSet0));
+  const arms = [...new Set(_mapSessaoEstoque.map(c=>_mapaNormArm(c.armazem)).filter(Boolean))].sort();
   const armAtual = _mapaNormArm(document.getElementById('map-filter-armazem')?.value||'');
   const blAtual  = document.getElementById('map-filter-bl')?.value||'';
   const el = document.createElement('div');
@@ -10672,7 +10715,7 @@ function mapSessaoAbrir(){
 function mapSessaoFormBL(blPref){
   const arm = document.getElementById('ms-arm')?.value||'';
   const alvo = _mapaNormArm(arm);
-  const bls = [...new Set(coilsDB.filter(c=>!arm || _mapaNormArm(c.armazem)===alvo)
+  const bls = [...new Set((_mapSessaoEstoque||[]).filter(c=>!arm || _mapaNormArm(c.armazem)===alvo)
     .map(c=>c.bl||'').filter(Boolean))].sort();
   const sel = document.getElementById('ms-bl');
   if(!sel) return;
@@ -10686,7 +10729,11 @@ function mapSessaoFormPilha(){
   const bl  = document.getElementById('ms-bl')?.value||'';
   const sel = document.getElementById('ms-pilha');
   if(!sel) return;
-  const pilhas = (arm && bl) ? _mapaPilhasDoBL(bl, arm) : [];
+  const alvoArm = _mapaNormArm(arm);
+  const pilhas = (arm && bl)
+    ? [...new Set((_mapSessaoEstoque||[]).filter(c=>(c.bl||'')===bl && _mapaNormArm(c.armazem)===alvoArm)
+        .map(_mapaPilha))].sort((a,b)=>a.localeCompare(b,'pt-BR',{numeric:true}))
+    : [];
   sel.innerHTML = (pilhas.length?pilhas:['1']).map(p=>`<option value="${_esc(p)}">PILHA ${_esc(p)}</option>`).join('');
   mapSessaoFormResumo();
 }
@@ -10950,8 +10997,9 @@ function _mapaLinhas(d){
   return out;
 }
 function _mapaFiltroTxt(d){
-  return [d.fa && 'Armazém: '+d.fa, d.fn && 'Navio: '+d.fn, d.fb && 'BL: '+d.fb, d.fq && 'Bobina: '+d.fq]
-    .filter(Boolean).join(' · ');
+  return [d.fa && 'Armazém: '+d.fa, d.fn && 'Navio: '+d.fn, d.fb && 'BL: '+d.fb,
+          d.fc && 'Cliente: '+d.fc, d.fp && 'Produto: '+d.fp, d.fpi && 'Pilha: '+d.fpi,
+          d.fq && 'Bobina: '+d.fq].filter(Boolean).join(' · ');
 }
 function _mapaParaExportar(){
   const d = _mapaDados();
@@ -19591,23 +19639,30 @@ alter table users add column if not exists email text;
       <input type="text" id="map-search-coil" placeholder="⌕  Buscar bobina..." oninput="mapInlineEditCoil=null;renderMapa()"
         style="flex:1;min-width:180px;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:15px;font-family:'Barlow Condensed',sans-serif;outline:none;text-transform:uppercase;"
         onkeyup="this.value=this.value.toUpperCase()">
-      <select id="map-filter-armazem" onchange="mapInlineEditCoil=null;renderMapa()"
-        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
+      <select id="map-filter-armazem" onchange="onMapFiltroChange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:210px;">
         <option value="">Todos os armazéns</option>
       </select>
-      <select id="map-filter-bl" onchange="mapInlineEditCoil=null;renderMapa()"
-        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
-        <option value="">Todos os BLs</option>
-      </select>
-      <select id="map-filter-navio" onchange="onMapNavioChange()"
-        style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
+      <select id="map-filter-navio" onchange="onMapFiltroChange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:210px;">
         <option value="">Todos os navios</option>
       </select>
+      <select id="map-filter-bl" onchange="onMapFiltroChange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:210px;">
+        <option value="">Todos os BLs</option>
+      </select>
+      <select id="map-filter-cliente" onchange="onMapFiltroChange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:210px;">
+        <option value="">Todos os clientes</option>
+      </select>
+      <select id="map-filter-produto" onchange="onMapFiltroChange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:210px;">
+        <option value="">Todos os produtos</option>
+      </select>
+      <select id="map-filter-pilha" onchange="onMapFiltroChange()" style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;max-width:210px;">
+        <option value="">Todas as pilhas</option>
+      </select>
+      <button class="btn btn-secondary btn-sm" onclick="limparFiltrosMapa()">✕ LIMPAR</button>
       <label style="display:flex;align-items:center;gap:.4rem;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;" title="O mapa mostra a pilha de verdade: por padrão, só o que está em estoque">
-        <input type="checkbox" id="map-ver-exp" onchange="mapInlineEditCoil=null;renderMapa()" style="cursor:pointer;"> expedidas
+        <input type="checkbox" id="map-ver-exp" onchange="onMapFiltroChange()" style="cursor:pointer;"> expedidas
       </label>
       <label style="display:flex;align-items:center;gap:.4rem;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;" title="Bobinas do BL que ainda não foram descarregadas">
-        <input type="checkbox" id="map-ver-pend" onchange="mapInlineEditCoil=null;renderMapa()" style="cursor:pointer;"> a descarregar
+        <input type="checkbox" id="map-ver-pend" onchange="onMapFiltroChange()" style="cursor:pointer;"> a descarregar
       </label>
       <button class="btn btn-secondary btn-sm" onclick="exportMapaPDF()">↓ MAPA PDF</button>
       <button class="btn btn-secondary btn-sm" onclick="exportMapaExcel()">↓ MAPA EXCEL</button>
