@@ -58,6 +58,7 @@ header{background:var(--surface);border-bottom:2px solid var(--accent);padding:e
 .logo-sub{font-size:11px;color:var(--muted);letter-spacing:2px;font-family:'JetBrains Mono',monospace;}
 .header-nav{display:flex;align-items:center;gap:1rem;}
 .btn-home{background:transparent;border:1px solid var(--border);color:var(--muted);padding:.4rem 1rem;border-radius:6px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;cursor:pointer;transition:all .2s;}
+#btn-theme{font-size:16px;padding:.4rem .75rem;}
 .btn-home:hover{border-color:var(--accent);color:var(--accent);}
 .badge-live{display:flex;align-items:center;gap:6px;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--success);}
 .dot-live{width:8px;height:8px;background:var(--success);border-radius:50%;animation:pulse 2s infinite;}
@@ -364,8 +365,17 @@ input[type=checkbox]{width:16px;height:16px;accent-color:var(--accent);cursor:po
 /* REPORT MODULE */
 .rpt-section{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:1.5rem;margin-bottom:1.5rem;}
 .rpt-section-title{font-size:13px;font-weight:700;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:1.2rem;padding-bottom:.75rem;border-bottom:1px solid var(--border);}
-.rpt-filters{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.2rem;}
-.rpt-filters select,.rpt-filters input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:6px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;}
+/* O número de colunas mora AQUI, não no atributo style do elemento: style
+   vence folha de estilo, e era por isso que no celular os filtros continuavam
+   em quatro colunas espremidas e a tela escapava para o lado. */
+.rpt-filters{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem;margin-bottom:1.2rem;}
+/* Sem isto a opção mais larga de um <select> (um BL, um produto) estica a
+   coluna e estoura a grade inteira. */
+.rpt-filters>div{min-width:0;}
+.rpt-filters select,.rpt-filters input{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:6px;font-size:16px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;max-width:100%;}
+.rpt-filters select[multiple]{height:auto;min-height:60px;}
+.rpt-lbl{font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;}
+.so-toque{display:none;}
 .rpt-filters select:focus,.rpt-filters input:focus{border-color:var(--accent);}
 .rpt-btns{display:flex;gap:.75rem;flex-wrap:wrap;}
 .rpt-preview{margin-top:1.2rem;overflow-x:auto;max-height:340px;border:1px solid var(--border);border-radius:8px;}
@@ -564,6 +574,24 @@ body{
   /* Atalho de teclado não existe no celular; a lupa continua. */
   .so-desktop{display:none;}
 
+  /* O cabeçalho não cabe em uma linha num celular: os dez itens somavam 806 px
+     numa tela de 375 e empurravam a PÁGINA INTEIRA para o lado — qualquer
+     módulo parecia estar estourando a tela. Fica o essencial. Relógio e horário
+     do último sync saem (o aparelho já mostra a hora), o selo de conexão fica
+     só com a bolinha e o usuário só com a inicial. */
+  /* Mesmo enxuto o conjunto não cabe em 375 px. Em vez de esconder botões —
+     trocar a senha, por exemplo, só existe aqui — a fila rola de lado, como as
+     abas já fazem. O que mais se usa (início, sair) fica à vista de saída. */
+  .header-nav{gap:.35rem;min-width:0;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;}
+  .header-nav::-webkit-scrollbar{display:none;}
+  .header-nav>*{flex:0 0 auto;}
+  #btn-theme{padding:.4rem .5rem;}
+  .header-nav .btn-home,.header-nav .btn-logout{padding:.4rem .6rem;}
+  #sync-ts,#clock{display:none;}
+  #sync-badge span{display:none;}
+  #user-badge>div:last-child{display:none;}
+
   /* Lista do lote sem rolagem própria: no toque, uma caixa que rola dentro de
      uma página que também rola é fonte de irritação — o dedo nunca sabe qual
      das duas vai andar. Aqui a lista cresce e quem rola é a página. */
@@ -579,6 +607,18 @@ body{
     left:.75rem;right:.75rem;bottom:calc(.75rem + env(safe-area-inset-bottom));
     max-width:none;text-align:center;
   }
+
+  /* Filtros do relatório: um por linha, rótulo curto (sem o espaçamento de
+     letra que dobrava o texto em duas linhas) e lista de múltipla escolha alta
+     o bastante para enxergar o que está marcado. */
+  /* Cartao sozinho na ultima linha ocupa as duas colunas: antes sobrava
+     uma celula cinza vazia ao lado dele. */
+  .rpt-summary-card:last-child:nth-child(odd){grid-column:1/-1;}
+  .rpt-filters{gap:.75rem;}
+  .rpt-lbl{letter-spacing:.5px;font-size:10px;}
+  .rpt-filters select[multiple]{min-height:116px;}
+  .so-toque{display:inline;}
+  .rpt-section{padding:1rem;}
 
   /* Formulários e filtros numa coluna só. */
   .search-row{gap:.5rem;}
@@ -628,7 +668,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.15 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.18 · Acesso restrito</div>
   </div>
 </div>
 
@@ -650,8 +690,8 @@ body{
     <button class="btn-home" id="btn-instalar" onclick="instalarApp()" title="Instalar na tela inicial"
       style="display:none;font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.5px;">⤓ <span class="so-desktop">INSTALAR</span></button>
     <button class="btn-home" id="btn-search" onclick="openGlobalSearch()" title="Busca global (Ctrl+K)" style="font-family:'JetBrains Mono',monospace;font-size:12px;letter-spacing:.5px;">🔍 <span class="so-desktop" style="opacity:.6;font-size:10px">Ctrl+K</span></button>
-    <button class="btn-home" id="btn-sync" style="display:none;" onclick="syncData()" title="Sincronizar dados">⟳ SYNC</button>
-    <button class="btn-home" id="btn-theme" onclick="toggleTheme()" title="Alternar tema" style="font-size:16px;padding:.4rem .75rem;">🌙</button>
+    <button class="btn-home" id="btn-sync" style="display:none;" onclick="syncData()" title="Sincronizar dados">⟳ <span class="so-desktop">SYNC</span></button>
+    <button class="btn-home" id="btn-theme" onclick="toggleTheme()" title="Alternar tema">🌙</button>
   </div>
 </header>
 
@@ -917,7 +957,7 @@ body{
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--accent);letter-spacing:1.5px;margin-bottom:.75rem;">➕ ADICIONAR BOBINAS AO LOTE</div>
         <div class="lote-coil-row">
           <input type="text" id="dl-coil-add" class="lote-coil-input"
-            placeholder="Digite o Nº, os últimos 5 dígitos, ou toque em 📷"
+            placeholder="Digite o Nº, o começo ou o final (ex.: A2167), ou toque em 📷"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('d');}"
             oninput="this.value=normalizeCoilInput(this.value);autocompleteCoil('d')"
             onblur="setTimeout(()=>document.getElementById('dl-coil-suggestions')?.remove(),200)"
@@ -1123,7 +1163,7 @@ body{
         <div style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--exp);letter-spacing:1.5px;margin-bottom:.75rem;">➕ ADICIONAR BOBINAS AO LOTE</div>
         <div class="lote-coil-row">
           <input type="text" id="el-coil-add" class="lote-coil-input"
-            placeholder="Digite o Nº, os últimos 5 dígitos, ou toque em 📷"
+            placeholder="Digite o Nº, o começo ou o final (ex.: A2167), ou toque em 📷"
             onkeydown="if(event.key==='Enter'){event.preventDefault();addCoilLote('e');}"
             oninput="this.value=normalizeCoilInput(this.value);autocompleteCoil('e')"
             onblur="setTimeout(()=>document.getElementById('el-coil-suggestions')?.remove(),200)"
@@ -1348,9 +1388,9 @@ body{
     <!-- FILTROS GERAIS -->
     <div class="rpt-section">
       <div class="rpt-section-title">🔧 FILTROS DO RELATÓRIO</div>
-      <div class="rpt-filters" style="grid-template-columns:repeat(4,1fr);">
+      <div class="rpt-filters">
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Tipo de Relatório</label>
+          <label class="rpt-lbl">Tipo de Relatório</label>
           <select id="rpt-tipo" onchange="renderReport()">
             <option value="navio">Por Navio</option>
             <option value="cliente">Por Cliente</option>
@@ -1367,7 +1407,7 @@ body{
           </select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Incluir</label>
+          <label class="rpt-lbl">Incluir</label>
           <select id="rpt-movimento" onchange="renderReport()">
             <option value="ambos">Descarga + Expedição</option>
             <option value="descarga">Somente Descarga</option>
@@ -1376,46 +1416,46 @@ body{
           </select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Navio <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
-          <select id="rpt-navio" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <label class="rpt-lbl">Navio <span class="so-desktop" style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span><span class="so-toque" style="font-weight:400;font-size:10px;opacity:.6">(toque p/ marcar vários)</span></label>
+          <select id="rpt-navio" multiple size="3" onchange="buildRptSelects();renderReport()"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Cliente <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
-          <select id="rpt-cliente" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <label class="rpt-lbl">Cliente <span class="so-desktop" style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span><span class="so-toque" style="font-weight:400;font-size:10px;opacity:.6">(toque p/ marcar vários)</span></label>
+          <select id="rpt-cliente" multiple size="3" onchange="buildRptSelects();renderReport()"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">BL <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
-          <select id="rpt-bl" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <label class="rpt-lbl">BL <span class="so-desktop" style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span><span class="so-toque" style="font-weight:400;font-size:10px;opacity:.6">(toque p/ marcar vários)</span></label>
+          <select id="rpt-bl" multiple size="3" onchange="buildRptSelects();renderReport()"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Armazém <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
-          <select id="rpt-armazem" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <label class="rpt-lbl">Armazém <span class="so-desktop" style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span><span class="so-toque" style="font-weight:400;font-size:10px;opacity:.6">(toque p/ marcar vários)</span></label>
+          <select id="rpt-armazem" multiple size="3" onchange="buildRptSelects();renderReport()"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Produto <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
-          <select id="rpt-produto" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <label class="rpt-lbl">Produto <span class="so-desktop" style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span><span class="so-toque" style="font-weight:400;font-size:10px;opacity:.6">(toque p/ marcar vários)</span></label>
+          <select id="rpt-produto" multiple size="3" onchange="buildRptSelects();renderReport()"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Período</label>
+          <label class="rpt-lbl">Período</label>
           <select id="rpt-periodo" onchange="renderReport()">
             <option value="">Todos</option>
             <option>07x13</option><option>13x19</option><option>19x01</option><option>01x07</option>
           </select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Veículo / Placa <span style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span></label>
-          <select id="rpt-veiculo" multiple size="3" onchange="buildRptSelects();renderReport()" style="height:auto;min-height:60px;"></select>
+          <label class="rpt-lbl">Veículo / Placa <span class="so-desktop" style="font-weight:400;font-size:10px;opacity:.6">(ctrl para múltiplos)</span><span class="so-toque" style="font-weight:400;font-size:10px;opacity:.6">(toque p/ marcar vários)</span></label>
+          <select id="rpt-veiculo" multiple size="3" onchange="buildRptSelects();renderReport()"></select>
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Data Início</label>
+          <label class="rpt-lbl">Data Início</label>
           <input type="date" id="rpt-data-ini" onchange="renderReport()">
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Data Fim</label>
+          <label class="rpt-lbl">Data Fim</label>
           <input type="date" id="rpt-data-fim" onchange="renderReport()">
         </div>
         <div>
-          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;display:block;margin-bottom:6px;">Busca Livre</label>
+          <label class="rpt-lbl">Busca Livre</label>
           <input type="text" id="rpt-search" placeholder="Coil, motorista, obs..." oninput="renderReport()" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:6px;font-size:14px;font-family:'Barlow Condensed',sans-serif;outline:none;width:100%;">
         </div>
       </div>
@@ -2955,7 +2995,10 @@ async function openModule(mod){
   if(mod==='database')   { buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); }
   if(mod==='relatorios') { buildRptSelects(); renderRptSummary(); renderReport(); }
   if(mod==='usuarios')   { togglePermFields(); renderUsersList(); buildArmSelect(); }
-  if(mod==='mapeamento') { applyMapOverrides(); buildMapFilters(); renderMapa(); }
+  if(mod==='mapeamento') {
+    applyMapOverrides(); buildMapFilters(); renderMapa(); mapSessaoRender();
+    carregarMapaPos().then(()=>{ applyMapOverrides(); renderMapa(); mapSessaoRender(); });
+  }
   if(mod==='faturamento'){ autoSyncFatConfig().then(()=>{ buildFatSelects(); renderFaturamento(); }); }
   if(mod==='dash-fat')   { autoSyncFatConfig().then(()=>renderDashFat()); }
   if(mod==='historico')  { loadAuditFromSupabase().then(renderHistorico); renderHistorico(); }
@@ -3647,15 +3690,19 @@ function autocompleteCoil(px){
     pool = coilsDB.filter(c => temMov(descSet,c) && !temMov(expSet,c));
   }
 
-  // Se digitou 5 ou menos dígitos numéricos, busca por sufixo
-  const isSuffix = /^\d{1,5}$/.test(raw);
-  let matches = [];
-  if(isSuffix){
-    matches = pool.filter(c=>c.coil && c.coil.endsWith(raw)).map(c=>c.coil).slice(0,8);
-  } else {
-    matches = pool.filter(c=>c.coil && c.coil.startsWith(raw)).map(c=>c.coil).slice(0,8);
-  }
-  matches = [...new Set(matches)];   // Coil duplicado aparece uma vez; o cliente é escolhido ao adicionar
+  // O operador digita o número inteiro, o começo dele, ou o FINAL que está à
+  // mão na etiqueta — e esse final muitas vezes tem letra ("2604A2167" →
+  // "A2167"). Antes só entrava na busca por final quem digitasse dígitos puros
+  // (/^\d{1,5}$/), então a letra derrubava a sugestão: 8.101 das 20.968 bobinas
+  // do banco têm letra nos últimos cinco caracteres. Agora cada tecla procura
+  // pelos dois lados, e só se nada casar é que tenta o número no meio.
+  // Nada é escolhido sozinho: a lista é do operador, que confere e toca.
+  const vistos = new Set(), matches = [];
+  const juntar = c => { if(c.coil && !vistos.has(c.coil)){ vistos.add(c.coil); matches.push(c.coil); } };
+  pool.forEach(c => { if(c.coil && c.coil.startsWith(raw)) juntar(c); });
+  pool.forEach(c => { if(c.coil && c.coil.endsWith(raw))   juntar(c); });
+  if(!matches.length) pool.forEach(c => { if(c.coil && c.coil.includes(raw)) juntar(c); });
+  matches.length = Math.min(matches.length, 8);   // coil duplicado aparece uma vez só
 
   // Remove old suggestions
   document.getElementById(px+'l-coil-suggestions')?.remove();
@@ -3868,6 +3915,22 @@ function _bobRetomar(){
 // Entrega a bobina lida ao lote reusando addCoilLote, que já sabe dizer se ela
 // não está no banco, se já foi descarregada ou se está repetida.
 function _bobEntrega(px, coil, ajuste){
+  // Mapeamento da pilha: a bobina lida vai para a sessão, não para o lote.
+  if(_bobCam && _bobCam.destino === 'mapa'){
+    Promise.resolve(mapSessaoAdd(coil, true)).then(r=>{
+      if(r && r.erro){
+        _bobBip(false);
+        _bobRegistra('✕ ' + coil + '  ' + r.erro, '#ef4444');
+        _bobPausa(r.erro);
+      }else{
+        _bobBip(true);
+        _bobRegistra('✓ ' + coil + '  mapeada' + (ajuste ? '   [' + ajuste + ']' : ''), '#22c55e');
+        _bobRetomar();
+        _bobMsg('✓ ' + coil + ' mapeada — leia a próxima (de cima para baixo)', '#22c55e');
+      }
+    });
+    return;
+  }
   const inp = document.getElementById(px + 'l-coil-add');
   if(!inp) return;
   const antes = loteItems[px].length;
@@ -4047,7 +4110,7 @@ async function _bobVarre(){
   if(_bobCam) _bobCam.timer = setTimeout(_bobVarre, achou ? 700 : 90);
 }
 
-async function abrirCamBobina(px){
+async function abrirCamBobina(px, destino){
   if(typeof bobinasProntas === 'function' && !bobinasProntas()){
     const ok = await garantirDadosDoModulo(px === 'e' ? 'expedicao' : 'descarga');
     if(!ok) return;
@@ -4061,7 +4124,7 @@ async function abrirCamBobina(px){
   _bobTravaZoom(true);
   _bobCarregaBarras();                 // em segundo plano; não bloqueia nada
   const video = document.getElementById('bob-cam-video');
-  _bobCam = { px: px, video: video, canvas: document.createElement('canvas'), parado: false,
+  _bobCam = { px: px, destino: destino||null, video: video, canvas: document.createElement('canvas'), parado: false,
               ultimo: null, ultimoEm: 0, passo: 0, timer: null, detector: null, stream: null };
 
   // O leitor nativo do aparelho, quando existe, é bem mais rápido que o jsQR.
@@ -4138,13 +4201,18 @@ function fecharCamBobina(){
   _bobTravaZoom(false);
   const el = document.getElementById('bob-cam');
   const px = _bobCam ? _bobCam.px : null;
+  const destinoCam = _bobCam ? _bobCam.destino : null;
   if(_bobCam){
     if(_bobCam.timer) clearTimeout(_bobCam.timer);
     try{ (_bobCam.stream ? _bobCam.stream.getTracks() : []).forEach(t => t.stop()); }catch(e){}
   }
   _bobCam = null;
   if(el) el.remove();
-  if(px) renderLoteList(px);
+  if(px && destinoCam !== 'mapa') renderLoteList(px);
+  if(destinoCam === 'mapa'){
+    mapSessaoRender();
+    setTimeout(()=>document.getElementById('ms-input')?.focus(), 120);
+  }
   _bobSoltaOCR();          // os motores de OCR seguram bastante memória
 }
 
@@ -10201,6 +10269,31 @@ function _mapaDados(){
       if(!Object.keys(d.byArm[arm]).length) delete d.byArm[arm];
     });
   }
+  // Resumo ANTES de filtrar: o cabeçalho da pilha continua contando tudo
+  // (expedidas e pendentes inclusive), mesmo quando elas não aparecem.
+  const verExp  = !!document.getElementById('map-ver-exp')?.checked;
+  const verPend = !!document.getElementById('map-ver-pend')?.checked;
+  d.verExp = verExp; d.verPend = verPend; d.resumo = {}; d.ocultas = 0;
+  Object.entries(d.byArm).forEach(([arm, bls])=>{
+    d.resumo[arm] = {};
+    Object.entries(bls).forEach(([ch, pile])=>{
+      const exp  = pile.filter(c=>temMov(d.expSet,c)).length;
+      const desc = pile.filter(c=>temMov(d.descSet,c)).length;
+      d.resumo[arm][ch] = { total:pile.length, exp, desc, pend:pile.length-desc, estoque:desc-exp,
+        pesoEstoque: pile.filter(c=>temMov(d.descSet,c)&&!temMov(d.expSet,c))
+                         .reduce((a,c)=>a+(parseFloat(c.pesob)||0),0) };
+      // O mapa é a pilha de verdade: por padrão, só o que está no armazém.
+      const vis = pile.filter(c=>{
+        if(temMov(d.expSet,c))   return verExp;
+        if(!temMov(d.descSet,c)) return verPend;
+        return true;
+      });
+      d.ocultas += pile.length - vis.length;
+      if(vis.length) bls[ch] = vis; else delete bls[ch];
+    });
+    if(!Object.keys(bls).length) delete d.byArm[arm];
+  });
+
   // Ordem da pilha: posição manual (1 = topo) e, sem ela, a ordem de descarga
   // (a última descarregada fica no topo). Índice coil → primeira descarga: o
   // records.find por bobina que havia aqui levava ~10 s no estoque inteiro.
@@ -10231,7 +10324,9 @@ function renderMapa(){
     return;
   }
   if(!Object.keys(byArm).length){
-    container.innerHTML=`<div class="empty-state"><span class="empty-icon">🗺</span>Nenhuma bobina encontrada para os filtros selecionados.</div>`;
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">🗺</span>${d.ocultas
+      ? `Nenhuma bobina <b>em estoque</b> para estes filtros — ${d.ocultas} expedida(s)/a descarregar está(ão) oculta(s). Marque <b>expedidas</b> ou <b>a descarregar</b> acima para vê-las.`
+      : 'Nenhuma bobina encontrada para os filtros selecionados.'}</div>`;
     return;
   }
 
@@ -10244,13 +10339,14 @@ function renderMapa(){
         ${Object.entries(blGroups).map(([chavePilha, pile])=>{
           const [bl, nPilha] = chavePilha.split(_TK_SEP);
           const pilhasDoBL = Object.keys(blGroups).filter(k=>k.split(_TK_SEP)[0]===bl).length;
-          const total   = pile.length;
-          const expCount= pile.filter(c=>temMov(expSet,c)).length;
-          const descCount= pile.filter(c=>temMov(descSet,c)).length;
-          const pendDesc = pile.filter(c=>!temMov(descSet,c)).length;
+          const rz = (d.resumo?.[arm]||{})[chavePilha] || {};
+          const total    = rz.total ?? pile.length;
+          const expCount = rz.exp ?? 0;
+          const descCount= rz.desc ?? 0;
+          const pendDesc = rz.pend ?? 0;
           const cliente  = pile[0]?.cliente||'';
           const navio    = pile[0]?.navio||'';
-          const totalPB  = pile.filter(c=>temMov(descSet,c)&&!temMov(expSet,c)).reduce((a,c)=>a+(parseFloat(c.pesob)||0),0);
+          const totalPB  = rz.pesoEstoque ?? 0;
 
           // Render bricks from TOP (last discharged) to BOTTOM
           // Index 0 = bottom = first discharged = last to leave
@@ -10329,7 +10425,7 @@ function renderMapa(){
               </div>
               <div style="font-size:10px;color:var(--muted);">${_esc(navio)} ${cliente?'· '+_esc(cliente):''}</div>
               <div style="display:flex;gap:.5rem;margin-top:.4rem;flex-wrap:wrap;">
-                <span style="font-size:9px;background:rgba(34,197,94,.1);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${descCount-expCount} em estoque</span>
+                <span style="font-size:9px;background:rgba(34,197,94,.1);color:var(--success);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${rz.estoque ?? (descCount-expCount)} em estoque</span>
                 ${expCount?`<span style="font-size:9px;background:rgba(168,85,247,.1);color:var(--exp);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${expCount} expedida(s)</span>`:''}
                 ${pendDesc?`<span style="font-size:9px;background:rgba(240,165,0,.1);color:var(--accent);padding:1px 5px;border-radius:3px;font-family:'JetBrains Mono',monospace;">${pendDesc} pendente(s)</span>`:''}
               </div>
@@ -10371,6 +10467,15 @@ function applyMapOverrides(){
       if(ov.obs     !== undefined) c._mapObs    = ov.obs;
     }
   });
+  // O servidor manda: a posição compartilhada vence a guardada no aparelho.
+  if(mapaPos.size){
+    coilsDB.forEach(c=>{
+      const r = mapaPos.get(_mapaChaveC(c));
+      if(!r) return;
+      if(r.ordem != null) c._mapPos = r.ordem;
+      if(r.obs)           c._mapObs = r.obs;
+    });
+  }
 }
 
 async function saveInlineMapEdit(coil, navio, bl){
@@ -10387,10 +10492,448 @@ async function saveInlineMapEdit(coil, navio, bl){
 
   const c = coilsDB.find(x=>x.coil===coil&&(x.navio||'')===navio&&(x.bl||'')===bl);
   if(c){ c._mapPos = posicao; c._mapObs = obs; }
+  await _mapaGravarPos([{ coil, navio, bl, armazem:c?.armazem||'',
+    pilha:_mapaPilha(c||{}), ordem:posicao, obs }]);
 
   mapInlineEditCoil = null;
   renderMapa();
   showToast(`✓ Posição de ${coil} atualizada!`,'#22c55e','#000');
+}
+
+// ══════════════════════════════════════════════════════════════════
+// MAPEAMENTO: POSIÇÃO COMPARTILHADA + MAPEAMENTO GUIADO DA PILHA
+// ══════════════════════════════════════════════════════════════════
+// A posição da bobina vivia só no localStorage de quem editou — o mapa de um
+// aparelho não era o mapa do outro. Agora ela também vai para a tabela
+// `mapa_posicoes` (mapa.sql). Sem a tabela, o sistema avisa com o SQL e segue
+// gravando só no aparelho, como antes.
+// Convenção mantida: ordem 1 = TOPO da pilha (a primeira a sair).
+let mapaPos = new Map();      // chave (coil|navio|bl) → linha da tabela
+let _mapaPosOk = null;        // null = ainda não tentou · false = tabela ausente
+let _mapaAvisouSQL = false;
+
+const _mapaChaveC = c => (c.coil||'') + '|' + (c.navio||'') + '|' + (c.bl||'');
+
+async function carregarMapaPos(){
+  if(!SUPA_URL || !SUPA_KEY) return;
+  try{
+    const linhas = await supaAll('mapa_posicoes?select=*&order=chave.asc');
+    mapaPos = new Map((linhas||[]).map(r=>[r.chave, r]));
+    _mapaPosOk = true;
+  }catch(e){
+    _mapaPosOk = false;
+    console.warn('[mapa] posições compartilhadas indisponíveis:', e.message);
+  }
+}
+
+// Grava posição/observação: memória, aparelho (compatibilidade) e servidor.
+async function _mapaGravarPos(itens, silencioso){
+  itens = (itens||[]).filter(it=>it && it.coil);
+  if(!itens.length) return true;
+  itens.forEach(it=>{
+    const chave = it.coil+'|'+(it.navio||'')+'|'+(it.bl||'');
+    mapaPos.set(chave, { ...(mapaPos.get(chave)||{}), ...it, chave });
+    mapOverrides[chave] = { posicao: it.ordem, obs: it.obs||'' };
+    const c = coilsDB.find(x=>x.coil===it.coil && (x.navio||'')===(it.navio||'') && (x.bl||'')===(it.bl||''));
+    if(c){ c._mapPos = it.ordem; c._mapObs = it.obs||''; }
+  });
+  saveMapOverrides();
+  if(!SUPA_URL || !SUPA_KEY) return true;
+  const linhas = itens.map(it=>({
+    chave: it.coil+'|'+(it.navio||'')+'|'+(it.bl||''),
+    coil: it.coil, navio: it.navio||'', bl: it.bl||'', armazem: it.armazem||'',
+    pilha: it.pilha||'1', ordem: it.ordem, obs: it.obs||'',
+    usuario: session?.nome||'—', atualizado_em: new Date().toISOString()
+  }));
+  try{
+    for(let i=0;i<linhas.length;i+=200){
+      await supa('mapa_posicoes?on_conflict=chave', { method:'POST',
+        headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
+        body: JSON.stringify(linhas.slice(i,i+200)) });
+    }
+    _mapaPosOk = true;
+    return true;
+  }catch(e){
+    _mapaPosOk = false;
+    if(!silencioso) _avisoTabelaMapa();
+    return false;
+  }
+}
+
+async function _mapaApagarPos(itens){
+  itens.forEach(it=>{
+    const chave = it.coil+'|'+(it.navio||'')+'|'+(it.bl||'');
+    mapaPos.delete(chave);
+    delete mapOverrides[chave];
+    delete mapOverrides[it.coil];
+    const c = coilsDB.find(x=>x.coil===it.coil && (x.navio||'')===(it.navio||'') && (x.bl||'')===(it.bl||''));
+    if(c){ c._mapPos = null; }
+  });
+  saveMapOverrides();
+  if(!SUPA_URL || !SUPA_KEY || _mapaPosOk === false) return;
+  for(const it of itens){
+    const chave = it.coil+'|'+(it.navio||'')+'|'+(it.bl||'');
+    try{ await supa('mapa_posicoes?chave=eq.'+encodeURIComponent(chave),
+      {method:'DELETE', headers:{'Prefer':'return=minimal'}}); }catch(e){}
+  }
+}
+
+// Mesmo caminho do aviso da coluna `pilha`: mostra o SQL em vez de um erro solto.
+function _avisoTabelaMapa(){
+  if(_mapaAvisouSQL) return;
+  _mapaAvisouSQL = true;
+  const sql = 'create table if not exists mapa_posicoes (\n'
+    + '  chave text primary key, coil text not null, navio text, bl text,\n'
+    + '  armazem text, pilha text, ordem numeric, obs text, usuario text,\n'
+    + '  atualizado_em timestamptz default now());\n'
+    + 'alter table mapa_posicoes enable row level security;\n'
+    + 'create policy mapa_posicoes_todos on mapa_posicoes for all using (true) with check (true);';
+  const el = document.createElement('div');
+  el.className = 'modal-overlay open';
+  el.innerHTML = `<div class="modal" style="max-width:560px;">
+    <div class="modal-title">⚠ FALTA A TABELA "MAPA_POSICOES"</div>
+    <div class="modal-body">
+      <p style="font-size:14px;color:var(--text);line-height:1.6;margin-bottom:1rem;">
+        O mapeamento foi guardado <b>neste aparelho</b>, mas para ele valer para todo mundo a
+        tabela <b>mapa_posicoes</b> precisa existir. Abra o <b>SQL Editor</b> do Supabase
+        (supabase.com → projeto → SQL Editor), rode o bloco abaixo — é o mesmo do arquivo
+        <b>mapa.sql</b> — e continue normalmente.
+      </p>
+      <pre id="mapa-sql-txt" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:.8rem 1rem;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);white-space:pre-wrap;">${_esc(sql)}</pre>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="navigator.clipboard?.writeText(document.getElementById('mapa-sql-txt').textContent);showToast('SQL copiado.','#22c55e','#000')">COPIAR SQL</button>
+      <button class="btn btn-primary" onclick="this.closest('.modal-overlay').remove()">FECHAR</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+}
+
+// ── Sessão de mapeamento ────────────────────────────────────────────
+// O operador escolhe a pilha, toca em INICIAR e vai lendo (câmera) ou digitando
+// as bobinas DO TOPO PARA O PISO. Cada leitura é gravada na hora: se a descarga
+// ainda não acabou, ele para, e ao voltar continua de onde estava.
+let mapSessao = null;   // { arm, bl, pilha, lidas:[], porCima, base }
+
+function _mapaPilhaCoils(arm, bl, pilha){
+  const alvo = _mapaNormArm(arm);
+  return coilsDB.filter(c => (c.bl||'')===bl
+    && _mapaNormArm(c.armazem)===alvo && _mapaPilha(c)===String(pilha||'1'));
+}
+
+// Em estoque = descarregada e ainda não expedida. É o que está na pilha.
+function _mapaEmEstoque(c, descSet, expSet){
+  return temMov(descSet, c) && !temMov(expSet, c);
+}
+
+function mapSessaoAbrir(){
+  if(mapSessao){ mapSessaoRender(); return; }
+  const arms = [...new Set(coilsDB.map(c=>_mapaNormArm(c.armazem)).filter(Boolean))].sort();
+  const armAtual = _mapaNormArm(document.getElementById('map-filter-armazem')?.value||'');
+  const blAtual  = document.getElementById('map-filter-bl')?.value||'';
+  const el = document.createElement('div');
+  el.className = 'modal-overlay open';
+  el.id = 'modal-map-sessao';
+  el.innerHTML = `<div class="modal" style="max-width:520px;">
+    <div class="modal-title">🎯 INICIAR MAPEAMENTO DA PILHA</div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:1rem;">
+        Escolha a pilha e vá lendo a etiqueta (ou digitando o número) <b>da bobina do topo
+        até a do piso</b>. Cada bobina é gravada na hora — dá para parar e continuar depois.
+      </p>
+      <div style="display:grid;gap:.7rem;">
+        <div>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:4px;">ARMAZÉM</label>
+          <select id="ms-arm" onchange="mapSessaoFormBL()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.6rem .8rem;border-radius:8px;font-size:14px;outline:none;">
+            <option value="">Selecione…</option>
+            ${arms.map(a=>`<option value="${_esc(a)}"${a===armAtual?' selected':''}>${_esc(a)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:4px;">BL</label>
+          <select id="ms-bl" onchange="mapSessaoFormPilha()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.6rem .8rem;border-radius:8px;font-size:14px;outline:none;"></select>
+        </div>
+        <div>
+          <label style="font-size:11px;font-family:'JetBrains Mono',monospace;color:var(--muted);letter-spacing:1px;display:block;margin-bottom:4px;">PILHA</label>
+          <select id="ms-pilha" onchange="mapSessaoFormResumo()" style="width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.6rem .8rem;border-radius:8px;font-size:14px;outline:none;"></select>
+        </div>
+        <div id="ms-resumo" style="font-size:12px;color:var(--muted);line-height:1.6;"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">CANCELAR</button>
+      <button class="btn btn-primary" id="ms-btn-iniciar" onclick="mapSessaoIniciar()">▶ INICIAR</button>
+    </div>
+  </div>`;
+  document.body.appendChild(el);
+  mapSessaoFormBL(blAtual);
+}
+
+function mapSessaoFormBL(blPref){
+  const arm = document.getElementById('ms-arm')?.value||'';
+  const alvo = _mapaNormArm(arm);
+  const bls = [...new Set(coilsDB.filter(c=>!arm || _mapaNormArm(c.armazem)===alvo)
+    .map(c=>c.bl||'').filter(Boolean))].sort();
+  const sel = document.getElementById('ms-bl');
+  if(!sel) return;
+  sel.innerHTML = '<option value="">Selecione…</option>'
+    + bls.map(b=>`<option value="${_esc(b)}"${b===blPref?' selected':''}>${_esc(b)}</option>`).join('');
+  mapSessaoFormPilha();
+}
+
+function mapSessaoFormPilha(){
+  const arm = document.getElementById('ms-arm')?.value||'';
+  const bl  = document.getElementById('ms-bl')?.value||'';
+  const sel = document.getElementById('ms-pilha');
+  if(!sel) return;
+  const pilhas = (arm && bl) ? _mapaPilhasDoBL(bl, arm) : [];
+  sel.innerHTML = (pilhas.length?pilhas:['1']).map(p=>`<option value="${_esc(p)}">PILHA ${_esc(p)}</option>`).join('');
+  mapSessaoFormResumo();
+}
+
+function mapSessaoFormResumo(){
+  const arm = document.getElementById('ms-arm')?.value||'';
+  const bl  = document.getElementById('ms-bl')?.value||'';
+  const pil = document.getElementById('ms-pilha')?.value||'1';
+  const el  = document.getElementById('ms-resumo');
+  if(!el) return;
+  if(!arm || !bl){ el.innerHTML = '<span style="color:var(--muted);">Escolha o armazém e o BL.</span>'; return; }
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const todas = _mapaPilhaCoils(arm, bl, pil);
+  const estoque = todas.filter(c=>_mapaEmEstoque(c, descSet, expSet));
+  const mapeadas = estoque.filter(c=>c._mapPos != null && c._mapPos !== '');
+  const faltam = estoque.length - mapeadas.length;
+  const pend = todas.filter(c=>!temMov(descSet,c)).length;
+  el.innerHTML = `
+    <div><b style="color:var(--success);">${estoque.length}</b> bobina(s) em estoque nesta pilha</div>
+    ${mapeadas.length?`<div><b style="color:var(--accent);">${mapeadas.length}</b> já mapeada(s) · <b>${faltam}</b> a mapear</div>`:''}
+    ${pend?`<div style="color:var(--accent);">${pend} ainda não descarregada(s) — mapeie depois, a sessão continua de onde parar</div>`:''}
+    ${!estoque.length?'<div style="color:var(--danger);">Nenhuma bobina em estoque nesta pilha.</div>':''}
+    ${mapeadas.length&&faltam?`<div style="margin-top:.4rem;"><label style="display:flex;align-items:center;gap:.4rem;cursor:pointer;"><input type="checkbox" id="ms-refazer"> refazer do zero (apaga o mapeamento atual desta pilha)</label></div>`:''}`;
+}
+
+function mapSessaoIniciar(){
+  const arm = document.getElementById('ms-arm')?.value||'';
+  const bl  = document.getElementById('ms-bl')?.value||'';
+  const pil = document.getElementById('ms-pilha')?.value||'1';
+  if(!arm || !bl){ showToast('Escolha o armazém e o BL.','#f59e0b','#000'); return; }
+  const refazer = !!document.getElementById('ms-refazer')?.checked;
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const estoque = _mapaPilhaCoils(arm, bl, pil).filter(c=>_mapaEmEstoque(c, descSet, expSet));
+  if(!estoque.length){ showToast('Esta pilha não tem bobina em estoque.','#f59e0b','#000'); return; }
+
+  if(refazer){
+    const mapeadas = estoque.filter(c=>c._mapPos != null);
+    _mapaApagarPos(mapeadas.map(c=>({coil:c.coil, navio:c.navio, bl:c.bl})));
+  }
+  const jaMapeadas = estoque.filter(c=>c._mapPos != null && c._mapPos !== '');
+  const faltam     = estoque.filter(c=>c._mapPos == null || c._mapPos === '');
+  // Onde entra o que falta: se tudo que falta foi descarregado DEPOIS do que já
+  // está mapeado, são bobinas novas — elas estão por cima. Senão, o operador
+  // parou no meio e está descendo. Ele pode trocar isso na barra da sessão.
+  const seq = c => (c._descSeq != null ? c._descSeq : Infinity);
+  const maxMapeada = jaMapeadas.length ? Math.max(...jaMapeadas.map(seq)) : -Infinity;
+  const porCima = jaMapeadas.length > 0 && faltam.length > 0 && faltam.every(c=>seq(c) > maxMapeada);
+
+  mapSessao = { arm, bl, pilha:String(pil), lidas:[], porCima, iniciada:new Date().toISOString() };
+  document.getElementById('modal-map-sessao')?.remove();
+  // o mapa passa a mostrar a pilha da sessão
+  const fa = document.getElementById('map-filter-armazem'); if(fa) fa.value = arm;
+  const fb = document.getElementById('map-filter-bl');      if(fb) fb.value = bl;
+  buildMapFilters();
+  if(fa) fa.value = arm;
+  if(fb) fb.value = bl;
+  mapSessaoRender();
+  renderMapa();
+  setTimeout(()=>document.getElementById('ms-input')?.focus(), 150);
+}
+
+// Próxima ordem a gravar. Topo→piso: quem já está mapeado fica embaixo (o novo
+// lote desce a partir do maior), ou em cima (frações acima do menor) quando as
+// bobinas chegaram depois do último mapeamento.
+function _mapSessaoProxOrdem(){
+  const s = mapSessao;
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const estoque = _mapaPilhaCoils(s.arm, s.bl, s.pilha).filter(c=>_mapaEmEstoque(c, descSet, expSet));
+  const ordens = estoque.map(c=>parseFloat(c._mapPos)).filter(n=>!isNaN(n)).sort((a,b)=>a-b);
+  if(!ordens.length) return s.lidas.length + 1;      // pilha virgem: 1, 2, 3…
+
+  // Cada leitura entra logo ABAIXO da anterior. A referência da primeira é o
+  // topo (quando as que faltam chegaram depois) ou o piso (quando ele parou no
+  // meio e está descendo). Entre duas posições existentes a nova fica no meio —
+  // CONCLUIR depois renumera a pilha inteira em 1, 2, 3…
+  let ref;
+  if(s.lidas.length && !s.recomecar){
+    ref = s.lidas[s.lidas.length - 1].ordem;
+  }else if(s.porCima){
+    const frac = ordens.filter(o => o % 1 !== 0);    // lote do topo já começado
+    ref = frac.length ? Math.max(...frac) : ordens[0] - 1;
+  }else{
+    ref = ordens[ordens.length - 1];
+  }
+  const prox = ordens.find(o => o > ref);
+  return prox == null ? Math.round(ref) + 1 : +((ref + prox) / 2).toFixed(6);
+}
+
+// Aceita o número inteiro ou um pedaço dele (começo, final ou meio), desde que
+// só uma bobina da pilha case — o mesmo atalho do lançamento.
+function _mapSessaoAchaCoil(txt){
+  const s = mapSessao;
+  const q = normalizeCoilInput(txt);
+  if(!q) return { erro:'Digite ou leia o número da bobina.' };
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const naPilha = _mapaPilhaCoils(s.arm, s.bl, s.pilha);
+  const exato = naPilha.find(c=>c.coil === q);
+  let alvo = exato;
+  if(!alvo){
+    const cands = naPilha.filter(c=>c.coil && (c.coil.endsWith(q) || c.coil.startsWith(q) || c.coil.includes(q)));
+    const unicos = [...new Set(cands.map(c=>c.coil))];
+    if(unicos.length > 1) return { erro:`"${q}" casa com ${unicos.length} bobinas desta pilha — digite mais dígitos.` };
+    alvo = cands[0];
+  }
+  if(!alvo){
+    const fora = coilsDB.find(c=>c.coil === q);
+    return { erro: fora
+      ? `${q} é do BL ${fora.bl||'—'}${_mapaNormArm(fora.armazem)!==_mapaNormArm(s.arm)?' / armazém '+(fora.armazem||'—'):''} — não é desta pilha.`
+      : `${q} não está no banco de dados.` };
+  }
+  if(!temMov(descSet, alvo)) return { erro:`${alvo.coil} ainda não foi descarregada.` };
+  if(temMov(expSet, alvo))   return { erro:`${alvo.coil} já foi expedida.` };
+  if(s.lidas.some(l=>l.coil===alvo.coil)) return { erro:`${alvo.coil} já foi lida nesta sessão.` };
+  if(alvo._mapPos != null && alvo._mapPos !== '')
+    return { erro:`${alvo.coil} já está mapeada (posição ${alvo._mapPos}). Use "refazer do zero" para remapear a pilha.` };
+  return { coil: alvo };
+}
+
+async function mapSessaoAdd(txt, viaCam){
+  if(!mapSessao) return { erro:'Nenhuma sessão de mapeamento aberta.' };
+  const r = _mapSessaoAchaCoil(txt);
+  if(r.erro){
+    if(!viaCam) showToast('⚠ '+r.erro, '#e05c1a', '#fff');
+    return r;
+  }
+  const c = r.coil;
+  const ordem = _mapSessaoProxOrdem();
+  const ok = await _mapaGravarPos([{ coil:c.coil, navio:c.navio, bl:c.bl,
+    armazem:c.armazem, pilha:_mapaPilha(c), ordem, obs:c._mapObs||'' }]);
+  mapSessao.lidas.push({ coil:c.coil, navio:c.navio||'', bl:c.bl||'', ordem, local:!ok });
+  mapSessao.recomecar = false;
+  const inp = document.getElementById('ms-input'); if(inp) inp.value = '';
+  mapSessaoRender();
+  renderMapa();
+  if(!viaCam) setTimeout(()=>document.getElementById('ms-input')?.focus(), 30);
+  return { coil:c, ordem };
+}
+
+async function mapSessaoDesfazer(coil){
+  if(!mapSessao) return;
+  const i = mapSessao.lidas.findIndex(l=>l.coil===coil);
+  if(i < 0) return;
+  const l = mapSessao.lidas[i];
+  await _mapaApagarPos([{ coil:l.coil, navio:l.navio, bl:l.bl }]);
+  mapSessao.lidas.splice(i,1);
+  mapSessaoRender();
+  renderMapa();
+}
+
+function mapSessaoInverter(){
+  if(!mapSessao) return;
+  mapSessao.porCima = !mapSessao.porCima;
+  mapSessao.recomecar = true;   // a próxima leitura recalcula de onde entrar
+  mapSessaoRender();
+  showToast(mapSessao.porCima
+    ? 'As próximas leituras entram ACIMA do que já estava mapeado.'
+    : 'As próximas leituras entram ABAIXO do que já estava mapeado.', '#3b82f6', '#fff');
+}
+
+function mapSessaoPausar(){
+  if(!mapSessao) return;
+  const n = mapSessao.lidas.length;
+  mapSessao = null;
+  mapSessaoRender();
+  renderMapa();
+  showToast(n ? `Mapeamento pausado — ${n} bobina(s) já estão salvas.` : 'Mapeamento cancelado.', '#f59e0b', '#000');
+}
+
+// Fecha a sessão e deixa a pilha numerada 1,2,3… do topo para o piso.
+async function mapSessaoConcluir(){
+  if(!mapSessao) return;
+  const s = mapSessao;
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const estoque = _mapaPilhaCoils(s.arm, s.bl, s.pilha).filter(c=>_mapaEmEstoque(c, descSet, expSet));
+  const comOrdem = estoque.filter(c=>c._mapPos != null && c._mapPos !== '')
+    .sort((a,b)=>parseFloat(a._mapPos) - parseFloat(b._mapPos));
+  const semOrdem = estoque.length - comOrdem.length;
+  if(semOrdem && !confirm(`Ainda faltam ${semOrdem} bobina(s) em estoque sem posição nesta pilha.\n\nConcluir assim mesmo? (dá para continuar depois)`)) return;
+  showLoading('Fechando o mapeamento…');
+  const itens = comOrdem.map((c,i)=>({ coil:c.coil, navio:c.navio, bl:c.bl, armazem:c.armazem,
+    pilha:_mapaPilha(c), ordem:i+1, obs:c._mapObs||'' }));
+  await _mapaGravarPos(itens);
+  hideLoading();
+  const n = s.lidas.length;
+  registrarAudit('edicao', `Mapeamento da pilha ${s.pilha} do BL ${s.bl} (${s.arm}): ${n} bobina(s) lida(s), ${itens.length} posicionada(s)`,
+    { bl:s.bl, armazem:s.arm, pilha:s.pilha, lidas:s.lidas.map(l=>l.coil) });
+  mapSessao = null;
+  mapSessaoRender();
+  renderMapa();
+  showToast(`✓ Pilha mapeada: ${itens.length} bobina(s) em ordem, do topo ao piso.`, '#22c55e', '#000');
+}
+
+function mapSessaoRender(){
+  const el = document.getElementById('map-sessao');
+  if(!el) return;
+  if(!mapSessao){
+    el.innerHTML = `<div style="display:flex;gap:.6rem;align-items:center;flex-wrap:wrap;margin-bottom:1rem;">
+      <button class="btn btn-primary btn-sm" onclick="mapSessaoAbrir()">🎯 MAPEAR UMA PILHA</button>
+      <span style="font-size:12px;color:var(--muted);">Leia a etiqueta ou digite o número, do topo da pilha até o piso. Dá para parar e continuar depois.</span>
+    </div>`;
+    return;
+  }
+  const s = mapSessao;
+  const descSet = movSet(records), expSet = movSet(expedicoes);
+  const estoque = _mapaPilhaCoils(s.arm, s.bl, s.pilha).filter(c=>_mapaEmEstoque(c, descSet, expSet));
+  const mapeadas = estoque.filter(c=>c._mapPos != null && c._mapPos !== '').length;
+  const faltam = estoque.length - mapeadas;
+  const pend = _mapaPilhaCoils(s.arm, s.bl, s.pilha).filter(c=>!temMov(descSet,c)).length;
+  const lidas = [...s.lidas].reverse();
+  el.innerHTML = `
+  <div style="background:var(--surface);border:2px solid var(--accent);border-radius:10px;padding:.9rem 1rem;margin-bottom:1rem;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:.75rem;flex-wrap:wrap;margin-bottom:.7rem;">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--accent);">
+        🎯 MAPEANDO · ${_esc(s.bl)} · PILHA ${_esc(s.pilha)} <span style="color:var(--muted);font-weight:400;">· ${_esc(s.arm)}</span>
+      </div>
+      <div style="display:flex;gap:.4rem;">
+        <button class="btn btn-secondary btn-sm" onclick="mapSessaoPausar()">⏸ PAUSAR</button>
+        <button class="btn btn-primary btn-sm" onclick="mapSessaoConcluir()">✓ CONCLUIR</button>
+      </div>
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.7rem;font-family:'JetBrains Mono',monospace;font-size:11px;">
+      <span style="background:rgba(34,197,94,.12);color:var(--success);padding:2px 8px;border-radius:4px;">${s.lidas.length} lida(s) agora</span>
+      <span style="background:rgba(240,165,0,.12);color:var(--accent);padding:2px 8px;border-radius:4px;">${mapeadas} de ${estoque.length} posicionada(s)</span>
+      ${faltam?`<span style="background:var(--surface2);color:var(--muted);padding:2px 8px;border-radius:4px;">faltam ${faltam}</span>`:''}
+      ${pend?`<span style="background:rgba(240,165,0,.12);color:var(--accent);padding:2px 8px;border-radius:4px;">${pend} ainda não descarregada(s)</span>`:''}
+    </div>
+    ${mapeadas > s.lidas.length ? `<div style="font-size:11px;color:var(--muted);margin-bottom:.6rem;">
+      As leituras entram <b style="color:var(--text);">${s.porCima?'ACIMA':'ABAIXO'}</b> do que já estava mapeado ·
+      <a href="#" onclick="event.preventDefault();mapSessaoInverter()" style="color:var(--info);">trocar para ${s.porCima?'ABAIXO':'ACIMA'}</a>
+    </div>`:''}
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;">
+      <input type="text" id="ms-input" placeholder="Nº da bobina (ou o final dele) — Enter para confirmar"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();mapSessaoAdd(this.value);}"
+        oninput="this.value=normalizeCoilInput(this.value)"
+        autocomplete="off"
+        style="flex:1;min-width:180px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem .9rem;border-radius:8px;font-size:16px;font-family:'JetBrains Mono',monospace;outline:none;">
+      <button class="btn btn-secondary" onclick="abrirCamBobina('e','mapa')" title="Ler a etiqueta pela câmera">📷 LER</button>
+      <button class="btn btn-primary" onclick="mapSessaoAdd(document.getElementById('ms-input').value)">+ ADICIONAR</button>
+    </div>
+    ${lidas.length?`<div style="margin-top:.7rem;max-height:190px;overflow-y:auto;border:1px solid var(--border);border-radius:8px;">
+      ${lidas.map((l,i)=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:.5rem;padding:.4rem .7rem;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:12px;">
+        <span><span style="color:var(--muted);">${lidas.length - i}º</span> <b style="color:var(--accent);">${_esc(l.coil)}</b>${l.local?' <span style="color:var(--warning);font-size:10px;">só neste aparelho</span>':''}</span>
+        <button onclick="mapSessaoDesfazer('${_esc(l.coil)}')" title="Tirar esta bobina do mapeamento"
+          style="background:transparent;border:1px solid var(--border);border-radius:4px;color:var(--muted);cursor:pointer;font-size:11px;padding:1px 6px;">✕</button>
+      </div>`).join('')}
+    </div>`:''}
+  </div>`;
 }
 
 // ── Exportar o mapa (PDF / Excel) no padrão dos relatórios ──────────
@@ -10543,6 +11086,7 @@ async function importarMapaExcel(file){
 
       const dataRows=raw.slice(hdrIdx+1).filter(r=>r[iCoil]&&String(r[iCoil]).trim());
       let updated=0, skipped=0;
+      const paraGravar=[];
 
       showLoading(`Processando ${dataRows.length} linhas...`);
 
@@ -10570,11 +11114,14 @@ async function importarMapaExcel(file){
         mapOverrides[coil] ={...novo};
         if(posNov) c._mapPos=posNov;
         if(obsVal) c._mapObs=obsVal;
+        paraGravar.push({ coil, navio:c.navio||'', bl:c.bl||'', armazem:c.armazem||'',
+          pilha:_mapaPilha(c), ordem:novo.posicao, obs:novo.obs });
 
         updated++;
       }
 
       saveMapOverrides();
+      await _mapaGravarPos(paraGravar);   // o mapa importado vale para todos
       // Re-aplicar todos os overrides para garantir que _mapPos está correto em memória
       applyMapOverrides();
       hideLoading();
@@ -19056,6 +19603,12 @@ alter table users add column if not exists email text;
         style="background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-family:'Barlow Condensed',sans-serif;font-size:14px;outline:none;">
         <option value="">Todos os navios</option>
       </select>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;" title="O mapa mostra a pilha de verdade: por padrão, só o que está em estoque">
+        <input type="checkbox" id="map-ver-exp" onchange="mapInlineEditCoil=null;renderMapa()" style="cursor:pointer;"> expedidas
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:12px;color:var(--muted);cursor:pointer;white-space:nowrap;" title="Bobinas do BL que ainda não foram descarregadas">
+        <input type="checkbox" id="map-ver-pend" onchange="mapInlineEditCoil=null;renderMapa()" style="cursor:pointer;"> a descarregar
+      </label>
       <button class="btn btn-secondary btn-sm" onclick="exportMapaPDF()">↓ MAPA PDF</button>
       <button class="btn btn-secondary btn-sm" onclick="exportMapaExcel()">↓ MAPA EXCEL</button>
       <label class="btn btn-primary btn-sm" style="cursor:pointer;">
@@ -19069,8 +19622,10 @@ alter table users add column if not exists email text;
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#22c55e;display:inline-block;"></span> Disponível (última descarregada = 1ª a sair)</span>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:#a855f7;display:inline-block;"></span> Expedida</span>
       <span style="display:flex;align-items:center;gap:.4rem;"><span style="width:14px;height:14px;border-radius:3px;background:rgba(240,165,0,.4);display:inline-block;"></span> Aguardando (soterrada)</span>
-      <span style="display:flex;align-items:center;gap:.4rem;color:var(--muted);">Clique em ✏ para editar posição direto na tela</span>
+      <span style="display:flex;align-items:center;gap:.4rem;color:var(--muted);">Clique em ✏ para editar posição · 🎯 MAPEAR UMA PILHA lê a etiqueta ou o nº digitado, do topo ao piso</span>
     </div>
+
+    <div id="map-sessao"></div>
 
     <div id="map-container"></div>
   </div>
