@@ -668,7 +668,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.20 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.22 · Acesso restrito</div>
   </div>
 </div>
 
@@ -1934,7 +1934,9 @@ async function doLogin(){
     setTimeout(autoSyncFatConfig, 4000);
     // Sync automático a cada 5 minutos
     if(window._fatSyncInterval) clearInterval(window._fatSyncInterval);
-    window._fatSyncInterval = setInterval(autoSyncFatConfig, 5*60*1000);
+    // 10 min e só com a aba à vista: a leitura do fat_config inteiro não
+    // precisa rodar com o aparelho no bolso.
+    window._fatSyncInterval = setInterval(()=>{ if(!document.hidden) autoSyncFatConfig(); }, 10*60*1000);
     // Reenvio de tickets que não chegaram ao servidor (rede caiu na emissão)
     setTimeout(()=>_tkBackfillFromLocal().then(()=>_tkFlushPending(false)), 6000);
     if(window._tkFlushInterval) clearInterval(window._tkFlushInterval);
@@ -2990,6 +2992,9 @@ async function openModule(mod){
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+mod).classList.add('active');
   document.getElementById('btn-back').style.display='';
+  // Sair da Carga Geral por qualquer caminho desliga a sincronização dela:
+  // antes só o botão INÍCIO fazia isso, e o relógio seguia baixando as tabelas.
+  if(mod!=='cargaGeral') cgStopSync();
   if(mod==='descarga')   { buildFilterSelects('d'); applyFilters('d'); preencherDataPeriodoLote('d'); }
   if(mod==='expedicao')  { buildFilterSelects('e'); applyFilters('e'); preencherDataPeriodoLote('e'); }
   if(mod==='database')   { buildDBNavSelect(); renderCoilsGrouped(); renderNaviosList(); }
@@ -14249,7 +14254,10 @@ async function cgSyncNow(showFeedback=false){
       _cgReconcile('bulk_expedicoes', cgExpedicoes, exps);
     }
     _cgPruneTombstones(descs, exps);
-    _portoCarregar();           // pesagens do Porto acompanham o sync
+    // As pesagens do Porto NÃO entram aqui: são 9.349 linhas (0,6 MB) que só
+    // mudam quando a importação automática roda (no máximo a cada 30 min), e
+    // ela própria recarrega a tabela. Baixar isso a cada rodada do sync era o
+    // que estourava a cota de tráfego do Supabase — 126 GB/mês por aba aberta.
     _tkFlushPending();          // tickets presos neste aparelho sobem junto com o sync da CG
     _movFlushPending();         // e os lançamentos de descarga/expedição
     _cgRenderAfterSync();
@@ -14277,14 +14285,28 @@ function _cgRenderAfterSync(){
   else if(active==='relatorio') renderCgRelatorio();
 }
 
+// Cada rodada desta sincronização baixa bulk_items + bulk_descargas +
+// bulk_expedicoes INTEIRAS (~1,3 MB hoje). A 15 s, uma aba esquecida aberta
+// consumia ~320 MB por hora — 2,6 GB num turno de 8 h, de um aparelho só. Era
+// o que estourava a cota do Supabase. Agora: 45 s, e nada enquanto a aba está
+// em segundo plano (celular bloqueado, outro aplicativo na frente). Ao voltar
+// para a tela, sincroniza na hora, então ninguém trabalha com dado velho.
+const CG_SYNC_MS = 45000;
 function cgStartSync(){
   cgSyncNow();
   if(_cgSyncInterval) clearInterval(_cgSyncInterval);
-  _cgSyncInterval = setInterval(()=>cgSyncNow(), 15000);
+  _cgSyncInterval = setInterval(()=>{ if(!document.hidden) cgSyncNow(); }, CG_SYNC_MS);
 }
+
+// Voltou para a tela: sincroniza já o que ficou parado.
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden) return;
+  if(_cgSyncInterval) cgSyncNow();
+});
 
 function cgStopSync(){
   if(_cgSyncInterval){ clearInterval(_cgSyncInterval); _cgSyncInterval=null; }
+  _cgSetSyncStatus('ok');
 }
 
 // ── Helpers ───────────────────────────────────────────────────
@@ -14628,10 +14650,25 @@ function portoModoMudou(){
 // o peso da balança sem ninguém precisar importar nada à mão.
 let pesagensPorto = [];
 
-async function _portoCarregar(){
+// Trava de tráfego: a tabela de pesagens é a maior leitura recorrente do
+// sistema. Qualquer tela pode pedi-la, mas ela só desce de verdade uma vez a
+// cada 5 min — ou na hora, com `forcar`, quando a importação trouxe novidade.
+let _portoCargaEm = 0;
+const PORTO_CACHE_MS = 5*60*1000;
+async function _portoCarregar(forcar){
   if(!SUPA_URL||!SUPA_KEY) return;
-  try{ pesagensPorto = await supaAll('pesagens_porto?select=*&order=dt_saida.desc'); if(typeof _tpInvalidaCache==='function') _tpInvalidaCache(); }
-  catch(e){ console.warn('[porto] leitura das pesagens falhou:', e.message); }
+  if(!forcar && _portoCargaEm && Date.now()-_portoCargaEm < PORTO_CACHE_MS) return;
+  // marca ANTES da leitura: duas telas abrindo ao mesmo tempo (o login e a aba
+  // de tickets, por exemplo) não disparam dois downloads da tabela inteira
+  _portoCargaEm = Date.now();
+  try{
+    pesagensPorto = await supaAll('pesagens_porto?select=*&order=dt_saida.desc');
+    if(typeof _tpInvalidaCache==='function') _tpInvalidaCache();
+  }
+  catch(e){
+    _portoCargaEm = 0;        // falhou: libera para tentar de novo
+    console.warn('[porto] leitura das pesagens falhou:', e.message);
+  }
 }
 
 // Pesagem correspondente a um registro nosso: placa normalizada + data.
@@ -14688,7 +14725,7 @@ async function _portoAutoImport(dias){
         headers:{'Prefer':'resolution=merge-duplicates,return=minimal'},
         body:JSON.stringify(linhas.slice(i,i+100))});
     }
-    await _portoCarregar();
+    await _portoCarregar(true);
     console.info('[porto] importação automática: '+linhas.length+' pesagem(ns).');
     return linhas.length;
   }catch(e){ console.warn('[porto] importação automática falhou:', e.message); return 0; }
