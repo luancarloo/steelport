@@ -668,7 +668,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.24 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.25 · Acesso restrito</div>
   </div>
 </div>
 
@@ -9546,14 +9546,16 @@ function renderReport(){
     const tarifaGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
     const periodoDias=parseInt(_fatGet('sp_fat_periodo')||localStorage.getItem('sp_fat_periodo')||15);
     // Respeita filtros selecionados
-    let blsFat=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    // inclui os BLs que só existem na carga geral (ver _fatBLsFaturaveis)
+    let blsFat=_fatBLsFaturaveis();
     if(sBl.length)  blsFat=blsFat.filter(b=>sBl.includes(b));
-    if(sNav.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sNav.includes(c.navio)));
-    if(sCli.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sCli.includes(c.cliente)));
+    if(sNav.length){ const _n=sNav.map(_fatNorm); blsFat=blsFat.filter(b=>_n.includes(_fatBLNavio(b))); }
+    if(sCli.length){ const _c=sCli.map(_fatNorm); blsFat=blsFat.filter(b=>_c.includes(_fatBLCliente(b))); }
     blsFat.forEach(bl=>{
-      const dbCoils=coilsDB.filter(c=>c.bl===bl);
-      const cliente=dbCoils[0]?.cliente||'—';
-      const navio=dbCoils[0]?.navio||'—';
+      // BL de carga geral não tem bobina: cliente e navio vêm do banco de itens
+      const dbCoils=_fatBobinasBL(bl);
+      const cliente=dbCoils[0]?.cliente||_fatBLCliente(bl)||'—';
+      const navio=dbCoils[0]?.navio||_fatBLNavio(bl)||'—';
       const fat=calcPeriodosBL(bl,periodoDias);
       if(!fat||!fat.periodos.length) return;
       const tarifaBL=getTarifaBL(bl,tarifaGlobal);
@@ -9935,19 +9937,21 @@ async function exportReportXLSX(){
   if(tipo==='faturamento'){
     const tarifaGlobal=parseFloat(_fatGet('sp_fat_tarifa')||localStorage.getItem('sp_fat_tarifa')||0);
     const periodoDias=parseInt(_fatGet('sp_fat_periodo')||localStorage.getItem('sp_fat_periodo')||15);
-    let blsFat=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    // inclui os BLs que só existem na carga geral (ver _fatBLsFaturaveis)
+    let blsFat=_fatBLsFaturaveis();
     if(sBl.length)  blsFat=blsFat.filter(b=>sBl.includes(b));
-    if(sNav.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sNav.includes(c.navio)));
-    if(sCli.length) blsFat=blsFat.filter(b=>coilsDB.some(c=>c.bl===b&&sCli.includes(c.cliente)));
+    if(sNav.length){ const _n=sNav.map(_fatNorm); blsFat=blsFat.filter(b=>_n.includes(_fatBLNavio(b))); }
+    if(sCli.length){ const _c=sCli.map(_fatNorm); blsFat=blsFat.filter(b=>_c.includes(_fatBLCliente(b))); }
     const rows=[['BL','CLIENTE','NAVIO','VIAGEM','PRODUTO','Nº PERÍODO','DATA COBRANÇA','PERÍODO (INI→FIM)',
       'PESO (kg)','TONELADAS','TARIFA (R$/t)','ARMAZENAGEM (R$)','HANDLING (R$)','TOTAL (R$)',
       'STATUS','NF','DATA ENVIO','ENVIADO POR']];
     blsFat.forEach(bl=>{
-      const dbCoils=coilsDB.filter(c=>c.bl===bl);
-      const cliente=dbCoils[0]?.cliente||'';
-      const navio=dbCoils[0]?.navio||'';
+      const dbCoils=_fatBobinasBL(bl);
+      const cgIt0=_fatCgItens(bl)[0];
+      const cliente=dbCoils[0]?.cliente||_fatBLCliente(bl)||'';
+      const navio=dbCoils[0]?.navio||_fatBLNavio(bl)||'';
       const viagem=dbCoils[0]?.viagem||'';
-      const produto=dbCoils[0]?.produto||'';
+      const produto=dbCoils[0]?.produto||cgIt0?.produto||'';
       const fat=calcPeriodosBL(bl,periodoDias);
       if(!fat||!fat.periodos.length) return;
       const tarifaBL=getTarifaBL(bl,tarifaGlobal);
@@ -10033,7 +10037,7 @@ function exportReportPDF(){
 
     const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
     const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
-    const blsAll=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))].sort();
+    const blsAll=_fatBLsFaturaveis();
     const rows=[];
     let totalArm=0, totalHand=0, totalGeral=0;
     blsAll.forEach(bl=>{
@@ -10054,7 +10058,7 @@ function exportReportPDF(){
         const state=getFatState(bl,p.num);
         totalArm+=vArm; totalHand+=vHand; totalGeral+=total;
         rows.push([
-          bl, dbCoils[0]?.cliente||'—', dbCoils[0]?.navio||'—',
+          bl, dbCoils[0]?.cliente||_fatBLCliente(bl)||'—', dbCoils[0]?.navio||_fatBLNavio(bl)||'—',
           p.num+'º', p.dataIni.split('-').reverse().join('/'),
           fmtKg(p.pesoBruto)+' kg', ton.toFixed(3)+' t',
           vArm>0?'R$'+vArm.toFixed(2):'—',
@@ -11760,6 +11764,15 @@ function _fatCgBLs(){
                         .map(it=>String(it.bl||'').trim()).filter(Boolean))];
 }
 
+// Os BLs que o faturamento cobra: bobinas + carga geral, menos os que só têm
+// carga no PORTO (não é nosso armazém). As TRÊS telas — módulo de faturamento,
+// relatório e painel — têm de enxergar a mesma lista. O relatório e o painel
+// montavam a deles a partir do coilsdb, então um BL só de carga geral (como os
+// de perfis/barras) simplesmente não existia para eles.
+function _fatBLsFaturaveis(){
+  return _fatTodosBLs().filter(bl=>!_fatBLNaoFaturavel(bl)).sort();
+}
+
 // Todos os BLs do faturamento: bobinas + carga geral.
 function _fatTodosBLs(){
   return [...new Set([
@@ -12850,12 +12863,13 @@ function exportFaturamentoXLSX(){
     'PESO (kg)','TONELADAS','TARIFA ARM. (R$/t)','ARMAZENAGEM (R$)','TARIFA HDL (R$/t)','TON. TOTAL BL','HANDLING (R$)','TOTAL (R$)',
     'STATUS','NF','DATA ENVIO','ENVIADO POR']];
   bls.sort().forEach(bl=>{
-    const dbCoils=coilsDB.filter(c=>c.bl===bl);
+    const dbCoils=_fatBobinasBL(bl);
+    const cgIt0=_fatCgItens(bl)[0];
     const fat=calcPeriodosBL(bl,periodoDias);
     if(!fat||!fat.periodos.length) return;
     const tarifaBL=getTarifaBL(bl,tarifa);
     const tonelagemTotalBL=dbCoils.reduce((a,c)=>a+(parseFloat(c.pesob)||0),0)/1000;
-    const cliInfo=getClienteInfo(dbCoils[0]?.cliente||'');
+    const cliInfo=getClienteInfo(dbCoils[0]?.cliente||_fatBLCliente(bl)||'');
     fat.periodos.forEach(p=>{
       const ton=p.pesoBruto/1000;
       const tarPer=getTarifaPeriodo(bl,p.num,tarifaBL);
@@ -12865,8 +12879,8 @@ function exportFaturamentoXLSX(){
       const total=parseFloat((vArm+vHand).toFixed(2));
       const state=getFatState(bl,p.num);
       rows.push([
-        bl,dbCoils[0]?.cliente||'',cliInfo?.cnpj||'',cliInfo?.email||'',
-        dbCoils[0]?.navio||'',dbCoils[0]?.viagem||'',dbCoils[0]?.produto||'',
+        bl,dbCoils[0]?.cliente||_fatBLCliente(bl)||'',cliInfo?.cnpj||'',cliInfo?.email||'',
+        dbCoils[0]?.navio||_fatBLNavio(bl)||'',dbCoils[0]?.viagem||'',dbCoils[0]?.produto||cgIt0?.produto||'',
         p.num, p.dataIni.split('-').reverse().join('/'),
         p.dataIni.split('-').reverse().join('/')+' → '+p.dataFim.split('-').reverse().join('/'),
         p.pesoBruto, parseFloat(ton.toFixed(3)),
@@ -12901,7 +12915,7 @@ function exportFaturamentoPDF(){
   const rows=[];
   let totalArm=0,totalHand=0,totalGeral=0;
   bls.sort().forEach(bl=>{
-    const dbCoils=coilsDB.filter(c=>c.bl===bl);
+    const dbCoils=_fatBobinasBL(bl);
     const fat=calcPeriodosBL(bl,periodoDias);
     if(!fat||!fat.periodos.length) return;
     const tarifaBL=getTarifaBL(bl,tarifa);
@@ -13303,19 +13317,19 @@ function renderDashFat(){
   const tarifaGlobal=parseFloat(localStorage.getItem('sp_fat_tarifa')||0);
   const periodoDias=parseInt(localStorage.getItem('sp_fat_periodo')||15);
 
-  const normStr=s=>String(s||'').trim().toUpperCase();
-  const bls=[...new Set(coilsDB.map(c=>c.bl).filter(Boolean))]
-    .filter(bl=>!normStr(coilsDB.find(c=>c.bl===bl&&c.armazem)?.armazem||'').includes('PORTO'))
-    .sort();
+  // Mesma lista do módulo de faturamento: bobinas + carga geral, sem os BLs
+  // que estão inteiros no PORTO. Antes olhava só o coilsdb e, para decidir o
+  // PORTO, a primeira bobina encontrada — um BL misto entrava ou saía inteiro.
+  const bls=_fatBLsFaturaveis();
 
   let totalVencidos=0, totalCobrados=0;
   let valorVencidos=0, valorCobrados=0;
   const vencidosRows=[], clienteMap={}, navioMap={};
 
   bls.forEach(bl=>{
-    const dbCoils=coilsDB.filter(c=>c.bl===bl);
-    const cliente=dbCoils[0]?.cliente||'—';
-    const navio=dbCoils[0]?.navio||'—';
+    const dbCoils=_fatBobinasBL(bl);
+    const cliente=dbCoils[0]?.cliente||_fatBLCliente(bl)||'—';
+    const navio=dbCoils[0]?.navio||_fatBLNavio(bl)||'—';
     const fat=calcPeriodosBL(bl,periodoDias);
     if(!fat||!fat.periodos.length) return;
     const tarifaBL=getTarifaBL(bl,tarifaGlobal);
