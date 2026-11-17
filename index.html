@@ -668,7 +668,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.22 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.24 · Acesso restrito</div>
   </div>
 </div>
 
@@ -3041,10 +3041,23 @@ function _dataLocalStr(d){
 }
 // Data do calendário, no fuso do computador. Use para validar "não pode ser futura".
 function hojeLocal(){ return _dataLocalStr(new Date()); }
-// Data do turno em andamento. Use para preencher e filtrar descarga/expedição.
+// Data do DIA PORTUÁRIO em andamento — é esta que preenche e filtra descarga,
+// expedição, carga geral e granel.
+//
+// Aqui o dia NÃO começa à meia-noite: começa às 07:00, com o P1, e só vira
+// quando o próximo P1 entra. O dia 17/11 vai das 07:00 do dia 17 até as 06:59
+// do dia 18, cobrindo os quatro turnos:
+//     P1 07x13 · P2 13x19 · P3 19x01 · P4 01x07
+// Ou seja, de 00:00 às 06:59 (fim do 19x01 e todo o 01x07) a data ainda é a da
+// véspera. Antes só os 00:00–00:59 voltavam um dia, e o turno 01x07 caía no dia
+// seguinte — o lançamento da madrugada nascia com a data errada.
+//
+// O calendário de verdade continua em hojeLocal(): é ele que limita a data
+// máxima dos formulários e barra lançamento futuro.
+const HORA_VIRADA_DIA = 7;        // P1 — 07x13
 function dataOperacional(){
   const agora=new Date();
-  if(agora.getHours() < 1){                       // 00:00–00:59 → turno 19x01 de ontem
+  if(agora.getHours() < HORA_VIRADA_DIA){
     const d=new Date(agora); d.setDate(d.getDate()-1); return _dataLocalStr(d);
   }
   return _dataLocalStr(agora);
@@ -12036,7 +12049,21 @@ function renderFaturamento(){
   if(fq) bls=bls.filter(bl=>normStr(bl).includes(fq));
 
   if(!bls.length){
-    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.</div>`;
+    // Mesma ideia do aviso mais abaixo: dizer se o BL digitado existe em algum
+    // lugar (pode estar todo no PORTO, que não é faturado por nós) ou se o
+    // número simplesmente não está no banco.
+    let dica = '';
+    if(fq){
+      const existe = _fatTodosBLs().filter(b=>normStr(b).includes(fq));
+      dica = existe.length
+        ? `<div style="margin-top:1rem;font-size:13px;color:var(--muted);line-height:1.7;">
+             <b style="color:var(--accent);">${_esc(existe[0])}</b> existe no banco, mas não tem carga faturável por nós
+             — toda a carga dele está no armazém <b>PORTO</b>.</div>`
+        : `<div style="margin-top:1rem;font-size:13px;color:var(--muted);line-height:1.7;">
+             Nenhum BL com <b>${_esc(fq)}</b> no banco de dados — confira o número, ou veja se a carga
+             está lançada no módulo certo (bobinas ou carga geral).</div>`;
+    }
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.${dica}</div>`;
     if(pagDiv) pagDiv.innerHTML='';
     return;
   }
@@ -12233,7 +12260,29 @@ function renderFaturamento(){
   const hfv=document.getElementById('home-fat-vencer'); if(hfv) hfv.textContent=blsPendentes;
 
   if(!blCards.length){
-    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado para os filtros selecionados.</div>`;
+    // "Nenhum BL encontrado" não ajuda quem acabou de digitar um BL que existe.
+    // Procurar sem filtro nenhum custa nada e responde a pergunta certa:
+    // o BL não existe, ou está escondido por um filtro?
+    let aviso = '';
+    if(fq){
+      const achados = _fatTodosBLs().filter(b=>normStr(b).includes(fq) && !_fatBLNaoFaturavel(b));
+      if(achados.length){
+        const lista = achados.slice(0,4).map(b=>{
+          const sit = _fatSituacaoBL(b);
+          return `<b style="color:var(--accent);">${_esc(b)}</b> <span style="color:var(--muted);">(${sit})</span>`;
+        }).join(' · ');
+        aviso = `<div style="margin-top:1rem;font-size:13px;line-height:1.7;color:var(--text);">
+            ${achados.length===1?'Este BL existe':'Estes BLs existem'}, mas ${achados.length===1?'está':'estão'} fora dos filtros de agora:<br>${lista}
+            <br><button class="btn btn-primary btn-sm" style="margin-top:.7rem;" onclick="fatVerSomenteBusca()">✕ LIMPAR OS OUTROS FILTROS E MOSTRAR</button>
+          </div>`;
+      }else{
+        aviso = `<div style="margin-top:1rem;font-size:13px;color:var(--muted);">
+            Nenhum BL com <b>${_esc(fq)}</b> no banco de dados — confira o número,
+            ou veja se a carga está lançada no módulo certo (bobinas ou carga geral).
+          </div>`;
+      }
+    }
+    container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado para os filtros selecionados.${aviso}</div>`;
     if(pagDiv) pagDiv.innerHTML='';
     return;
   }
@@ -12320,6 +12369,33 @@ function fatVerPeriodos(blId, btn){
   btn.textContent = abrir ? ('⌃ MOSTRAR SÓ OS '+FAT_PER_VISIVEIS+' ÚLTIMOS')
                           : ('⌄ VER TODOS OS '+linhas.length+' PERÍODOS');
   if(abrir) _fatAbertos.add(blId); else _fatAbertos.delete(blId);
+}
+
+// Situação do BL em uma palavra — usada quando a busca não traz nada, para
+// explicar por que ele ficou de fora (quase sempre é o filtro de situação).
+function _fatSituacaoBL(bl){
+  const descSet=movSet(records), expSet=movSet(expedicoes);
+  const dbCoils=_fatBobinasBL(bl);
+  const desc=dbCoils.filter(c=>temMov(descSet,c)).length;
+  const exp =dbCoils.filter(c=>temMov(expSet,c)).length;
+  const cg=_fatCgResumo(bl);
+  if((desc<dbCoils.length)||cg.incompleta) return 'descarga incompleta';
+  const estoque=(desc-exp)+cg.emEstoque;
+  if(estoque>0) return 'em estoque';
+  const dt=getDataFimExpedicao(bl);
+  return 'carga zerada' + (dt?' em '+dt.split('-').reverse().join('/'):'');
+}
+
+// Mantém o que foi digitado na busca e solta todo o resto.
+function fatVerSomenteBusca(){
+  const q=document.getElementById('fat-search-bl')?.value||'';
+  ['fat-filter-cliente','fat-filter-navio','fat-filter-armazem','fat-filter-bl','fat-filter-status']
+    .forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+  const b=document.getElementById('fat-search-bl'); if(b) b.value=q;
+  fatPage=1;
+  atualizarBLsFaturamento();
+  const b2=document.getElementById('fat-search-bl'); if(b2) b2.value=q;
+  renderFaturamento();
 }
 
 function fatGoPage(p){ fatPage=Math.max(1,p); renderFaturamento(); }
@@ -14654,7 +14730,9 @@ let pesagensPorto = [];
 // sistema. Qualquer tela pode pedi-la, mas ela só desce de verdade uma vez a
 // cada 5 min — ou na hora, com `forcar`, quando a importação trouxe novidade.
 let _portoCargaEm = 0;
-const PORTO_CACHE_MS = 5*60*1000;
+// 15 min: a tabela so muda quando a importacao automatica roda (no maximo de
+// 30 em 30 min) e ELA forca a releitura. Qualquer tela pode pedir a vontade.
+const PORTO_CACHE_MS = 15*60*1000;
 async function _portoCarregar(forcar){
   if(!SUPA_URL||!SUPA_KEY) return;
   if(!forcar && _portoCargaEm && Date.now()-_portoCargaEm < PORTO_CACHE_MS) return;

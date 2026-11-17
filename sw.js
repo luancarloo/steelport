@@ -26,7 +26,7 @@
 // do login, no lugar dos SVG provisórios.)
 // Acompanha a versão mostrada no login (index.html). Mudar aqui apaga o cache
 // antigo nos aparelhos, então sobe junto com ela a cada publicação.
-const VERSAO = 'steelport-2.1.22';
+const VERSAO = 'steelport-2.1.24';
 const CASCA = [
   './',
   './index.html',
