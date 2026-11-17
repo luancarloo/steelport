@@ -668,7 +668,7 @@ body{
     </div>
     <!-- VERSÃO DO SISTEMA: sobe a cada publicação (2.0.1, 2.0.2, ...).
          É a mesma versão do nome do cache no sw.js — os dois andam juntos. -->
-    <div class="login-footer">4SIDES · STEELPORT v2.1.25 · Acesso restrito</div>
+    <div class="login-footer">4SIDES · STEELPORT v2.1.26 · Acesso restrito</div>
   </div>
 </div>
 
@@ -3004,7 +3004,10 @@ async function openModule(mod){
     applyMapOverrides(); buildMapFilters(); renderMapa(); mapSessaoRender();
     carregarMapaPos().then(()=>{ applyMapOverrides(); renderMapa(); mapSessaoRender(); });
   }
-  if(mod==='faturamento'){ autoSyncFatConfig().then(()=>{ buildFatSelects(); renderFaturamento(); }); }
+  if(mod==='faturamento'){
+    autoSyncFatConfig().then(()=>{ buildFatSelects(); renderFaturamento(); });
+    _fatGarantirCG();   // sem isto, um login cuja carga de fundo falhou fica sem os BLs de carga geral
+  }
   if(mod==='dash-fat')   { autoSyncFatConfig().then(()=>renderDashFat()); }
   if(mod==='historico')  { loadAuditFromSupabase().then(renderHistorico); renderHistorico(); }
   if(mod==='backup')     { renderBackup(); }
@@ -11764,6 +11767,34 @@ function _fatCgBLs(){
                         .map(it=>String(it.bl||'').trim()).filter(Boolean))];
 }
 
+// Os BLs da carga geral só existem no faturamento se o `cgItems` tiver chegado
+// do servidor. Ele é carregado em segundo plano no login; quando essa carga
+// falha (rede caiu, servidor fora do ar, aparelho que nunca abriu a Carga
+// Geral), os BLs de perfis e barras somem do seletor e da busca — e a tela
+// ainda dizia "não está no banco de dados", que é mentira. O módulo agora
+// busca de novo ao abrir e, se não conseguir, avisa em vez de esconder.
+let _fatCgFalhou = false;
+function _fatTemCG(){
+  return typeof cgItems!=='undefined' && Array.isArray(cgItems) && cgItems.length>0;
+}
+async function _fatGarantirCG(){
+  if(_fatTemCG() || typeof loadCgFromSupabase!=='function') return;
+  try{ await loadCgFromSupabase(); }catch(e){}
+  _fatCgFalhou = !_fatTemCG();
+  buildFatSelects();
+  renderFaturamento();
+}
+async function _fatRecarregarCG(){
+  showLoading('Carregando a carga geral…');
+  try{ await loadCgFromSupabase(); }catch(e){}
+  hideLoading();
+  _fatCgFalhou = !_fatTemCG();
+  buildFatSelects();
+  renderFaturamento();
+  showToast(_fatTemCG() ? '✓ Carga geral carregada.' : '⚠ Não consegui carregar a carga geral — tente de novo.',
+            _fatTemCG() ? '#22c55e' : '#e05c1a', _fatTemCG() ? '#000' : '#fff');
+}
+
 // Os BLs que o faturamento cobra: bobinas + carga geral, menos os que só têm
 // carga no PORTO (não é nosso armazém). As TRÊS telas — módulo de faturamento,
 // relatório e painel — têm de enxergar a mesma lista. O relatório e o painel
@@ -12067,14 +12098,21 @@ function renderFaturamento(){
     // número simplesmente não está no banco.
     let dica = '';
     if(fq){
-      const existe = _fatTodosBLs().filter(b=>normStr(b).includes(fq));
+      // sem a carga geral carregada não dá para afirmar que o BL não existe
+      const existe = _fatTemCG() ? _fatTodosBLs().filter(b=>normStr(b).includes(fq)) : [];
       dica = existe.length
         ? `<div style="margin-top:1rem;font-size:13px;color:var(--muted);line-height:1.7;">
              <b style="color:var(--accent);">${_esc(existe[0])}</b> existe no banco, mas não tem carga faturável por nós
              — toda a carga dele está no armazém <b>PORTO</b>.</div>`
-        : `<div style="margin-top:1rem;font-size:13px;color:var(--muted);line-height:1.7;">
-             Nenhum BL com <b>${_esc(fq)}</b> no banco de dados — confira o número, ou veja se a carga
-             está lançada no módulo certo (bobinas ou carga geral).</div>`;
+        : (_fatTemCG()
+          ? `<div style="margin-top:1rem;font-size:13px;color:var(--muted);line-height:1.7;">
+               Nenhum BL com <b>${_esc(fq)}</b> no banco de dados — confira o número, ou veja se a carga
+               está lançada no módulo certo (bobinas ou carga geral).</div>`
+          : `<div style="margin-top:1rem;font-size:13px;color:var(--text);line-height:1.7;">
+               A <b>carga geral</b> ainda não foi carregada neste aparelho, então BLs de perfis e barras
+               não aparecem aqui.<br>
+               <button class="btn btn-primary btn-sm" style="margin-top:.6rem;" onclick="_fatRecarregarCG()">↻ CARREGAR A CARGA GERAL</button>
+             </div>`);
     }
     container.innerHTML=`<div class="empty-state"><span class="empty-icon">💰</span>Nenhum BL encontrado.${dica}</div>`;
     if(pagDiv) pagDiv.innerHTML='';
@@ -12288,6 +12326,12 @@ function renderFaturamento(){
             ${achados.length===1?'Este BL existe':'Estes BLs existem'}, mas ${achados.length===1?'está':'estão'} fora dos filtros de agora:<br>${lista}
             <br><button class="btn btn-primary btn-sm" style="margin-top:.7rem;" onclick="fatVerSomenteBusca()">✕ LIMPAR OS OUTROS FILTROS E MOSTRAR</button>
           </div>`;
+      }else if(!_fatTemCG()){
+        aviso = `<div style="margin-top:1rem;font-size:13px;color:var(--text);line-height:1.7;">
+            A <b>carga geral</b> ainda não foi carregada neste aparelho, então BLs de perfis e barras
+            não aparecem aqui.<br>
+            <button class="btn btn-primary btn-sm" style="margin-top:.6rem;" onclick="_fatRecarregarCG()">↻ CARREGAR A CARGA GERAL</button>
+          </div>`;
       }else{
         aviso = `<div style="margin-top:1rem;font-size:13px;color:var(--muted);">
             Nenhum BL com <b>${_esc(fq)}</b> no banco de dados — confira o número,
@@ -12339,7 +12383,12 @@ function renderFaturamento(){
     <span style="font-size:12px;color:var(--muted);">Os status de cobrança abaixo podem estar incorretos. Não fature antes de recarregar.</span>
     <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="carregarFatConfig().then(()=>renderFaturamento())">↻ RECARREGAR</button>
   </div>`;
-  container.innerHTML=avisoCfg+logoSection+totalHeader+pageCards.join('');
+  const avisoCG = _fatCgFalhou ? `<div style="background:rgba(224,92,26,.12);border:1px solid rgba(224,92,26,.45);border-radius:8px;padding:.7rem 1rem;margin-bottom:1rem;display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;">
+    <span style="font-size:12px;font-weight:700;color:#e05c1a;">⚠ A CARGA GERAL NÃO FOI CARREGADA</span>
+    <span style="font-size:12px;color:var(--muted);">Os BLs que só existem na carga geral (perfis, barras) não entram na lista enquanto ela não chegar.</span>
+    <button class="btn btn-secondary btn-sm" style="margin-left:auto;font-size:11px;" onclick="_fatRecarregarCG()">↻ CARREGAR AGORA</button>
+  </div>` : '';
+  container.innerHTML=avisoCfg+avisoCG+logoSection+totalHeader+pageCards.join('');
 
   // Footer de paginação
   if(pagDiv){
